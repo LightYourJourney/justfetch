@@ -1,3 +1,4 @@
+use crate::model::OsFamily;
 use anstyle::AnsiColor;
 
 pub struct Logo {
@@ -6,7 +7,18 @@ pub struct Logo {
     pub color: AnsiColor,
 }
 
-pub fn select(id: Option<&str>) -> Logo {
+/// Artwork for every Linux distribution without a design of its own.
+const LINUX: (&str, &str, AnsiColor) = (
+    "linux",
+    include_str!("../../assets/logos/linux.txt"),
+    AnsiColor::BrightYellow,
+);
+
+/// Select artwork for a detected distribution id. `family` decides what an
+/// unrecognized Linux host gets: the generic Linux logo rather than the
+/// unidentified-system fallback, so a Linux user is never shown the wrong
+/// emblem.
+pub fn select(id: Option<&str>, family: Option<&OsFamily>) -> Logo {
     let (name, art, color) = match id.unwrap_or("") {
         "macos" => (
             "macos",
@@ -53,11 +65,8 @@ pub fn select(id: Option<&str>) -> Logo {
             include_str!("../../assets/logos/nixos.txt"),
             AnsiColor::BrightCyan,
         ),
-        "linux" | "alpine" | "rhel" | "centos" | "rocky" | "linuxmint" | "pop" | "manjaro" => (
-            "linux",
-            include_str!("../../assets/logos/linux.txt"),
-            AnsiColor::BrightYellow,
-        ),
+        "linux" | "alpine" | "rhel" | "centos" | "rocky" | "linuxmint" | "pop" | "manjaro" => LINUX,
+        _ if family == Some(&OsFamily::Linux) => LINUX,
         _ => (
             "fallback",
             include_str!("../../assets/logos/fallback.txt"),

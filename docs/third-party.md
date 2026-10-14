@@ -48,3 +48,9 @@ Generated from `cargo metadata --locked --offline` on 2026-10-10. Exact versions
 | [zmij](https://docs.rs/crate/zmij/1.0.23/source/) | 1.0.23 | MIT |
 
 unicode-ident includes Unicode-3.0 notices in addition to MIT/Apache licensing. Some legacy winapi manifests use `MIT/Apache-2.0` spelling. Consult the exact distributed crate license files when preparing binary redistribution notices. No GPL code from reference projects was copied; the project itself retains its pre-existing GPLv3 LICENSE.
+
+## Bundled non-code assets
+
+`assets/logos/` holds eleven ASCII logo files. They are first-party work by this project and carry the same GPL-3.0-only license as the code; none is vendored from another fetch tool or from an ASCII-art collection. One exception existed and was corrected during review: an earlier revision shipped the long-circulating Tux penguin ASCII art of unknown authorship as `assets/logos/linux.txt`, and the accompanying notice claimed every file was authored for justfetch. That file has been replaced with an original drawing and the claim corrected. See [assets/logos/README.md](../assets/logos/README.md).
+
+Platform names and emblems appear only as simplified line renderings used to identify the detected system. No trademark search, clearance opinion, vendor permission or legal review is claimed for them, and packaging binaries for redistribution may require its own review. This inventory covers the copyright provenance of the files in this repository; it is not a legal opinion.

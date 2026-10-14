@@ -1,4 +1,4 @@
-use super::{PlatformData, c_chars, uname};
+use super::{PlatformData, c_chars, uname, uname_identity};
 use crate::{detect::linux as parse, model::*};
 use std::{
     fs::File,
@@ -44,7 +44,17 @@ fn parsed<T>(
             Ok(value) => Detection::available(value, source),
             Err(message) => Detection::error(source, ErrorCode::InvalidData, message),
         },
-        other => other.map(|_| unreachable!("available handled above")),
+        Detection::Unavailable { reason } => Detection::Unavailable { reason },
+        Detection::Unsupported { reason } => Detection::Unsupported { reason },
+        Detection::Error {
+            source,
+            code,
+            message,
+        } => Detection::Error {
+            source,
+            code,
+            message,
+        },
     }
 }
 
@@ -74,7 +84,19 @@ fn host(hostname: Detection<String>, environment: &Environment) -> Detection<Hos
                         );
                     }
                 }
-                error @ Detection::Error { .. } => return error.map(|_| unreachable!()),
+                // A model source that exists but cannot be read is this field's
+                // answer; only an absent one falls through to the hostname.
+                Detection::Error {
+                    source,
+                    code,
+                    message,
+                } => {
+                    return Detection::Error {
+                        source,
+                        code,
+                        message,
+                    };
+                }
                 _ => {}
             }
         }
@@ -87,17 +109,7 @@ fn host(hostname: Detection<String>, environment: &Environment) -> Detection<Hos
 
 pub fn collect() -> PlatformData {
     let uname = uname();
-    let hostname = match &uname {
-        Ok(data) => Detection::available(c_chars(&data.nodename), "uname nodename"),
-        Err(e) => Detection::error("uname", ErrorCode::ApiFailed, e),
-    };
-    let kernel = match &uname {
-        Ok(data) => Detection::available(
-            format!("{} {}", c_chars(&data.sysname), c_chars(&data.release)),
-            "uname",
-        ),
-        Err(e) => Detection::error("uname", ErrorCode::ApiFailed, e),
-    };
+    let (hostname, kernel) = uname_identity(&uname);
     let environment = match &uname {
         Ok(data) => parse::environment(
             &c_chars(&data.release),

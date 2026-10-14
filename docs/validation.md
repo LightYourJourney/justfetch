@@ -13,7 +13,7 @@ cargo test --locked
 cargo build --release --locked
 ```
 
-All passed after fixes. Test count: **27** (10 library/parser/policy tests, 6 actual CLI tests, 2 Unix pseudo-terminal tests, 9 fixed-snapshot rendering/model tests), zero failures and zero ignored tests. Production paths have no unwrap/expect, external commands or runtime network access. Initial empty-CLI tests failed in all four contract groups; implementation made them pass. Sanitization tests first exposed raw ESC passthrough, then passed with the state-machine sanitizer.
+All passed after fixes. Test count: **27** as of this round (10 library/parser/policy tests, 6 actual CLI tests, 2 Unix pseudo-terminal tests, 9 fixed-snapshot rendering/model tests), zero failures and zero ignored tests. Later rounds below raise this; the current total is stated in the most recent section. Production paths have no unwrap/expect, external commands or runtime network access. Initial empty-CLI tests failed in all four contract groups; implementation made them pass. Sanitization tests first exposed raw ESC passthrough, then passed with the state-machine sanitizer.
 
 The PTY tests exercise actual TTY color behavior, non-UTF-8 NO_COLOR, explicit no-color, TERM=dumb and detected widths of 1, 25 and 80 columns. Fixtures separately cover tall/short logos, long CPUs, missing/error/unsupported/estimated states, display-cell widths, combining marks, emoji sequences, native numbers in JSON and hostile control sequences. CLI tests parse the entire stdout as one JSON document and check stderr/exit behavior.
 
@@ -99,3 +99,29 @@ The documented wall times could not be reproduced. On an identical Release binar
 - **Linux and Windows still have no native run.** A Lima Debian VM was attempted with user approval. The image download failed with `unexpected EOF` under the tool sandbox and could not be retried on this connection, whose throughput measured around 1 MB/min. No Linux or WSL detector has been executed.
 - **The benchmark environment is not quiesced.** See above; a publishable wall-time baseline needs a quiet machine.
 - `docs/benchmarks/macos-arm64.json` is unchanged, since the only re-measurement available was taken under contention and replacing a consistent record with a noisier one would be a downgrade.
+
+## Code review round (2026-10-15)
+
+A two-axis review ran against the whole working tree with two independent reviewers, one for the repo's documented standards and one for the originating spec. Every finding was re-checked against the source before being accepted; one Spec finding was rejected as wrong.
+
+### Fixes applied
+
+1. **Panics in production paths.** `src/platform/linux.rs` reached `unreachable!` from `collect()` in two places via `Detection::map` on variants that cannot carry a value. Both now match the non-`Available` variants explicitly. This also makes the first-round claim "production paths have no unwrap/expect" true of panic macros as well.
+2. **Unchecked FFI result.** `src/platform/macos.rs` discarded the `kern_return_t` from `mach_port_deallocate`, so a send right that could not be released was reported as a clean read. The result is now checked and reported.
+3. **Duplicated uname identity.** The hostname and kernel construction was byte-identical in the Linux and macOS adapters. It moved to `platform::uname_identity`, which is compiled on every Unix target and now has direct unit tests for both the success and failure paths — coverage the platform modules previously could not have. The Linux adapter still cannot be executed here, but the extracted code is exercised on macOS.
+4. **Stringly-typed logo control flow.** `terminal::render` decided the Linux fallback by comparing `logo.name == "fallback"`. `logo::select` now takes the platform family and makes that choice itself, and the branch that had no test coverage now has one.
+5. **Duplicated field-key list.** The seven keys were listed twice, once to build rows and once to decide which rows get a styled prefix. Both now read one `FIELD_KEYS` constant, and `KEY_PREFIX_LEN` is tied to the prefix format by a test instead of by a bare `8`.
+6. **Copied logo artwork.** `assets/logos/linux.txt` was the widely-circulated Tux ASCII art of unknown authorship while the adjacent notice claimed every file was authored for justfetch. The file was replaced with an original drawing and the provenance statement corrected; `docs/third-party.md` gained an asset section.
+
+### Rejected
+
+- A Spec finding called the `identity` object (username@hostname) unrequested scope creep. It is not: the spec's default-layout diagram requires a `username@hostname` title line, and the spec separately requires Host to distinguish device model from host identity. The finding came from an incomplete spec excerpt handed to that reviewer, not from the code.
+- A standards finding called `mem.total_bytes.max(1)` a silent clamp. All three detectors reject a zero or absent total before constructing `MemoryInfo`, so the guard is unreachable; the documented rule it was matched against concerns clamping counter values into plausible ones, not guarding a division.
+
+### Current totals
+
+`cargo fmt --check`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo test --locked` and `cargo build --release --locked` all pass. Test count is now **35**: 13 library, 6 CLI, 2 pseudo-terminal, 14 rendering/model. Cross-target Clippy with warnings denied passes for `aarch64-unknown-linux-gnu`, `x86_64-unknown-linux-gnu`, `x86_64-pc-windows-gnu` and `x86_64-apple-darwin`, which is the only check available for the platform code changed here.
+
+### Known gap this round did not close
+
+The benchmark still has no Macchina measurement and no reproducible wall-time baseline, so the spec's "benchmark against Fastfetch, Macchina and pfetch-rs" remains only partly satisfied. Both the missing comparator and the wall-time instability are recorded in performance.md rather than papered over.

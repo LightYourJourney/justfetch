@@ -19,4 +19,14 @@
 - Correct `docs/compatibility.md` on Host fallback: Linux falls back to the labeled hostname only when a model source is absent, while macOS never falls back and reports an error instead.
 - Record an independent re-measurement in `docs/performance.md`. Peak RSS reproduced to within 0.05 MiB, but wall times and the Fastfetch/pfetch-rs ranking did not reproduce on the loaded measurement machine. The earlier wall times are now marked as an upper bound, not a baseline.
 
+### Code review round
+
+- Remove the last two panics from production paths: `src/platform/linux.rs` no longer routes `unreachable!` through `Detection::map`.
+- Check the `mach_port_deallocate` result in the macOS memory detector instead of discarding it, so a send right that cannot be released is not reported as a clean read.
+- Move the duplicated uname hostname/kernel construction into `platform::uname_identity`, which is now unit-tested for both the success and the failure path.
+- Let `logo::select` choose the generic Linux artwork from the platform family instead of `terminal::render` comparing the logo's name string; add the test that branch never had.
+- Give the seven field keys one definition instead of two, and tie the styled-prefix width to its format string by a test rather than a bare `8`.
+- Replace `assets/logos/linux.txt`. It was the widely-circulated Tux ASCII art of unknown authorship while the adjacent notice claimed every file was authored for this project; the artwork is now an original drawing and the provenance notice is accurate. `docs/third-party.md` gained a bundled-asset section.
+- Test count is now **35**.
+
 This version has not been published. Platform verification is recorded separately in docs/compatibility.md.

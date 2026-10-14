@@ -1,4 +1,4 @@
-use super::{PlatformData, c_chars, uname};
+use super::{PlatformData, uname, uname_identity};
 use crate::model::*;
 use std::{
     ffi::CStr,
@@ -139,14 +139,21 @@ fn memory() -> Detection<MemoryInfo> {
         )
     };
     // SAFETY: release the send right acquired by mach_host_self in our own task.
-    unsafe {
-        mach_port_deallocate(libc::mach_task_self(), port);
-    }
+    let released = unsafe { mach_port_deallocate(libc::mach_task_self(), port) };
     if result != libc::KERN_SUCCESS {
         return Detection::error(
             source,
             ErrorCode::ApiFailed,
             format!("Mach return code {result}"),
+        );
+    }
+    // A send right we cannot release is a broken ownership result, not something
+    // to drop on the floor while reporting the counters as clean.
+    if released != libc::KERN_SUCCESS {
+        return Detection::error(
+            source,
+            ErrorCode::ApiFailed,
+            format!("mach_port_deallocate returned {released}"),
         );
     }
     // SAFETY: sysconf has no pointer arguments or side effects on process memory.
@@ -180,17 +187,7 @@ fn memory() -> Detection<MemoryInfo> {
 
 pub fn collect() -> PlatformData {
     let data = uname();
-    let hostname = match &data {
-        Ok(data) => Detection::available(c_chars(&data.nodename), "uname nodename"),
-        Err(e) => Detection::error("uname", ErrorCode::ApiFailed, e),
-    };
-    let kernel = match &data {
-        Ok(data) => Detection::available(
-            format!("{} {}", c_chars(&data.sysname), c_chars(&data.release)),
-            "uname",
-        ),
-        Err(e) => Detection::error("uname", ErrorCode::ApiFailed, e),
-    };
+    let (hostname, kernel) = uname_identity(&data);
     let os = sysctl_string(c"kern.osproductversion").map(|version| OsInfo {
         family: OsFamily::Macos,
         name: "macOS".to_owned(),

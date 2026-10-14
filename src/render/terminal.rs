@@ -71,16 +71,8 @@ fn plain(text: &str, unicode: bool) -> String {
 }
 
 pub fn render(snapshot: &SystemSnapshot, options: Options) -> String {
-    let id = snapshot.os.value().and_then(|os| os.id.as_deref());
-    let mut logo = logo::select(id);
-    if logo.name == "fallback"
-        && snapshot
-            .os
-            .value()
-            .is_some_and(|os| os.family == OsFamily::Linux)
-    {
-        logo = logo::select(Some("linux"));
-    }
+    let os = snapshot.os.value();
+    let logo = logo::select(os.and_then(|os| os.id.as_deref()), os.map(|os| &os.family));
     render_with_logo(snapshot, options, &logo)
 }
 
@@ -132,33 +124,33 @@ pub fn render_with_logo(snapshot: &SystemSnapshot, options: Options, logo: &logo
         ShellKind::CurrentParent => shell.name.clone(),
         ShellKind::ConfiguredDefault => format!("{} (default)", shell.name),
     });
-    let fields = [
-        ("OS", format!("{os}{environment}")),
-        ("Host", host),
-        ("Kernel", kernel),
-        ("Uptime", uptime),
-        ("CPU", cpu),
-        ("Memory", memory),
-        ("Shell", shell),
+    let values = [
+        format!("{os}{environment}"),
+        host,
+        kernel,
+        uptime,
+        cpu,
+        memory,
+        shell,
     ];
-    for (key, value) in fields {
-        let text = format!("{key:<6}  {}", plain(&value, options.unicode));
+    for (key, value) in FIELD_KEYS.into_iter().zip(values) {
+        let value = plain(&value, options.unicode);
+        let prefix = field_prefix(key);
         // Keep a readable continuation indent whenever enough width exists.
         if info_columns > 10 {
-            let prefix = format!("{key:<6}  ");
-            let chunks = wrap(&plain(&value, options.unicode), info_columns - 8);
+            let chunks = wrap(&value, info_columns - KEY_PREFIX_LEN);
             for (index, chunk) in chunks.into_iter().enumerate() {
                 rows.push(format!(
                     "{}{chunk}",
                     if index == 0 {
                         prefix.as_str()
                     } else {
-                        "        "
+                        CONTINUATION
                     }
                 ));
             }
         } else {
-            rows.extend(wrap(&text, info_columns));
+            rows.extend(wrap(&format!("{prefix}{value}"), info_columns));
         }
     }
     rows.push(divider);
@@ -192,12 +184,16 @@ pub fn render_with_logo(snapshot: &SystemSnapshot, options: Options, logo: &logo
             if index == 0 {
                 output.push_str(&theme::accent(line, logo.color, options.color));
             } else if index > 1
-                && line.len() >= 8
-                && line.is_char_boundary(8)
-                && fields_key(&line[..8])
+                && line.len() >= KEY_PREFIX_LEN
+                && line.is_char_boundary(KEY_PREFIX_LEN)
+                && fields_key(&line[..KEY_PREFIX_LEN])
             {
-                output.push_str(&theme::accent(&line[..8], logo.color, options.color));
-                output.push_str(&line[8..]);
+                output.push_str(&theme::accent(
+                    &line[..KEY_PREFIX_LEN],
+                    logo.color,
+                    options.color,
+                ));
+                output.push_str(&line[KEY_PREFIX_LEN..]);
             } else {
                 output.push_str(line);
             }
@@ -216,11 +212,23 @@ pub fn render_with_logo(snapshot: &SystemSnapshot, options: Options, logo: &logo
     output
 }
 
+/// Field keys in display order. The styling pass reads the same list, so the
+/// rows and the keys they are styled by cannot disagree.
+const FIELD_KEYS: [&str; 7] = ["OS", "Host", "Kernel", "Uptime", "CPU", "Memory", "Shell"];
+
+/// A field row opens with the key column, so this is how many bytes of a
+/// composed row the styling pass replaces with a styled prefix.
+const KEY_PREFIX_LEN: usize = 8;
+
+/// Wrapped continuation rows indent by exactly the key column.
+const CONTINUATION: &str = "        ";
+
+fn field_prefix(key: &str) -> String {
+    format!("{key:<6}  ")
+}
+
 fn fields_key(prefix: &str) -> bool {
-    matches!(
-        prefix.trim(),
-        "OS" | "Host" | "Kernel" | "Uptime" | "CPU" | "Memory" | "Shell"
-    )
+    FIELD_KEYS.contains(&prefix.trim())
 }
 
 #[cfg(test)]
@@ -246,6 +254,16 @@ mod tests {
             Some("xterm")
         ));
     }
+    /// The styling pass slices composed rows by `KEY_PREFIX_LEN`, so the
+    /// constant has to keep matching what `field_prefix` actually produces.
+    #[test]
+    fn key_column_width_matches_the_styled_slice() {
+        assert_eq!(CONTINUATION.len(), KEY_PREFIX_LEN);
+        for key in FIELD_KEYS {
+            assert_eq!(field_prefix(key).len(), KEY_PREFIX_LEN, "{key}");
+        }
+    }
+
     #[test]
     fn uptime_units() {
         assert_eq!(format_uptime(59), "59s");

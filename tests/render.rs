@@ -370,14 +370,52 @@ fn logo_mapping_and_builtin_assets() {
         "macos", "windows", "linux", "arch", "debian", "ubuntu", "fedora", "gentoo", "opensuse",
         "nixos",
     ] {
-        let logo = logo::select(Some(id));
+        let logo = logo::select(Some(id), None);
         assert_eq!(logo.name, id);
         assert!(logo.art.is_ascii());
         assert!(logo.art.lines().all(|line| layout::width(line) <= 24));
     }
-    assert_eq!(logo::select(Some("opensuse-tumbleweed")).name, "opensuse");
-    assert_eq!(logo::select(None).name, "fallback");
-    assert_eq!(logo::select(Some("unknown")).name, "fallback");
+    assert_eq!(
+        logo::select(Some("opensuse-tumbleweed"), None).name,
+        "opensuse"
+    );
+    assert_eq!(logo::select(None, None).name, "fallback");
+    assert_eq!(logo::select(Some("unknown"), None).name, "fallback");
+    // The family is what keeps an unrecognized Linux host off the fallback.
+    assert_eq!(
+        logo::select(Some("some-unknown-distro"), Some(&OsFamily::Linux)).name,
+        "linux"
+    );
+    assert_eq!(logo::select(None, Some(&OsFamily::Linux)).name, "linux");
+    assert_eq!(
+        logo::select(Some("unknown"), Some(&OsFamily::Windows)).name,
+        "fallback"
+    );
+}
+
+/// A Linux distribution without its own artwork must render the generic Linux
+/// logo, not the unidentified-system emblem.
+#[test]
+fn unknown_linux_distribution_renders_the_generic_linux_logo() {
+    let mut snapshot = fixture();
+    snapshot.os = Detection::available(
+        OsInfo {
+            family: OsFamily::Linux,
+            name: "Example Linux".into(),
+            version: None,
+            id: Some("some-unknown-distro".into()),
+        },
+        "fixture",
+    );
+    let text = terminal::render(&snapshot, options(80));
+    let generic = logo::select(Some("linux"), None).art;
+    let fallback = logo::select(None, None).art;
+    for line in generic.lines().filter(|line| !line.trim().is_empty()) {
+        assert!(text.contains(line), "missing generic linux line {line:?}");
+    }
+    for line in fallback.lines().filter(|line| !line.trim().is_empty()) {
+        assert!(!text.contains(line), "fallback leaked into {line:?}");
+    }
 }
 
 #[test]
