@@ -1,6 +1,6 @@
 # v0.1 validation record
 
-Dates: 2026-10-10 to 2026-10-11 (Asia/Shanghai). Checkout: `/Users/leo/leocode/mine/justfetch`, branch main, starting commit f255182 (clean working tree containing LICENSE and empty README). All implementation changes remain local and uncommitted. No push, release, package publication or remote CI invocation occurred.
+Dates: 2026-10-10 to 2026-10-15 (Asia/Shanghai). Checkout: the repository root, branch `main`, starting commit `f255182` (a clean working tree containing `LICENSE` and an empty README). The sections below are chronological and each states its own scope: the early rounds ran entirely locally, with no push, release or remote CI invocation, and the later sections record the pushes and CI runs that followed.
 
 ## Native macOS checks
 
@@ -24,7 +24,7 @@ Actual ordinary-user Release execution on Apple M3 / Mac15,12 / macOS 26.6.2 ret
 Installed Rustup standard-library targets and used the Rustup stable compiler **1.98.1**, explicitly selected because PATH initially resolved Homebrew rustc 1.99.0. A failed first attempt mixed the Homebrew compiler with Rustup target libraries and could not find core/std; selecting the matching compiler resolved that environment issue.
 
 ```sh
-RUSTC=/Users/leo/.rustup/toolchains/stable-aarch64-apple-darwin/bin/rustc \
+RUSTC=~/.rustup/toolchains/stable-aarch64-apple-darwin/bin/rustc \
   cargo check --locked --all-targets --target aarch64-unknown-linux-gnu
 # same command with:
 # x86_64-unknown-linux-gnu
