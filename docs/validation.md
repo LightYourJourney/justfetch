@@ -125,3 +125,27 @@ A two-axis review ran against the whole working tree with two independent review
 ### Known gap this round did not close
 
 The benchmark still has no Macchina measurement and no reproducible wall-time baseline, so the spec's "benchmark against Fastfetch, Macchina and pfetch-rs" remains only partly satisfied. Both the missing comparator and the wall-time instability are recorded in performance.md rather than papered over.
+
+## First CI run (2026-10-14)
+
+Pushing `main` to `origin` triggered the workflow for the first time. Every job passed: `macos-latest / stable`, `ubuntu-latest / stable` (40s), `windows-latest / stable` (2m21s) and `MSRV / 1.95.0` (17s), run [`38604699769`](https://github.com/LightYourJourney/justfetch/actions/runs/38604699769). Each native job ran format, lint with warnings denied, tests, a release build and a real `--format json` invocation.
+
+This closes two items the previous rounds had to record as unverified.
+
+**MSRV 1.95.0 is now verified.** `cargo +1.95.0 check --locked --all-targets` passes on the CI toolchain, after three failed attempts to install that toolchain locally on this machine. The manifest review recorded earlier (sysinfo 0.39.6 declaring `rust-version = "1.95"`) turned out to agree with the compile check, but it was the compile check that settled it.
+
+**Linux and Windows now have real detector runs**, not just cross-compilation. The release binary executed on both runners and returned all seven fields as `available`:
+
+| Field | Ubuntu 24.04, kernel 6.17.0-1022-azure | Windows Server 2025 Datacenter, build 26100 |
+| --- | --- | --- |
+| OS | `Ubuntu 24.04` from os-release | `Windows Server 2025 Datacenter` from the registry |
+| Host | `Virtual Machine`, kind `device_model` (DMI) | `runnervmfi6oq`, kind `hostname` |
+| Kernel | `Linux 6.17.0-1022-azure` | `Windows NT build 26100` |
+| Uptime | 186 s | 406 s |
+| CPU | `INTEL(R) XEON(R) PLATINUM 8573C`, 4 logical | `AMD EPYC 9V74 80-Core Processor`, 4 logical |
+| Memory | 16,765,374,464 B total, `total_minus_available` | 17,174,360,064 B total, same definition |
+| Shell | `bash`, `current_parent` | `cmd`, `configured_default` |
+
+Two things this settles. The Linux parent-shell path (`getppid` plus `/proc/<pid>/exe`) resolves correctly on a real kernel, and the Windows native paths (registry product name, `GlobalMemoryStatusEx`, ToolHelp parent snapshot) work on a real Windows system. The Windows shell line is not a defect: `cargo run` replaces itself with `exec` on Unix, so the parent there is `bash`, but on Windows it must spawn a child, so the parent is `cargo.exe`, which is not a shell — and the field correctly fell back to the labelled `ComSpec` default instead of guessing. That is the documented immediate-parent-only semantics working as designed.
+
+**What the run does not establish.** A GitHub runner is one configuration per platform, not a distribution matrix. Arch, Debian, Fedora, Gentoo, openSUSE and NixOS detection, Intel Macs, ARM64 Linux, WSL1/WSL2, containers and any hardware-sensitive path remain unexercised, and no runner exercises a real interactive terminal or the `--logo none`/color combinations against a TTY. The compile-only rows in the compatibility matrix that are still compile-only are marked as such. The benchmark gap is unchanged by a CI run, since CI measures nothing about startup time.

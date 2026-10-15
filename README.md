@@ -4,7 +4,7 @@
 
 A compact Rust CLI that displays real local system information, with a responsive ASCII layout and structured JSON. It runs offline, requires no configuration or administrator access, and does not call other fetch tools.
 
-**Status:** v0.1 implementation candidate, not yet published. Apple Silicon macOS has been exercised locally. Linux, Windows and Intel macOS adapters have cross-target compile checks; their native CI and hardware validation remain pending. See the [compatibility matrix](docs/compatibility.md).
+**Status:** v0.1 implementation candidate, not yet published. Apple Silicon macOS has been exercised locally; Linux x86-64 (Ubuntu 24.04) and Windows x86-64 (Server 2025) have been exercised by the native CI run, which also verifies the declared Rust 1.95 MSRV. Intel macOS, ARM64 Linux, WSL and every distribution other than Ubuntu remain untested. See the [compatibility matrix](docs/compatibility.md).
 
 ## Features
 
@@ -99,7 +99,7 @@ cargo test --locked
 cargo build --release --locked
 ```
 
-Tests cover pure parsers, status/units, fixed rendering fixtures, long/wide/combining text, hostile terminal sequences, real CLI exits/streams and Unix pseudo-terminal color/width behavior. [CI](.github/workflows/ci.yml) is configured for Ubuntu, macOS and Windows, plus an MSRV job; configured CI is not a claim of completed remote runs.
+Tests cover pure parsers, status/units, fixed rendering fixtures, long/wide/combining text, hostile terminal sequences, real CLI exits/streams and Unix pseudo-terminal color/width behavior. [CI](.github/workflows/ci.yml) runs format, lint, tests, a release build and a live JSON invocation on Ubuntu, macOS and Windows, plus a Rust 1.95 MSRV job; all four jobs pass. A passing runner is one configuration per platform, not a distribution matrix — see the [validation record](docs/validation.md).
 
 The package has a small library for deterministic tests and a thin binary. Detection never draws, renderers never call system APIs, and every field keeps its provenance. Read [AGENTS.md](AGENTS.md) and [CONTRIBUTING.md](CONTRIBUTING.md) before contributing.
 

@@ -6,14 +6,18 @@ The support contract is conservative: a platform adapter is implemented, but onl
 
 | Platform | Implementation | Local compile check | Actual detector run | Native CI |
 | --- | --- | --- | --- | --- |
-| macOS ARM64 | Complete | Native build/test/release | Apple M3, Mac15,12, macOS 26.6.2; seven fields available outside tool sandbox | Configured; not run remotely |
-| macOS Intel | Complete | Passed cargo check (Rust 1.98.1; no cross link/run) | Not tested on Intel hardware | macos-latest uses runner-selected architecture |
-| Linux ARM64 | Complete | Passed cargo check (Rust 1.98.1; no cross link/run) | Not tested locally | Ubuntu native CI configured, not executed |
-| Linux x86-64 | Complete | Passed cargo check (Rust 1.98.1; no link/run) | Not tested locally | Ubuntu native CI configured, not executed |
-| Windows x86-64 | Complete | Passed GNU-target cargo check (Rust 1.98.1; no link/run) | Not tested locally in PowerShell/CMD/Windows Terminal | Windows native MSVC CI configured, not executed |
+| macOS ARM64 | Complete | Native build/test/release | Apple M3 / Mac15,12 / macOS 26.6.2 locally; Apple M1 (Virtual) / VirtualMac2,1 on the macOS runner. Seven fields available in both | Executed: run 38604699769 |
+| macOS Intel | Complete | Passed cargo check (Rust 1.98.1; no cross link/run) | Not tested on Intel hardware | macOS runner is ARM64; no Intel runner |
+| Linux ARM64 | Complete | Passed cargo check (Rust 1.98.1; no cross link/run) | Not tested on ARM64 hardware | Ubuntu runner is x86-64 |
+| Linux x86-64 | Complete | Passed cargo check (Rust 1.98.1; no link/run) | Executed on Ubuntu 24.04 (Azure VM, kernel 6.17.0-1022-azure): all seven fields available, os-release and proc parsers live, parent shell resolved to `bash` as `current_parent` | Executed: run 38604699769 |
+| Windows x86-64 | Complete | GNU-target cargo check (Rust 1.98.1; no link/run) | Executed on Windows Server 2025 Datacenter build 26100, MSVC toolchain: all seven fields available, registry OS name, GlobalMemoryStatusEx and ToolHelp parent snapshot live | Executed: run 38604699769 |
 | WSL1 | Linux adapter, WSL detection/semantic safeguards | Pure parser fixtures only | Not tested in WSL1 | No WSL runner |
 | WSL2 | Linux adapter, explicit WSL2 marker detection | Pure parser fixtures only | Not tested in WSL2 | No WSL runner |
 | BSD and other OS | Out of v0.1 scope | Compile-time unsupported | Not tested | None |
+
+"Executed" means the release binary ran on a real kernel of that platform and returned the JSON above; it does not mean every distribution, device or hardware configuration has been tried. What the runners establish is that the Linux `os-release`/`proc`/sysfs and parent-shell paths and the Windows registry/memory/ToolHelp paths work on at least one real system each. Arch, Debian, Fedora, Gentoo, openSUSE, NixOS, Intel Macs, ARM64 Linux, WSL and container guests remain unexercised.
+
+One behaviour the Windows runner made concrete: `cargo run` is the parent there, because Cargo replaces itself with `exec` on Unix but must spawn a child on Windows. Shell detection therefore resolved to `bash` as `current_parent` on Linux and fell back to `cmd` as `configured_default` on Windows, which is the documented immediate-parent-only semantics working as intended rather than a platform defect.
 
 ## Per-module sources
 
