@@ -124,7 +124,7 @@ A two-axis review ran against the whole working tree with two independent review
 
 ### Known gap this round did not close
 
-The benchmark still has no Macchina measurement and no reproducible wall-time baseline, so the spec's "benchmark against Fastfetch, Macchina and pfetch-rs" remains only partly satisfied. Both the missing comparator and the wall-time instability are recorded in performance.md rather than papered over.
+The benchmark at that point had no Macchina measurement and no reproducible wall-time baseline, so the spec's "benchmark against Fastfetch, Macchina and pfetch-rs" was only partly satisfied. Both were recorded in performance.md rather than papered over. **Closed on 2026-10-16; see the benchmark section below.**
 
 ## First CI run (2026-10-15)
 
@@ -151,3 +151,19 @@ This closes two items the previous rounds had to record as unverified.
 Two things this settles. The Linux parent-shell path (`getppid` plus `/proc/<pid>/exe`) resolves correctly on a real kernel, and the Windows native paths (registry product name, `GlobalMemoryStatusEx`, ToolHelp parent snapshot) work on a real Windows system. The Windows shell line is not a defect: `cargo run` replaces itself with `exec` on Unix, so the parent there is `bash`, but on Windows it must spawn a child, so the parent is `cargo.exe`, which is not a shell — and the field correctly fell back to the labelled `ComSpec` default instead of guessing. That is the documented immediate-parent-only semantics working as designed.
 
 **What the run does not establish.** A GitHub runner is one configuration per platform, not a distribution matrix. Arch, Debian, Fedora, Gentoo, openSUSE and NixOS detection, Intel Macs, ARM64 Linux, WSL1/WSL2, containers and any hardware-sensitive path remain unexercised, and no runner exercises a real interactive terminal or the `--logo none`/color combinations against a TTY. The compile-only rows in the compatibility matrix that are still compile-only are marked as such. The benchmark gap is unchanged by a CI run, since CI measures nothing about startup time.
+
+## Benchmark round (2026-10-16)
+
+Macchina 6.4.0 was installed and measured, closing the comparator the spec asked for and the two rounds above had to leave open. The run also settled why the wall times never reproduced.
+
+**Method.** Hyperfine executes one command's samples consecutively, so a load spike biases that entire command. Ten rounds of ten runs per command were run with the command order rotated every round, pooling 700 samples across a run whose load average went from 7.4 to 36–41. The machine was deliberately not quiesced. Raw output is in [benchmarks/macos-arm64-interleaved.json](benchmarks/macos-arm64-interleaved.json).
+
+**Result.** Wall-clock coefficient of variation across the seven commands was 59%–125%; CPU time 17%–21%; instruction counts **1.2%–2.1%**. Wall clock on this host measures the machine, not the program. The baseline was therefore moved onto instruction counts, with wall clock retained only as a load-contaminated upper bound, and the round's medians are 27.8 M instructions for a full justfetch run against 34.2 M pfetch-rs, 41.8 M Fastfetch and 46.0 M Macchina.
+
+**A hypothesis was tested and failed.** The note written on 2026-10-11 guessed that a uniform per-run harness cost explained the 3x wall-time drift. Measuring the same four commands sandboxed and unsandboxed minutes apart showed the sandbox is not the cause — the unsandboxed run was slower and far noisier because the machine had become busier. Host load explains it; the earlier guess was wrong and `docs/performance.md` now says so.
+
+**A finding worth acting on later.** `justfetch --help` costs 27.4 M instructions and a full run 27.8 M. Collection and rendering are about 1.5% of the process; the rest is process creation, dynamic linking and argument parsing. No detector change can move the remaining 98.5%, so future performance work that matters would have to target startup, not collection.
+
+**Corrections made during this round.** Two claims of mine were wrong and were fixed before commit. The first, in `docs/performance.md`, was the harness-cost inference above. The second was a sentence asserting Macchina "has no such key in its binary" for hiding ASCII art: a wider search of the binary found `hide_ascii` and `prefer_small_ascii` theme keys, so the sentence was replaced with what is actually true — no CLI flag exists, the theme schema is undocumented, `-t` silently falls back on an unknown name, and `XDG_CONFIG_HOME` is ignored on macOS, so using a theme would mean writing into the reader's own config directory. Macchina was measured as it ships and its figures are labelled an upper bound rather than a like-for-like ratio.
+
+**What this round does not establish.** The host was never quiesced, at the operator's explicit request, so no wall-clock figure here should be published as a baseline. Instruction counts do not capture I/O waits or terminal painting. Nothing here is evidence about Linux or Windows performance, and peak RSS is Hyperfine's process peak-resident metric, not retained heap.

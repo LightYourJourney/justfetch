@@ -4,7 +4,7 @@
 
 Implemented: single-package Rust CLI; seven real detection fields; Linux/macOS/Windows adapters and conservative WSL detection; original ASCII logos for macOS, Windows, Linux, Arch, Debian, Ubuntu, Fedora, Gentoo, openSUSE, NixOS and fallback; width-aware terminal output, ANSI capability policy, no-color/no-logo; tagged JSON with raw numeric units/source/confidence; independent field errors; deterministic parser/render tests and real CLI tests; three-OS CI; GPLv3-preserving documentation.
 
-Release gate still external: exercise WSL, Intel macOS, ARM64 Linux and distributions other than Ubuntu on real hardware (native CI has run and passed on Ubuntu 24.04, Windows Server 2025 and an ARM64 macOS runner, and has verified the 1.95 MSRV); re-measure the wall-time baseline on a quiesced machine, since the recorded numbers did not reproduce and their ranking reversed under load (see performance.md); review package/name availability before publication. Evidence is in validation.md. v0.1 is not a published release or a claim that every target device has been tested.
+Release gate still external: exercise WSL, Intel macOS, ARM64 Linux and distributions other than Ubuntu on real hardware (native CI has run and passed on Ubuntu 24.04, Windows Server 2025 and an ARM64 macOS runner, and has verified the 1.95 MSRV); take any published timing claim from a quiesced machine, since the instruction-count baseline is reproducible on a loaded host but wall clock is not (see performance.md); review package/name availability before publication. Evidence is in validation.md. v0.1 is not a published release or a claim that every target device has been tested.
 
 ## v0.2 — Personalization
 

@@ -29,4 +29,12 @@
 - Replace `assets/logos/linux.txt`. It was the widely-circulated Tux ASCII art of unknown authorship while the adjacent notice claimed every file was authored for this project; the artwork is now an original drawing and the provenance notice is accurate. `docs/third-party.md` gained a bundled-asset section.
 - Test count is now **35**.
 
+### Benchmark round
+
+- Measure Macchina 6.4.0, the comparator the spec asked for and the two earlier rounds had to leave open. It is included in the baseline table and in the new raw artifact.
+- Move the baseline onto instruction counts. Wall clock on a loaded host varied by 59–125% across commands while instruction counts varied by 1.2–2.1%, so wall clock was demoted to a load-contaminated upper bound. Ten interleaved rounds with a rotating command order replaced the sequential protocol, which let a single load spike bias a whole command.
+- Record the raw 700-sample evidence in `docs/benchmarks/macos-arm64-interleaved.json`, including every metric Hyperfine emitted and the load samples, with no statistic baked in.
+- Correct the hypothesis recorded in `docs/performance.md` for the 2026-10-11 re-measurement: the 3x wall-time drift was attributed to a per-run harness cost, and measuring sandboxed against unsandboxed showed it was host load instead.
+- Report the result that collection and rendering are about 1.5% of the process's instructions — `--help` costs 27.4 M against 27.8 M for a full run — so the remaining cost is startup, linking and argument parsing.
+
 This version has not been published. Platform verification is recorded separately in docs/compatibility.md.
