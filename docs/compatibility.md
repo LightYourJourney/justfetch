@@ -57,4 +57,4 @@ Untrusted ESC/CSI/OSC/DCS strings and control/bidi characters are removed before
 
 ## Known validation limits
 
-No Linux distributions, WSL instances, Intel Macs or Windows devices have been exercised locally. Cross compilation checks do not test native linking, terminal appearance or system-call behavior. CI is prepared but no workflow run is claimed. See validation.md for exact commands and results.
+WSL, Intel Macs, ARM64 Linux, containers, and every distribution other than Ubuntu remain unexercised, as does any path that depends on particular hardware. The matrix above records exactly what was run and where; where a row says a check ran, it ran on that one configuration and nothing wider. Cross-compilation checks prove compilation only, not linking, terminal appearance or system-call behavior. See validation.md for exact commands and results.

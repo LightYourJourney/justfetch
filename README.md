@@ -18,20 +18,20 @@ A compact Rust CLI that displays real local system information, with a responsiv
 
 ## Example
 
-Captured from a real invocation on Apple M3 / macOS 26.6.2; only the user and host identity below are redacted. Memory and uptime naturally change. This is plain output; a compatible TTY adds colors automatically.
+Captured from a real `--no-color` invocation on Apple M3 / macOS 26.6.2. The user and host identity is replaced by a shorter placeholder; the divider always tracks the title's width, so it is shorter here than in the original. Memory and uptime naturally change. This is plain output; a compatible TTY adds colors automatically.
 
 ```text
          .'       ~ [user]@[host]
-       .'         ------------------------------
+       .'         ───────────────
    .--.  .--.     OS      macOS 26.6.2
   /          \    Host    Mac15,12
  |            |   Kernel  Darwin 25.6.0
- |            |   Uptime  9d 14h 53m
+ |            |   Uptime  14d 10h 37m
   \          /    CPU     Apple M3 (8 logical)
-   `--.  .--'     Memory  13.41 / 16.00 GiB (84%)
+   `--.  .--'     Memory  13.29 / 16.00 GiB (83%)
                   Shell   zsh
-                  ------------------------------
-                  o o o o o o o o
+                  ───────────────
+                  ● ● ● ● ● ● ● ●
 ```
 
 `~` marks estimated information, including the username environment hint. A shell fallback is displayed as `~ zsh (default)` so it cannot be mistaken for a confirmed current parent shell. Host hardware identifiers such as Mac15,12 are reported directly; no friendly-name guess is made.

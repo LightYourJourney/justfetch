@@ -14,7 +14,7 @@
 ### Corrections before the first release
 
 - Fix the renderer emitting an empty styled span, an opening escape pair immediately followed by a reset, for every row below a logo that is shorter than the information column. Measured on the built-in macOS logo this removes 6 of 78 escape sequences per invocation; shorter logos remove more. The visible output is unchanged.
-- Add a regression test that fails without that fix, plus two property tests sweeping 0–260, 1000, 4096 and 100000 columns across all color/Unicode combinations. Test count is now 31.
+- Add a regression test that fails without that fix, plus two property tests sweeping 0–260, 1000, 4096 and 100000 columns across all color/Unicode combinations. That round took the test count from 27 to 31.
 - Correct `docs/compatibility.md`: long fields wrap on grapheme boundaries but a grapheme wider than the columns left for it is replaced by `?` rather than preserved, and the logo threshold is stated as the actual rule instead of an unexplained one.
 - Correct `docs/compatibility.md` on Host fallback: Linux falls back to the labeled hostname only when a model source is absent, while macOS never falls back and reports an error instead.
 - Record an independent re-measurement in `docs/performance.md`. Peak RSS reproduced to within 0.05 MiB, but wall times and the Fastfetch/pfetch-rs ranking did not reproduce on the loaded measurement machine. The earlier wall times are now marked as an upper bound, not a baseline.

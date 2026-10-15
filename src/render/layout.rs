@@ -24,8 +24,19 @@ pub fn sanitize(text: &str) -> String {
                     output.push(' ');
                     State::Text
                 }
+                // Control characters, plus every Bidi_Control character: the
+                // implicit marks (ALM, LRM, RLM), the embedding and override
+                // range, and the isolate range. They occupy no cells, so they
+                // would reorder a hostname or username without changing width.
                 ch if ch.is_control()
-                    || matches!(ch, '\u{200e}' | '\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}') =>
+                    || matches!(
+                        ch,
+                        '\u{061c}'
+                            | '\u{200e}'
+                            | '\u{200f}'
+                            | '\u{202a}'..='\u{202e}'
+                            | '\u{2066}'..='\u{2069}'
+                    ) =>
                 {
                     State::Text
                 }
@@ -127,6 +138,10 @@ mod tests {
             "aredb"
         );
         assert_eq!(sanitize("x\u{9b}2J\u{202e}y\n\tz\x00"), "xy  z");
+        // Every Bidi_Control character is removed, not just the overrides.
+        for mark in ['\u{061c}', '\u{200e}', '\u{200f}', '\u{2066}', '\u{2069}'] {
+            assert_eq!(sanitize(&format!("a{mark}b")), "ab", "{mark:?}");
+        }
         assert_eq!(sanitize("ok\x1bPmalicious\x1b\\end"), "okend");
     }
 }

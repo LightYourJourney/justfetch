@@ -126,7 +126,9 @@ A two-axis review ran against the whole working tree with two independent review
 
 The benchmark still has no Macchina measurement and no reproducible wall-time baseline, so the spec's "benchmark against Fastfetch, Macchina and pfetch-rs" remains only partly satisfied. Both the missing comparator and the wall-time instability are recorded in performance.md rather than papered over.
 
-## First CI run (2026-10-14)
+## First CI run (2026-10-15)
+
+Dated locally, as the rest of this record is: GitHub timestamps the run `2026-10-14T17:12Z`, which is 2026-10-15 01:12 in Asia/Shanghai, so this section still follows the one above it in time.
 
 Pushing `main` to `origin` triggered the workflow for the first time. Every job passed: `macos-latest / stable`, `ubuntu-latest / stable` (40s), `windows-latest / stable` (2m21s) and `MSRV / 1.95.0` (17s), run [`38604699769`](https://github.com/LightYourJourney/justfetch/actions/runs/38604699769). Each native job ran format, lint with warnings denied, tests, a release build and a real `--format json` invocation.
 
