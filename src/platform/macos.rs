@@ -12,6 +12,11 @@ unsafe extern "C" {
         task: libc::mach_port_t,
         name: libc::mach_port_t,
     ) -> libc::kern_return_t;
+    // Nor this one. libc does export vm_page_size, but it holds the page size
+    // this process was built for: under Rosetta that is the x86 4096, while the
+    // counters host_statistics64 returns are in the host's 16384-byte pages.
+    // Asking the host is the only value that matches the counters it gave us.
+    fn host_page_size(host: libc::host_t, out: *mut libc::vm_size_t) -> libc::kern_return_t;
 }
 
 pub fn parent_executable() -> io::Result<String> {
@@ -138,6 +143,10 @@ fn memory() -> Detection<MemoryInfo> {
             &mut count,
         )
     };
+    let mut page_size: libc::vm_size_t = 0;
+    // SAFETY: page_size is an aligned vm_size_t owned by this frame, and the
+    // port is still live at this point.
+    let sized = unsafe { host_page_size(port, &mut page_size) };
     // SAFETY: release the send right acquired by mach_host_self in our own task.
     let released = unsafe { mach_port_deallocate(libc::mach_task_self(), port) };
     if result != libc::KERN_SUCCESS {
@@ -156,13 +165,23 @@ fn memory() -> Detection<MemoryInfo> {
             format!("mach_port_deallocate returned {released}"),
         );
     }
-    // SAFETY: sysconf has no pointer arguments or side effects on process memory.
-    let page_size = u64::try_from(unsafe { libc::sysconf(libc::_SC_PAGESIZE) }).ok();
+    // A page size of zero would report every process as using no memory at all,
+    // which passes the total check below and reads as a real figure.
+    let host_page = u64::try_from(page_size)
+        .ok()
+        .filter(|size| *size > 0 && sized == libc::KERN_SUCCESS);
+    let Some(host_page) = host_page else {
+        return Detection::error(
+            source,
+            ErrorCode::ApiFailed,
+            format!("host_page_size returned {sized} with page size {page_size}"),
+        );
+    };
     let used = u64::from(stats.internal_page_count)
         .checked_sub(u64::from(stats.purgeable_count))
         .and_then(|n| n.checked_add(u64::from(stats.wire_count)))
         .and_then(|n| n.checked_add(u64::from(stats.compressor_page_count)))
-        .and_then(|n| page_size.and_then(|page| n.checked_mul(page)));
+        .and_then(|n| n.checked_mul(host_page));
     match used {
         Some(used_bytes)
             if total > 0 && used_bytes <= total && size == mem::size_of_val(&total) =>
