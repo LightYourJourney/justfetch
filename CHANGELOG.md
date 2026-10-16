@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0 — Unreleased
+## 0.1.0 — pre-release
 
 - Add Rust CLI with text/JSON, no-color and automatic/no-logo options.
 - Collect OS, Host, Kernel, Uptime, CPU, Memory and Shell through platform interfaces.
@@ -37,4 +37,12 @@
 - Correct the hypothesis recorded in `docs/performance.md` for the 2026-10-11 re-measurement: the 3x wall-time drift was attributed to a per-run harness cost, and measuring sandboxed against unsandboxed showed it was host load instead.
 - Report the result that collection and rendering are about 1.5% of the process's instructions — `--help` costs 27.4 M against 27.8 M for a full run — so the remaining cost is startup, linking and argument parsing.
 
-This version has not been published. Platform verification is recorded separately in docs/compatibility.md.
+### Release round
+
+- Publish v0.1.0 as a GitHub pre-release with archives for five platforms, built by a new [release workflow](.github/workflows/release.yml). The pre-release flag is deliberate: the three platforms CI executes are not the whole matrix, and removing one word is the change once the real-hardware verification in the roadmap is done.
+- Cross-compile the Intel macOS archive on an Apple Silicon runner rather than depend on the paid `-intel`/`-large` images, which are all that remain for x86_64 macOS now that macOS 13 is gone and 14 is deprecated. Verified locally to produce a working `x86_64` Mach-O binary.
+- Write [docs/release-notes/v0.1.0.md](docs/release-notes/v0.1.0.md), which separates the platforms that were executed from the two that were only built, and states plainly that the archives are unsigned.
+- Correct the README, which claimed no prebuilt release existed and that the project was unpublished.
+- crates.io is deliberately untouched. Nothing in this round reserves the name there.
+
+This version is published to GitHub as a pre-release, not to crates.io. Platform verification is recorded separately in docs/compatibility.md.

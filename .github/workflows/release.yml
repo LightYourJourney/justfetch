@@ -1,0 +1,99 @@
+name: Release
+# Builds the five platform archives and attaches them to a GitHub release.
+#
+# Two triggers on purpose: `workflow_dispatch` builds and uploads the archives
+# without touching releases, so the five builds can be exercised before a tag
+# exists. Only a tag push reaches the `release` job.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          # Cross-compiled: the Intel macOS runners are the paid -intel/-large
+          # images, and this is verified to produce a working x86_64 binary.
+          - os: macos-latest
+            target: x86_64-apple-darwin
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+          - os: windows-2025
+            target: x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install stable Rust
+        run: rustup toolchain install stable --profile minimal
+      - name: Add the build target
+        run: rustup target add --toolchain stable ${{ matrix.target }}
+      - name: Build
+        run: cargo +stable build --release --locked --target ${{ matrix.target }}
+      - name: Stage the archive contents
+        shell: bash
+        run: |
+          set -eu
+          name="justfetch-${GITHUB_REF_NAME}-${{ matrix.target }}"
+          echo "NAME=$name" >> "$GITHUB_ENV"
+          mkdir -p "stage/$name"
+          if [ -f "target/${{ matrix.target }}/release/justfetch.exe" ]; then
+            cp "target/${{ matrix.target }}/release/justfetch.exe" "stage/$name/justfetch.exe"
+          else
+            cp "target/${{ matrix.target }}/release/justfetch" "stage/$name/justfetch"
+          fi
+          cp LICENSE README.md "stage/$name/"
+      - name: Package (unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: tar -czf "$NAME.tar.gz" -C stage "$NAME"
+      - name: Package (windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path "stage/$env:NAME" -DestinationPath "$env:NAME.zip"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.target }}
+          path: |
+            *.tar.gz
+            *.zip
+
+  release:
+    name: Publish the release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Write checksums
+        run: |
+          cd dist
+          sha256sum ./* > SHA256SUMS
+          cat SHA256SUMS
+      # --prerelease is deliberate: the three CI-verified platforms are not the
+      # whole matrix. Removing this one word is the change once the real-hardware
+      # verification in docs/roadmap.md is done.
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "justfetch ${GITHUB_REF_NAME}" \
+            --notes-file "docs/release-notes/${GITHUB_REF_NAME}.md" \
+            --prerelease \
+            dist/*
