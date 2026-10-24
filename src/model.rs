@@ -63,6 +63,14 @@ impl<T> Detection<T> {
         }
     }
 
+    /// The platform does not expose this at all, which is different from a
+    /// value that happens to be unavailable right now.
+    pub fn unsupported(reason: impl Into<String>) -> Self {
+        Self::Unsupported {
+            reason: reason.into(),
+        }
+    }
+
     pub fn error(source: impl Into<String>, code: ErrorCode, message: impl ToString) -> Self {
         Self::Error {
             source: source.into(),

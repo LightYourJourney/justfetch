@@ -181,6 +181,21 @@ fn no_swap_reads_as_none_and_every_address_is_listed() {
 }
 
 #[test]
+fn an_unsupported_field_states_that_rather_than_a_number() {
+    let mut snapshot = fixture();
+    snapshot.swap = Detection::unsupported("This platform exposes no page-file figure");
+    let output = terminal::render(
+        &snapshot,
+        Options {
+            logo: false,
+            unicode: false,
+            ..options(80)
+        },
+    );
+    assert!(output.contains("Swap    Unsupported\n"), "{output}");
+}
+
+#[test]
 fn an_unnamed_interface_does_not_render_empty_parentheses() {
     let mut snapshot = fixture();
     snapshot.local_ip = Detection::available(

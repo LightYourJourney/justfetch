@@ -159,61 +159,18 @@ fn disk() -> Detection<DiskInfo> {
     }
 }
 
-/// Windows has a commit limit rather than a page-file usage figure. The
-/// derivation itself lives in `detect::windows` so it can be tested on hosts
-/// that cannot run this code; this wrapper only supplies the counters in bytes.
+/// Windows exposes a commit limit rather than a page-file usage figure, and the
+/// obvious derivation from it is unsound: committed memory can be *smaller* than
+/// resident memory, because file-backed mappings and driver memory are resident
+/// without being committed. Measured on a CI runner the difference went
+/// negative — 2.41 GiB committed against 2.62 GiB resident — so the subtraction
+/// has no meaning to report. No API this project permits exposes page-file usage
+/// directly (WMI would be an out-of-process query, PDH a separate subsystem), so
+/// the field says it is unsupported instead of inventing a number.
 fn swap() -> Detection<SwapInfo> {
-    use crate::detect::windows::{DerivedSwap, swap as derive_swap};
-    use windows_sys::Win32::System::ProcessStatus::{GetPerformanceInfo, PERFORMANCE_INFORMATION};
-    let source = "GetPerformanceInfo";
-    // SAFETY: PERFORMANCE_INFORMATION is integer-only with a valid all-zero state.
-    let mut info: PERFORMANCE_INFORMATION = unsafe { std::mem::zeroed() };
-    // SAFETY: info is aligned and writable, and cb carries its exact size.
-    if unsafe { GetPerformanceInfo(&mut info, std::mem::size_of_val(&info) as u32) } == 0 {
-        return Detection::error(source, ErrorCode::ApiFailed, io::Error::last_os_error());
-    }
-    let Some(page) = u64::try_from(info.PageSize).ok().filter(|value| *value > 0) else {
-        return Detection::error(
-            source,
-            ErrorCode::InvalidData,
-            "GetPerformanceInfo reported a zero page size",
-        );
-    };
-    let bytes = |pages: usize| {
-        u64::try_from(pages)
-            .ok()
-            .and_then(|pages| pages.checked_mul(page))
-    };
-    let (Some(limit), Some(physical), Some(committed), Some(available)) = (
-        bytes(info.CommitLimit),
-        bytes(info.PhysicalTotal),
-        bytes(info.CommitTotal),
-        bytes(info.PhysicalAvailable),
-    ) else {
-        return Detection::error(source, ErrorCode::InvalidData, "Commit counters overflow");
-    };
-    match derive_swap(limit, physical, committed, available) {
-        DerivedSwap::NoPageFile => Detection::estimated(
-            SwapInfo {
-                total_bytes: 0,
-                used_bytes: 0,
-            },
-            source,
-            "The commit limit does not exceed physical memory, so no page-file contribution is visible",
-        ),
-        DerivedSwap::Swap(value) => Detection::estimated(
-            value,
-            source,
-            "Windows reports a commit limit, not page-file usage; this is committed memory above what is resident",
-        ),
-        DerivedSwap::Inconsistent => Detection::error(
-            source,
-            ErrorCode::InvalidData,
-            format!(
-                "Inconsistent commit counters: limit {limit}, physical {physical}, committed {committed}, available {available}"
-            ),
-        ),
-    }
+    Detection::unsupported(
+        "Windows reports a commit limit, not page-file usage, and no permitted API exposes the latter",
+    )
 }
 
 fn local_ip() -> Detection<LocalIpInfo> {
