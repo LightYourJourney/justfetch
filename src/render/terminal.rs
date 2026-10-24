@@ -24,6 +24,18 @@ pub fn color_allowed(
     tty && !no_color && env_no_color.is_none_or(OsStr::is_empty) && term != Some("dumb")
 }
 
+const GIBIBYTE: f64 = 1_073_741_824.0;
+
+/// The `used / total GiB (n%)` shape that memory, swap and disk all share.
+fn capacity(used: u64, total: u64) -> String {
+    format!(
+        "{:.2} / {:.2} GiB ({:.0}%)",
+        used as f64 / GIBIBYTE,
+        total as f64 / GIBIBYTE,
+        used as f64 / total.max(1) as f64 * 100.0
+    )
+}
+
 pub fn format_uptime(seconds: u64) -> String {
     let days = seconds / 86_400;
     let hours = seconds % 86_400 / 3_600;
@@ -113,31 +125,19 @@ pub fn render_with_logo(snapshot: &SystemSnapshot, options: Options, logo: &logo
         format!("{} ({} logical)", cpu.name, cpu.logical_cores)
     });
     let memory = display(&snapshot.memory, |mem| {
-        format!(
-            "{:.2} / {:.2} GiB ({:.0}%)",
-            mem.used_bytes as f64 / 1_073_741_824.0,
-            mem.total_bytes as f64 / 1_073_741_824.0,
-            mem.used_bytes as f64 / mem.total_bytes.max(1) as f64 * 100.0
-        )
+        capacity(mem.used_bytes, mem.total_bytes)
     });
     let swap = display(&snapshot.swap, |swap| {
         if swap.total_bytes == 0 {
             "none".to_owned()
         } else {
-            format!(
-                "{:.2} / {:.2} GiB ({:.0}%)",
-                swap.used_bytes as f64 / 1_073_741_824.0,
-                swap.total_bytes as f64 / 1_073_741_824.0,
-                swap.used_bytes as f64 / swap.total_bytes.max(1) as f64 * 100.0
-            )
+            capacity(swap.used_bytes, swap.total_bytes)
         }
     });
     let disk = display(&snapshot.disk, |disk| {
         format!(
-            "{:.2} / {:.2} GiB ({:.0}%) on {}",
-            disk.used_bytes as f64 / 1_073_741_824.0,
-            disk.total_bytes as f64 / 1_073_741_824.0,
-            disk.used_bytes as f64 / disk.total_bytes.max(1) as f64 * 100.0,
+            "{} on {}",
+            capacity(disk.used_bytes, disk.total_bytes),
             disk.path
         )
     });
@@ -153,7 +153,10 @@ pub fn render_with_logo(snapshot: &SystemSnapshot, options: Options, logo: &logo
         local_ip
             .addresses
             .iter()
-            .map(|entry| format!("{} ({})", entry.address, entry.interface))
+            .map(|entry| match &entry.interface {
+                Some(interface) => format!("{} ({interface})", entry.address),
+                None => entry.address.to_string(),
+            })
             .collect::<Vec<_>>()
             .join(", ")
     });

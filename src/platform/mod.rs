@@ -92,8 +92,15 @@ pub fn uname_identity(
 /// `fsblkcnt_t` is 32-bit on macOS and 64-bit on Linux, so the same expression
 /// needs a widening conversion on one platform and an identity on the other.
 #[cfg(unix)]
-fn block_count<T: Into<u64>>(value: T) -> u64 {
+fn widen_blocks<T: Into<u64>>(value: T) -> u64 {
     value.into()
+}
+
+/// Loopback, link-local and unspecified addresses are assigned whether or not
+/// anything is reachable, so none of them says anything about the machine.
+/// Shared by the Unix and Windows adapters so both filter the same set.
+fn reportable(address: std::net::Ipv4Addr) -> bool {
+    !address.is_loopback() && !address.is_link_local() && !address.is_unspecified()
 }
 
 #[cfg(unix)]
@@ -102,7 +109,14 @@ pub fn disk() -> Detection<DiskInfo> {
     let path = std::env::var_os("HOME")
         .filter(|value| !value.is_empty())
         .unwrap_or_else(|| "/".into());
-    let reported = path.to_string_lossy().into_owned();
+    // A path that is not UTF-8 cannot be represented in JSON. The counters are
+    // still exact, so the field reports them with a replacement-character path
+    // and marks itself estimated rather than passing the label off as the real
+    // one.
+    let (reported, exact_path) = match path.to_str() {
+        Some(text) => (text.to_owned(), true),
+        None => (path.to_string_lossy().into_owned(), false),
+    };
     let Ok(path_c) = std::ffi::CString::new(path.as_os_str().as_bytes()) else {
         return Detection::error(
             "statvfs",
@@ -137,27 +151,30 @@ pub fn disk() -> Detection<DiskInfo> {
             "Filesystem reports a zero block size",
         );
     }
-    let total = block_count(stats.f_blocks).checked_mul(unit);
-    let free = block_count(stats.f_bfree).checked_mul(unit);
-    let available = block_count(stats.f_bavail).checked_mul(unit);
+    let total = widen_blocks(stats.f_blocks).checked_mul(unit);
+    let free = widen_blocks(stats.f_bfree).checked_mul(unit);
+    let available = widen_blocks(stats.f_bavail).checked_mul(unit);
     let used = total
         .zip(free)
         .and_then(|(total, free)| total.checked_sub(free));
-    match (total, used, available) {
-        (Some(total_bytes), Some(used_bytes), Some(available_bytes)) => Detection::available(
-            DiskInfo {
-                path: reported,
-                total_bytes,
-                used_bytes,
-                available_bytes,
-            },
-            "statvfs",
-        ),
-        _ => Detection::error(
+    let (Some(total_bytes), Some(used_bytes), Some(available_bytes)) = (total, used, available)
+    else {
+        return Detection::error(
             "statvfs",
             ErrorCode::InvalidData,
             "Inconsistent filesystem counters",
-        ),
+        );
+    };
+    let info = DiskInfo {
+        path: reported,
+        total_bytes,
+        used_bytes,
+        available_bytes,
+    };
+    if exact_path {
+        Detection::available(info, "statvfs")
+    } else {
+        Detection::estimated(info, "statvfs", "Home path is not UTF-8")
     }
 }
 
@@ -184,7 +201,10 @@ pub fn local_ip() -> Detection<LocalIpInfo> {
             let interface = unsafe { std::ffi::CStr::from_ptr(item.ifa_name) }
                 .to_string_lossy()
                 .into_owned();
-            addresses.push(InterfaceAddress { interface, address });
+            addresses.push(InterfaceAddress {
+                interface: (!interface.is_empty()).then_some(interface),
+                address,
+            });
         }
         cursor = item.ifa_next;
     }
@@ -198,7 +218,7 @@ pub fn local_ip() -> Detection<LocalIpInfo> {
 }
 
 #[cfg(unix)]
-fn ipv4_of(item: &libc::ifaddrs) -> Option<String> {
+fn ipv4_of(item: &libc::ifaddrs) -> Option<std::net::Ipv4Addr> {
     if item.ifa_addr.is_null()
         || item.ifa_flags & libc::IFF_UP as u32 == 0
         || item.ifa_flags & libc::IFF_LOOPBACK as u32 != 0
@@ -213,9 +233,8 @@ fn ipv4_of(item: &libc::ifaddrs) -> Option<String> {
     let raw = unsafe { (*item.ifa_addr.cast::<libc::sockaddr_in>()).sin_addr.s_addr };
     // s_addr holds the address in network byte order; from_be reads it back as
     // the integer Ipv4Addr expects, on either endianness.
-    let text = std::net::Ipv4Addr::from(u32::from_be(raw)).to_string();
-    // Link-local addresses are assigned whether or not anything is reachable.
-    (!text.starts_with("169.254.") && text != "0.0.0.0").then_some(text)
+    let address = std::net::Ipv4Addr::from(u32::from_be(raw));
+    reportable(address).then_some(address)
 }
 
 #[cfg(all(unix, test))]

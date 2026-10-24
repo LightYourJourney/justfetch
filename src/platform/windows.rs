@@ -1,4 +1,4 @@
-use super::PlatformData;
+use super::{PlatformData, reportable};
 use crate::model::*;
 use std::io;
 use sysinfo::System;
@@ -110,7 +110,13 @@ fn disk() -> Detection<DiskInfo> {
         .filter(|value| !value.is_empty())
         .or_else(|| std::env::var_os("SystemDrive"))
         .unwrap_or_else(|| "C:\\".into());
-    let reported = path.to_string_lossy().into_owned();
+    // A path that is not representable in UTF-8 cannot go into JSON verbatim;
+    // the counters are still exact, so the field reports them with a
+    // replacement-character path and marks itself estimated.
+    let (reported, exact_path) = match path.to_str() {
+        Some(text) => (text.to_owned(), true),
+        None => (path.to_string_lossy().into_owned(), false),
+    };
     let mut wide: Vec<u16> = path.as_os_str().encode_wide().collect();
     wide.push(0);
     let mut available = 0_u64;
@@ -126,21 +132,30 @@ fn disk() -> Detection<DiskInfo> {
             io::Error::last_os_error(),
         );
     }
-    match total.checked_sub(free) {
-        Some(used_bytes) if total > 0 && used_bytes <= total => Detection::available(
-            DiskInfo {
-                path: reported,
-                total_bytes: total,
-                used_bytes,
-                available_bytes: available,
-            },
-            "GetDiskFreeSpaceExW",
-        ),
-        _ => Detection::error(
+    let Some(used_bytes) = total
+        .checked_sub(free)
+        .filter(|used| total > 0 && *used <= total)
+    else {
+        return Detection::error(
             "GetDiskFreeSpaceExW",
             ErrorCode::InvalidData,
             "Inconsistent filesystem counters",
-        ),
+        );
+    };
+    let info = DiskInfo {
+        path: reported,
+        total_bytes: total,
+        used_bytes,
+        available_bytes: available,
+    };
+    if exact_path {
+        Detection::available(info, "GetDiskFreeSpaceExW")
+    } else {
+        Detection::estimated(
+            info,
+            "GetDiskFreeSpaceExW",
+            "Home path is not representable as UTF-8",
+        )
     }
 }
 
@@ -206,8 +221,9 @@ fn local_ip() -> Detection<LocalIpInfo> {
     // The call fills this buffer with IP_ADAPTER_ADDRESSES_LH records, so the
     // allocation must be at least as aligned as that struct; a Vec<u8> promises
     // only byte alignment, so the buffer is allocated in u64 units instead.
-    let mut buffer = vec![0_u64; 16 * 1024 / 8];
-    let mut size = u32::try_from(buffer.len() * std::mem::size_of::<u64>()).unwrap_or(0);
+    const INITIAL_BYTES: u32 = 16 * 1024;
+    let mut buffer = vec![0_u64; (INITIAL_BYTES / 8) as usize];
+    let mut size = INITIAL_BYTES;
     // SAFETY: the buffer is writable for `size` bytes and correctly aligned.
     let mut result = unsafe {
         GetAdaptersAddresses(
@@ -219,9 +235,11 @@ fn local_ip() -> Detection<LocalIpInfo> {
         )
     };
     if result == ERROR_BUFFER_OVERFLOW {
+        // `size` now holds the byte count the failed call requires. The buffer
+        // is grown to whole u64 units, so it is at least that large; passing the
+        // requirement back unchanged keeps the contract the call expects.
         buffer.resize((size as usize).div_ceil(8), 0);
-        size = u32::try_from(buffer.len() * std::mem::size_of::<u64>()).unwrap_or(0);
-        // SAFETY: the buffer now matches the size the failed call reported.
+        // SAFETY: the buffer now holds at least `size` bytes and is aligned.
         result = unsafe {
             GetAdaptersAddresses(
                 u32::from(AF_UNSPEC),
@@ -246,16 +264,17 @@ fn local_ip() -> Detection<LocalIpInfo> {
         let entry = unsafe { &*adapter };
         if entry.OperStatus == IfOperStatusUp {
             let interface = if entry.FriendlyName.is_null() {
-                String::new()
+                None
             } else {
                 // SAFETY: FriendlyName is a NUL-terminated UTF-16 string.
-                unsafe { wide_to_string(entry.FriendlyName) }
+                let name = unsafe { wide_to_string(entry.FriendlyName) };
+                (!name.is_empty()).then_some(name)
             };
             let mut unicast = entry.FirstUnicastAddress;
             while !unicast.is_null() {
                 // SAFETY: the chain above is owned by the adapter list.
                 let node = unsafe { &*unicast };
-                if let Some(address) = ipv4_text(&node.Address) {
+                if let Some(address) = ipv4_of(&node.Address) {
                     addresses.push(InterfaceAddress {
                         interface: interface.clone(),
                         address,
@@ -287,8 +306,10 @@ unsafe fn wide_to_string(pointer: *const u16) -> String {
     String::from_utf16_lossy(unsafe { std::slice::from_raw_parts(pointer, length) })
 }
 
-fn ipv4_text(address: &windows_sys::Win32::Networking::WinSock::SOCKET_ADDRESS) -> Option<String> {
-    use windows_sys::Win32::Networking::WinSock::{AF_INET, IN_ADDR, SOCKADDR_IN, inet_ntop};
+fn ipv4_of(
+    address: &windows_sys::Win32::Networking::WinSock::SOCKET_ADDRESS,
+) -> Option<std::net::Ipv4Addr> {
+    use windows_sys::Win32::Networking::WinSock::{AF_INET, SOCKADDR_IN};
     if address.lpSockaddr.is_null() {
         return None;
     }
@@ -298,24 +319,11 @@ fn ipv4_text(address: &windows_sys::Win32::Networking::WinSock::SOCKET_ADDRESS) 
     }
     // SAFETY: the family check above established a sockaddr_in.
     let v4 = unsafe { &*address.lpSockaddr.cast::<SOCKADDR_IN>() };
-    let mut buffer = [0_u8; 16];
-    // SAFETY: sin_addr holds the four address bytes and the buffer holds them.
-    let written = unsafe {
-        inet_ntop(
-            i32::from(AF_INET),
-            (&v4.sin_addr as *const IN_ADDR).cast(),
-            buffer.as_mut_ptr(),
-            buffer.len(),
-        )
-    };
-    if written.is_null() {
-        return None;
-    }
-    // SAFETY: inet_ntop wrote a NUL-terminated string into the buffer.
-    let text = unsafe { std::ffi::CStr::from_ptr(buffer.as_ptr().cast()) }
-        .to_string_lossy()
-        .into_owned();
-    (!text.starts_with("169.254.") && text != "0.0.0.0").then_some(text)
+    // SAFETY: S_addr is the active member of the address union on AF_INET and
+    // holds the address in network byte order.
+    let raw = unsafe { v4.sin_addr.S_un.S_addr };
+    let parsed = std::net::Ipv4Addr::from(u32::from_be(raw));
+    reportable(parsed).then_some(parsed)
 }
 
 pub fn collect() -> PlatformData {

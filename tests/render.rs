@@ -90,8 +90,8 @@ fn fixture() -> SystemSnapshot {
         local_ip: Detection::available(
             LocalIpInfo {
                 addresses: vec![InterfaceAddress {
-                    interface: "eth0".into(),
-                    address: "192.0.2.10".into(),
+                    interface: Some("eth0".into()),
+                    address: std::net::Ipv4Addr::new(192, 0, 2, 10),
                 }],
             },
             "fixture",
@@ -154,12 +154,12 @@ fn no_swap_reads_as_none_and_every_address_is_listed() {
         LocalIpInfo {
             addresses: vec![
                 InterfaceAddress {
-                    interface: "eth0".into(),
-                    address: "192.0.2.10".into(),
+                    interface: Some("eth0".into()),
+                    address: std::net::Ipv4Addr::new(192, 0, 2, 10),
                 },
                 InterfaceAddress {
-                    interface: "docker0".into(),
-                    address: "172.17.0.1".into(),
+                    interface: Some("docker0".into()),
+                    address: std::net::Ipv4Addr::new(172, 17, 0, 1),
                 },
             ],
         },
@@ -178,6 +178,30 @@ fn no_swap_reads_as_none_and_every_address_is_listed() {
         output.contains("IP      192.0.2.10 (eth0), 172.17.0.1 (docker0)"),
         "{output}"
     );
+}
+
+#[test]
+fn an_unnamed_interface_does_not_render_empty_parentheses() {
+    let mut snapshot = fixture();
+    snapshot.local_ip = Detection::available(
+        LocalIpInfo {
+            addresses: vec![InterfaceAddress {
+                interface: None,
+                address: std::net::Ipv4Addr::new(203, 0, 113, 7),
+            }],
+        },
+        "fixture",
+    );
+    let output = terminal::render(
+        &snapshot,
+        Options {
+            logo: false,
+            unicode: false,
+            ..options(80)
+        },
+    );
+    assert!(output.contains("IP      203.0.113.7\n"), "{output}");
+    assert!(!output.contains("()"), "{output}");
 }
 
 #[test]

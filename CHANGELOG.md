@@ -8,8 +8,9 @@
 - Disk reports the filesystem containing the home directory, via `statvfs` on Unix and `GetDiskFreeSpaceExW` on Windows. `used + available` is deliberately not `total`, because reserved blocks belong to neither. On APFS the kernel reports container-wide counters, so the figure matches Fastfetch's and can differ from `df`'s per-volume usage.
 - Local IP lists every routable IPv4 address rather than picking one, because the first interface the kernel reports is often a container bridge. Windows walks `GetAdaptersAddresses` and filters on `OperStatus`.
 - Swap is exact on Linux and macOS. Windows has no page-file usage figure, so it is derived from `GetPerformanceInfo`'s commit charge and marked **estimated** with a note, rather than asserted as measured.
-- Terminal is the emulator, not the shell: `TERM_PROGRAM` (with its version when set), then `WT_SESSION`, then `TERM`. It reads environment variables only, so redirected output reports the same terminal.
-- The disk page-size handling on macOS is now shared with the memory detector's reasoning: `f_blocks` is 32-bit on macOS and 64-bit on Linux, so the widening conversion is explicit on both.
+- Terminal prefers the emulator name over the shell: `TERM_PROGRAM` (with its version when set), then `WT_SESSION`, then `TERM`. The last of those is a capability string rather than an application name, so the plain `TERM` fallback is reported as-is rather than dressed up as an emulator. It reads environment variables only, so redirected output reports the same terminal.
+- `f_blocks` is a 32-bit counter on macOS and a 64-bit one on Linux, so the widening conversion is explicit on both instead of relying on a cast that happens to compile.
+- Local IP filters loopback, link-local and unspecified addresses through one shared predicate, so the Unix and Windows adapters exclude the same set. An address on an adapter the platform cannot name is reported without an empty `()`, and the interface field is omitted from JSON rather than sent as `""`.
 
 ## 0.1.0 — pre-release
 

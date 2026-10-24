@@ -178,16 +178,24 @@ v0.1.0 was published as a GitHub pre-release from a new release workflow, with a
 
 ## Field round (2026-10-23)
 
-Four fields were added — Swap, Disk, Terminal and Local IP — chosen by comparing the module lists of the installed Fastfetch 2.69.0 (76 modules), Macchina 6.4.0 (20 readouts) and pfetch-rs 3.0.2 against justfetch's seven. They are the ones every major tool shows that can be collected on all three platforms without a subprocess, administrator access, a directory scan or a private-file read; GPU, resolution, battery and packages each fail at least one of those and were left for a later round.
+Four fields were added — Swap, Disk, Terminal and Local IP — chosen by comparing the module lists of the installed Fastfetch 2.69.0 (76 modules), Macchina 6.4.0 (20 readouts) and pfetch-rs 3.0.2 against justfetch's seven. They are the ones every major tool shows that can be collected on all three platforms without a subprocess, administrator access, a directory scan or a private-file read. The rest were left for a later round, and the specific reason matters more than the label:
+
+- **GPU** needs a driver-level interface per platform, and on macOS the usual shortcut (`system_profiler`) is a subprocess this project will not run.
+- **Resolution** needs CoreGraphics on macOS, DRM on Linux and `EnumDisplaySettings` on Windows — three unrelated driver paths, not one implementation.
+- **Battery** needs IOKit on macOS, `/sys/class/power_supply` on Linux and `GetSystemPowerStatus` on Windows; only the latter two are cheap, and a desktop reports nothing at all.
+- **Packages** needs each distributor's package database — per-distributor files, or on macOS a walk of the Homebrew Cellar, which is the directory scan this project forbids.
+- **Desktop environment and window manager** are environment strings on Linux, but macOS and Windows have no equivalent concept to report, so two thirds of the matrix would show a constant or an empty row.
 
 **Measured on macOS 26.6.2 / Apple M3:**
 
 - Swap matches `sysctl vm.swapusage` exactly — 13312 MiB total and 12396 MiB used from both sources.
-- Disk matches Fastfetch's own Disk module to 0.05 GiB and to the same rounded percentage (301.17 / 460.43 GiB, 65%). It does **not** match `df`, and that was investigated rather than smoothed over: `df` reports per-volume usage, while `statvfs` on APFS reports the whole container, so `used + available = total` here and not there. Fastfetch uses the same call and agrees.
+- Disk matches Fastfetch's own Disk module exactly at one point in the round and to 0.05 GiB at another; both were the same call on the same filesystem. It does **not** match `df`'s `Used` for the same path, and that was investigated rather than smoothed over. `statvfs` returned `f_bfree == f_bavail`, so `used` is `total - free` and `used + available` happens to equal `total` on this volume. APFS reports container-wide counters, so that figure covers every volume in the container while `df` prints each volume separately: at the second measurement `statvfs` gave 317.0 GiB used and 143.4 GiB available, and the five volumes `df` listed for the same container summed to 315.7 GiB used. The 1.3 GiB difference is attributed to no volume by `df`, so it is recorded as an unexplained difference rather than labelled container overhead on a guess.
 - Local IP matches `ifconfig en0`.
 - Uptime dropped from 15 days to 5h50m between rounds; `sysctl kern.boottime` confirmed the machine had rebooted, so this is not a regression.
 
-**Checks:** `cargo fmt --check`, `cargo clippy --locked --all-targets -- -D warnings` and 38 tests pass. The count rose from 35 with two swap-parser tests (units, zero total, and the rejection cases) and one renderer test covering zero swap and multiple addresses.
+**Checks:** `cargo fmt --check`, `cargo clippy --locked --all-targets -- -D warnings` and 39 tests pass. The count rose from 35 with two swap-parser tests (units, zero total, and the rejection cases), one renderer test covering zero swap and multiple addresses, and one covering an address whose adapter cannot be named.
+
+**Fixed after review.** A two-axis review found one defect that both axes independently reported: the Windows local-IP path filtered on `OperStatus` alone, so the loopback pseudo-adapter would have been listed as routable. Loopback, link-local and unspecified addresses are now excluded by one shared predicate used by both adapters, and the Windows path reads `sin_addr` directly instead of formatting through `inet_ntop`. An adapter the platform cannot name now omits the interface field from JSON rather than sending `""`, which rendered as empty parentheses. A non-UTF-8 home path marks the disk field estimated instead of passing replacement characters off as the path. Three duplicated shapes were also collapsed: the capacity format shared by memory, swap and disk; the `/proc/meminfo` line parser shared by memory and swap; and the address filter shared by the two adapters.
 
 **Cross-target:** the Windows and Linux paths were type-checked from macOS with `cargo check --target x86_64-pc-windows-gnu` and `--target x86_64-unknown-linux-gnu`, both clean. That establishes compilation and nothing else — same caveat the project applies everywhere else. The Windows narrowing from `usize` in `GetPerformanceInfo` and the `PSTR` type of `inet_ntop` were both caught this way before reaching CI.
 

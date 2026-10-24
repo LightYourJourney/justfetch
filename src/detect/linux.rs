@@ -69,6 +69,21 @@ pub fn os_release(text: &str) -> Result<OsInfo, String> {
     })
 }
 
+/// One `Value kB` field from /proc/meminfo, converted to bytes. The kernel
+/// labels these kB but the unit is 1024 bytes.
+fn meminfo_bytes(value: &str) -> Result<u64, String> {
+    let mut parts = value.split_whitespace();
+    let number: u64 = parts
+        .next()
+        .ok_or("Missing proc value")?
+        .parse()
+        .map_err(|_| "Invalid proc value")?;
+    if parts.next() != Some("kB") || parts.next().is_some() {
+        return Err("Expected a proc value in kB (KiB)".into());
+    }
+    number.checked_mul(1024).ok_or("Proc value overflow".into())
+}
+
 pub fn memory(text: &str, scope: Scope) -> Result<(MemoryInfo, bool), String> {
     let mut fields = HashMap::new();
     for line in text.lines() {
@@ -87,17 +102,7 @@ pub fn memory(text: &str, scope: Scope) -> Result<(MemoryInfo, bool), String> {
         ) {
             continue;
         }
-        let mut parts = value.split_whitespace();
-        let number: u64 = parts
-            .next()
-            .ok_or("Missing memory value")?
-            .parse()
-            .map_err(|_| "Invalid memory value")?;
-        if parts.next() != Some("kB") || parts.next().is_some() {
-            return Err("Expected proc memory in kB (KiB)".into());
-        }
-        let bytes = number.checked_mul(1024).ok_or("Memory value overflow")?;
-        fields.insert(key, bytes);
+        fields.insert(key, meminfo_bytes(value)?);
     }
     let total = *fields
         .get("MemTotal")
@@ -155,16 +160,7 @@ pub fn swap(text: &str) -> Result<SwapInfo, String> {
             "SwapFree" => &mut free,
             _ => continue,
         };
-        let mut parts = value.split_whitespace();
-        let number: u64 = parts
-            .next()
-            .ok_or("Missing swap value")?
-            .parse()
-            .map_err(|_| "Invalid swap value")?;
-        if parts.next() != Some("kB") || parts.next().is_some() {
-            return Err("Expected proc swap in kB (KiB)".into());
-        }
-        *slot = Some(number.checked_mul(1024).ok_or("Swap value overflow")?);
+        *slot = Some(meminfo_bytes(value)?);
     }
     let total_bytes = total.ok_or("Missing SwapTotal")?;
     let free_bytes = free.ok_or("Missing SwapFree")?;

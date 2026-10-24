@@ -242,8 +242,11 @@ pub struct LocalIpInfo {
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct InterfaceAddress {
-    pub interface: String,
-    pub address: String,
+    /// Absent when the platform reports an address on an adapter it cannot
+    /// name. An empty string would render as `()`, which reads like a name.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub interface: Option<String>,
+    pub address: std::net::Ipv4Addr,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
