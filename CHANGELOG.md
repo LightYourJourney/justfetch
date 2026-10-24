@@ -11,6 +11,7 @@
 - Terminal prefers the emulator name over the shell: `TERM_PROGRAM` (with its version when set), then `WT_SESSION`, then `TERM`. The last of those is a capability string rather than an application name, so the plain `TERM` fallback is reported as-is rather than dressed up as an emulator. It reads environment variables only, so redirected output reports the same terminal.
 - `f_blocks` is a 32-bit counter on macOS and a 64-bit one on Linux, so the widening conversion is explicit on both instead of relying on a cast that happens to compile.
 - Local IP filters loopback, link-local and unspecified addresses through one shared predicate, so the Unix and Windows adapters exclude the same set. An address on an adapter the platform cannot name is reported without an empty `()`, and the interface field is omitted from JSON rather than sent as `""`.
+- Windows swap reported an error on the first machine that ran it, because its commit limit does not exceed physical memory — the shape of a system with no page file, which the code had treated as a failure. It now reports zero with a note, and the derivation is a pure function in `src/detect/windows.rs` with tests that run on any host.
 
 ## 0.1.0 — pre-release
 

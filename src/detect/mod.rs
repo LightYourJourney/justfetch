@@ -1,6 +1,7 @@
 //! Collection orchestrator; detection never writes to stdout or stderr.
 pub mod linux;
 pub mod shell;
+pub mod windows;
 
 use crate::{model::*, platform};
 use sysinfo::{CpuRefreshKind, System};
