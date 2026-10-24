@@ -1,4 +1,4 @@
-use super::{PlatformData, uname, uname_identity};
+use super::{PlatformData, disk, local_ip, uname, uname_identity};
 use crate::model::*;
 use std::{
     ffi::CStr,
@@ -204,6 +204,47 @@ fn memory() -> Detection<MemoryInfo> {
     }
 }
 
+/// `xsw_usage` as declared in <sys/sysctl.h>. The trailing `encrypted` field is
+/// `boolean_t`, which is a 32-bit integer on macOS, not a C99 bool.
+#[repr(C)]
+#[derive(Default)]
+struct XswUsage {
+    total: u64,
+    avail: u64,
+    used: u64,
+    page_size: u32,
+    encrypted: u32,
+}
+
+fn swap() -> Detection<SwapInfo> {
+    let source = "sysctl vm.swapusage";
+    let mut usage = XswUsage::default();
+    let mut size = std::mem::size_of_val(&usage);
+    // SAFETY: sysctlbyname writes xsw_usage into the aligned writable buffer.
+    let result = unsafe {
+        libc::sysctlbyname(
+            c"vm.swapusage".as_ptr(),
+            (&mut usage as *mut XswUsage).cast(),
+            &mut size,
+            ptr::null_mut(),
+            0,
+        )
+    };
+    if result != 0 {
+        return Detection::error(source, ErrorCode::ApiFailed, io::Error::last_os_error());
+    }
+    if size < std::mem::size_of::<u64>() * 3 || usage.used > usage.total {
+        return Detection::error(source, ErrorCode::InvalidData, "Inconsistent swap counters");
+    }
+    Detection::available(
+        SwapInfo {
+            total_bytes: usage.total,
+            used_bytes: usage.used,
+        },
+        source,
+    )
+}
+
 pub fn collect() -> PlatformData {
     let data = uname();
     let (hostname, kernel) = uname_identity(&data);
@@ -225,5 +266,8 @@ pub fn collect() -> PlatformData {
         kernel,
         uptime: uptime(),
         memory: memory(),
+        swap: swap(),
+        disk: disk(),
+        local_ip: local_ip(),
     }
 }

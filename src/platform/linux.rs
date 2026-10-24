@@ -1,4 +1,4 @@
-use super::{PlatformData, c_chars, uname, uname_identity};
+use super::{PlatformData, c_chars, disk, local_ip, uname, uname_identity};
 use crate::{detect::linux as parse, model::*};
 use std::{
     fs::File,
@@ -136,7 +136,10 @@ pub fn collect() -> PlatformData {
         seconds,
         scope: scope.clone(),
     });
-    let memory = match parsed(read("/proc/meminfo"), |text| parse::memory(text, scope)) {
+    // One read serves both fields; the parser only looks at the keys it needs.
+    let meminfo = read("/proc/meminfo");
+    let swap = parsed(meminfo.clone(), parse::swap);
+    let memory = match parsed(meminfo, |text| parse::memory(text, scope)) {
         Detection::Available {
             value: (value, true),
             source,
@@ -158,5 +161,8 @@ pub fn collect() -> PlatformData {
         kernel,
         uptime,
         memory,
+        swap,
+        disk: disk(),
+        local_ip: local_ip(),
     }
 }

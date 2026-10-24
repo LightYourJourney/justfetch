@@ -103,6 +103,221 @@ fn memory() -> Detection<MemoryInfo> {
     }
 }
 
+fn disk() -> Detection<DiskInfo> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Storage::FileSystem::GetDiskFreeSpaceExW;
+    let path = std::env::var_os("USERPROFILE")
+        .filter(|value| !value.is_empty())
+        .or_else(|| std::env::var_os("SystemDrive"))
+        .unwrap_or_else(|| "C:\\".into());
+    let reported = path.to_string_lossy().into_owned();
+    let mut wide: Vec<u16> = path.as_os_str().encode_wide().collect();
+    wide.push(0);
+    let mut available = 0_u64;
+    let mut total = 0_u64;
+    let mut free = 0_u64;
+    // SAFETY: the path is NUL-terminated and each output is a writable u64.
+    let result =
+        unsafe { GetDiskFreeSpaceExW(wide.as_ptr(), &mut available, &mut total, &mut free) };
+    if result == 0 {
+        return Detection::error(
+            "GetDiskFreeSpaceExW",
+            ErrorCode::ApiFailed,
+            io::Error::last_os_error(),
+        );
+    }
+    match total.checked_sub(free) {
+        Some(used_bytes) if total > 0 && used_bytes <= total => Detection::available(
+            DiskInfo {
+                path: reported,
+                total_bytes: total,
+                used_bytes,
+                available_bytes: available,
+            },
+            "GetDiskFreeSpaceExW",
+        ),
+        _ => Detection::error(
+            "GetDiskFreeSpaceExW",
+            ErrorCode::InvalidData,
+            "Inconsistent filesystem counters",
+        ),
+    }
+}
+
+/// Windows has a commit limit rather than a page file usage figure, so this is
+/// derived and reported as estimated: commit charge above what is resident.
+fn swap() -> Detection<SwapInfo> {
+    use windows_sys::Win32::System::ProcessStatus::{GetPerformanceInfo, PERFORMANCE_INFORMATION};
+    let source = "GetPerformanceInfo";
+    // SAFETY: PERFORMANCE_INFORMATION is integer-only with a valid all-zero state.
+    let mut info: PERFORMANCE_INFORMATION = unsafe { std::mem::zeroed() };
+    // SAFETY: info is aligned and writable, and cb carries its exact size.
+    if unsafe { GetPerformanceInfo(&mut info, std::mem::size_of_val(&info) as u32) } == 0 {
+        return Detection::error(source, ErrorCode::ApiFailed, io::Error::last_os_error());
+    }
+    let page = u64::try_from(info.PageSize).ok().filter(|value| *value > 0);
+    let bytes = |pages: usize| {
+        page.and_then(|page| {
+            u64::try_from(pages)
+                .ok()
+                .and_then(|pages| pages.checked_mul(page))
+        })
+    };
+    let limit = bytes(info.CommitLimit);
+    let physical = bytes(info.PhysicalTotal);
+    let committed = bytes(info.CommitTotal);
+    let available = bytes(info.PhysicalAvailable);
+    let total = limit
+        .zip(physical)
+        .and_then(|(limit, physical)| limit.checked_sub(physical));
+    let resident = physical
+        .zip(available)
+        .and_then(|(physical, available)| physical.checked_sub(available));
+    let used = committed
+        .zip(resident)
+        .and_then(|(committed, resident)| committed.checked_sub(resident));
+    match (total, used) {
+        (Some(total_bytes), Some(used_bytes)) if used_bytes <= total_bytes => Detection::estimated(
+            SwapInfo {
+                total_bytes,
+                used_bytes,
+            },
+            source,
+            "Windows reports a commit limit, not page-file usage; this is committed memory above what is resident",
+        ),
+        _ => Detection::error(
+            source,
+            ErrorCode::InvalidData,
+            "Inconsistent commit counters",
+        ),
+    }
+}
+
+fn local_ip() -> Detection<LocalIpInfo> {
+    use windows_sys::Win32::NetworkManagement::IpHelper::{
+        GAA_FLAG_SKIP_ANYCAST, GAA_FLAG_SKIP_DNS_SERVER, GAA_FLAG_SKIP_MULTICAST,
+        GetAdaptersAddresses, IP_ADAPTER_ADDRESSES_LH,
+    };
+    use windows_sys::Win32::NetworkManagement::Ndis::IfOperStatusUp;
+    use windows_sys::Win32::Networking::WinSock::AF_UNSPEC;
+
+    const ERROR_BUFFER_OVERFLOW: u32 = 111;
+    let flags = GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST | GAA_FLAG_SKIP_DNS_SERVER;
+    // The call fills this buffer with IP_ADAPTER_ADDRESSES_LH records, so the
+    // allocation must be at least as aligned as that struct; a Vec<u8> promises
+    // only byte alignment, so the buffer is allocated in u64 units instead.
+    let mut buffer = vec![0_u64; 16 * 1024 / 8];
+    let mut size = u32::try_from(buffer.len() * std::mem::size_of::<u64>()).unwrap_or(0);
+    // SAFETY: the buffer is writable for `size` bytes and correctly aligned.
+    let mut result = unsafe {
+        GetAdaptersAddresses(
+            u32::from(AF_UNSPEC),
+            flags,
+            std::ptr::null(),
+            buffer.as_mut_ptr().cast(),
+            &mut size,
+        )
+    };
+    if result == ERROR_BUFFER_OVERFLOW {
+        buffer.resize((size as usize).div_ceil(8), 0);
+        size = u32::try_from(buffer.len() * std::mem::size_of::<u64>()).unwrap_or(0);
+        // SAFETY: the buffer now matches the size the failed call reported.
+        result = unsafe {
+            GetAdaptersAddresses(
+                u32::from(AF_UNSPEC),
+                flags,
+                std::ptr::null(),
+                buffer.as_mut_ptr().cast(),
+                &mut size,
+            )
+        };
+    }
+    if result != 0 {
+        return Detection::error(
+            "GetAdaptersAddresses",
+            ErrorCode::ApiFailed,
+            format!("Win32 error {result}"),
+        );
+    }
+    let mut addresses = Vec::new();
+    let mut adapter = buffer.as_ptr().cast::<IP_ADAPTER_ADDRESSES_LH>();
+    while !adapter.is_null() {
+        // SAFETY: the successful call above returned a chain of valid adapters.
+        let entry = unsafe { &*adapter };
+        if entry.OperStatus == IfOperStatusUp {
+            let interface = if entry.FriendlyName.is_null() {
+                String::new()
+            } else {
+                // SAFETY: FriendlyName is a NUL-terminated UTF-16 string.
+                unsafe { wide_to_string(entry.FriendlyName) }
+            };
+            let mut unicast = entry.FirstUnicastAddress;
+            while !unicast.is_null() {
+                // SAFETY: the chain above is owned by the adapter list.
+                let node = unsafe { &*unicast };
+                if let Some(address) = ipv4_text(&node.Address) {
+                    addresses.push(InterfaceAddress {
+                        interface: interface.clone(),
+                        address,
+                    });
+                }
+                unicast = node.Next;
+            }
+        }
+        adapter = entry.Next;
+    }
+    if addresses.is_empty() {
+        Detection::unavailable("No routable IPv4 interface")
+    } else {
+        Detection::available(LocalIpInfo { addresses }, "GetAdaptersAddresses")
+    }
+}
+
+/// # Safety
+/// `pointer` must point at a NUL-terminated UTF-16 string, or the scan stops at
+/// the first NUL within 1024 code units.
+unsafe fn wide_to_string(pointer: *const u16) -> String {
+    let mut length = 0;
+    // SAFETY: the caller guarantees the string starts at `pointer`; the bound
+    // stops a malformed or unterminated value from scanning without limit.
+    while length < 1024 && unsafe { *pointer.add(length) } != 0 {
+        length += 1;
+    }
+    // SAFETY: the loop above established `length` readable code units.
+    String::from_utf16_lossy(unsafe { std::slice::from_raw_parts(pointer, length) })
+}
+
+fn ipv4_text(address: &windows_sys::Win32::Networking::WinSock::SOCKET_ADDRESS) -> Option<String> {
+    use windows_sys::Win32::Networking::WinSock::{AF_INET, IN_ADDR, SOCKADDR_IN, inet_ntop};
+    if address.lpSockaddr.is_null() {
+        return None;
+    }
+    // SAFETY: lpSockaddr points at a sockaddr whose family selects its layout.
+    if unsafe { (*address.lpSockaddr).sa_family } != AF_INET {
+        return None;
+    }
+    // SAFETY: the family check above established a sockaddr_in.
+    let v4 = unsafe { &*address.lpSockaddr.cast::<SOCKADDR_IN>() };
+    let mut buffer = [0_u8; 16];
+    // SAFETY: sin_addr holds the four address bytes and the buffer holds them.
+    let written = unsafe {
+        inet_ntop(
+            i32::from(AF_INET),
+            (&v4.sin_addr as *const IN_ADDR).cast(),
+            buffer.as_mut_ptr(),
+            buffer.len(),
+        )
+    };
+    if written.is_null() {
+        return None;
+    }
+    // SAFETY: inet_ntop wrote a NUL-terminated string into the buffer.
+    let text = unsafe { std::ffi::CStr::from_ptr(buffer.as_ptr().cast()) }
+        .to_string_lossy()
+        .into_owned();
+    (!text.starts_with("169.254.") && text != "0.0.0.0").then_some(text)
+}
+
 pub fn collect() -> PlatformData {
     let hostname = match System::host_name().filter(|s| !s.is_empty()) {
         Some(name) => Detection::available(name, "sysinfo GetComputerNameExW"),
@@ -147,5 +362,8 @@ pub fn collect() -> PlatformData {
         kernel,
         uptime,
         memory: memory(),
+        swap: swap(),
+        disk: disk(),
+        local_ip: local_ip(),
     }
 }

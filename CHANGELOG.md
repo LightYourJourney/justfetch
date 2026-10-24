@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### More fields
+
+- Add **Swap**, **Disk**, **Terminal** and **Local IP**, taking the field set from seven to eleven. These are the four fields every major fetch tool shows that could be collected on all three platforms without a subprocess, administrator access, a directory scan or a private-file read. Each keeps the existing provenance contract: a source string, a confidence level and a stated reason when unavailable.
+- Disk reports the filesystem containing the home directory, via `statvfs` on Unix and `GetDiskFreeSpaceExW` on Windows. `used + available` is deliberately not `total`, because reserved blocks belong to neither. On APFS the kernel reports container-wide counters, so the figure matches Fastfetch's and can differ from `df`'s per-volume usage.
+- Local IP lists every routable IPv4 address rather than picking one, because the first interface the kernel reports is often a container bridge. Windows walks `GetAdaptersAddresses` and filters on `OperStatus`.
+- Swap is exact on Linux and macOS. Windows has no page-file usage figure, so it is derived from `GetPerformanceInfo`'s commit charge and marked **estimated** with a note, rather than asserted as measured.
+- Terminal is the emulator, not the shell: `TERM_PROGRAM` (with its version when set), then `WT_SESSION`, then `TERM`. It reads environment variables only, so redirected output reports the same terminal.
+- The disk page-size handling on macOS is now shared with the memory detector's reasoning: `f_blocks` is 32-bit on macOS and 64-bit on Linux, so the widening conversion is explicit on both.
+
 ## 0.1.0 — pre-release
 
 - Add Rust CLI with text/JSON, no-color and automatic/no-logo options.

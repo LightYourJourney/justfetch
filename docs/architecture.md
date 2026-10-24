@@ -1,6 +1,6 @@
 # Architecture — v0.1
 
-justfetch is a single Rust crate with a small library for deterministic tests and a thin CLI binary. Scope: seven system fields, terminal and JSON output, automatic original ASCII logos, and no runtime network/configuration/subprocesses.
+justfetch is a single Rust crate with a small library for deterministic tests and a thin CLI binary. Scope: eleven system fields, terminal and JSON output, automatic original ASCII logos, and no runtime network/configuration/subprocesses.
 
 ## Data flow
 

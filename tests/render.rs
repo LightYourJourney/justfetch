@@ -57,10 +57,42 @@ fn fixture() -> SystemSnapshot {
             },
             "fixture",
         ),
+        swap: Detection::available(
+            SwapInfo {
+                total_bytes: 4 * 1_073_741_824,
+                used_bytes: 1_073_741_824,
+            },
+            "fixture",
+        ),
+        disk: Detection::available(
+            DiskInfo {
+                path: "/home/tester".into(),
+                total_bytes: 500 * 1_073_741_824,
+                used_bytes: 100 * 1_073_741_824,
+                available_bytes: 400 * 1_073_741_824,
+            },
+            "fixture",
+        ),
         shell: Detection::available(
             ShellInfo {
                 name: "zsh".into(),
                 kind: ShellKind::CurrentParent,
+            },
+            "fixture",
+        ),
+        terminal: Detection::available(
+            TerminalInfo {
+                name: "Test Terminal".into(),
+                version: Some("1.2".into()),
+            },
+            "fixture",
+        ),
+        local_ip: Detection::available(
+            LocalIpInfo {
+                addresses: vec![InterfaceAddress {
+                    interface: "eth0".into(),
+                    address: "192.0.2.10".into(),
+                }],
             },
             "fixture",
         ),
@@ -97,10 +129,54 @@ fn fixed_plain_render_is_aligned() {
             "Uptime  1d 1h 1m\n",
             "CPU     Test CPU (8 logical)\n",
             "Memory  2.00 / 8.00 GiB (25%)\n",
+            "Swap    1.00 / 4.00 GiB (25%)\n",
+            "Disk    100.00 / 500.00 GiB (20%) on /home/tester\n",
             "Shell   zsh\n",
+            "Term    Test Terminal 1.2\n",
+            "IP      192.0.2.10 (eth0)\n",
             "------------\n",
             "o o o o o o o o\n"
         )
+    );
+}
+
+#[test]
+fn no_swap_reads_as_none_and_every_address_is_listed() {
+    let mut snapshot = fixture();
+    snapshot.swap = Detection::available(
+        SwapInfo {
+            total_bytes: 0,
+            used_bytes: 0,
+        },
+        "fixture",
+    );
+    snapshot.local_ip = Detection::available(
+        LocalIpInfo {
+            addresses: vec![
+                InterfaceAddress {
+                    interface: "eth0".into(),
+                    address: "192.0.2.10".into(),
+                },
+                InterfaceAddress {
+                    interface: "docker0".into(),
+                    address: "172.17.0.1".into(),
+                },
+            ],
+        },
+        "fixture",
+    );
+    let output = terminal::render(
+        &snapshot,
+        Options {
+            logo: false,
+            unicode: false,
+            ..options(80)
+        },
+    );
+    assert!(output.contains("Swap    none"), "{output}");
+    assert!(
+        output.contains("IP      192.0.2.10 (eth0), 172.17.0.1 (docker0)"),
+        "{output}"
     );
 }
 

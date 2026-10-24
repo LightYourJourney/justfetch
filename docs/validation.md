@@ -175,3 +175,20 @@ v0.1.0 was published as a GitHub pre-release from a new release workflow, with a
 **A defect the artifact run found.** The cross-compiled Intel macOS binary reported 3.4 GiB of used memory where the native binary reported 13.7 GiB and `vm_stat` agreed with the native figure. The ratio was exactly 4.0, and it is the page-size ratio: Rosetta reports `sysconf(_SC_PAGESIZE)` as 4096 to an x86_64 process while the Mach counters from `host_statistics64` are in the host's 16384-byte pages. Measuring the three candidate sources settled which to trust rather than guessing — `sysconf` returns 4096 under Rosetta, `vm_page_size` also returns 4096, and only `host_page_size()` returns the true 16384. The detector now calls `host_page_size()`, and the fix was verified by running the rebuilt x86_64 binary against the arm64 one four times in alternation: they agree to within 6 MiB, where they previously differed by a factor of four. The pre-existing plausibility check (`used <= total`) is satisfied by a four-fold undercount, so it could not have caught this.
 
 **Not verified here.** No Intel Mac, no ARM64 Linux machine, no WSL and no non-Ubuntu distribution was available, so those columns in the compatibility matrix are unchanged and the release is a pre-release for that reason. The five archives are unsigned. The release workflow has not yet run from a tag; only its dispatch path has been exercised.
+
+## Field round (2026-10-23)
+
+Four fields were added — Swap, Disk, Terminal and Local IP — chosen by comparing the module lists of the installed Fastfetch 2.69.0 (76 modules), Macchina 6.4.0 (20 readouts) and pfetch-rs 3.0.2 against justfetch's seven. They are the ones every major tool shows that can be collected on all three platforms without a subprocess, administrator access, a directory scan or a private-file read; GPU, resolution, battery and packages each fail at least one of those and were left for a later round.
+
+**Measured on macOS 26.6.2 / Apple M3:**
+
+- Swap matches `sysctl vm.swapusage` exactly — 13312 MiB total and 12396 MiB used from both sources.
+- Disk matches Fastfetch's own Disk module to 0.05 GiB and to the same rounded percentage (301.17 / 460.43 GiB, 65%). It does **not** match `df`, and that was investigated rather than smoothed over: `df` reports per-volume usage, while `statvfs` on APFS reports the whole container, so `used + available = total` here and not there. Fastfetch uses the same call and agrees.
+- Local IP matches `ifconfig en0`.
+- Uptime dropped from 15 days to 5h50m between rounds; `sysctl kern.boottime` confirmed the machine had rebooted, so this is not a regression.
+
+**Checks:** `cargo fmt --check`, `cargo clippy --locked --all-targets -- -D warnings` and 38 tests pass. The count rose from 35 with two swap-parser tests (units, zero total, and the rejection cases) and one renderer test covering zero swap and multiple addresses.
+
+**Cross-target:** the Windows and Linux paths were type-checked from macOS with `cargo check --target x86_64-pc-windows-gnu` and `--target x86_64-unknown-linux-gnu`, both clean. That establishes compilation and nothing else — same caveat the project applies everywhere else. The Windows narrowing from `usize` in `GetPerformanceInfo` and the `PSTR` type of `inet_ntop` were both caught this way before reaching CI.
+
+**Not verified.** No Linux or Windows machine was available, so the `GetAdaptersAddresses` walk, the `OperStatus` filter and the commit-charge derivation have been compiled but never executed. The Windows swap figure is the only value in this release that is derived rather than measured, which is why it carries `estimated` and a note rather than `confirmed`.

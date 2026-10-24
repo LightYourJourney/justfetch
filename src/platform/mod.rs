@@ -37,6 +37,9 @@ pub struct PlatformData {
     pub kernel: Detection<String>,
     pub uptime: Detection<UptimeInfo>,
     pub memory: Detection<MemoryInfo>,
+    pub swap: Detection<SwapInfo>,
+    pub disk: Detection<DiskInfo>,
+    pub local_ip: Detection<LocalIpInfo>,
 }
 
 #[cfg(unix)]
@@ -80,6 +83,139 @@ pub fn uname_identity(
             (failed(), failed())
         }
     }
+}
+
+/// The filesystem holding the user's home directory, or the root filesystem
+/// when HOME is absent. Shared by the Unix adapters: `statvfs` is the same call
+/// on both, and picking a different mount point per platform would invent a
+/// difference the platforms do not have.
+/// `fsblkcnt_t` is 32-bit on macOS and 64-bit on Linux, so the same expression
+/// needs a widening conversion on one platform and an identity on the other.
+#[cfg(unix)]
+fn block_count<T: Into<u64>>(value: T) -> u64 {
+    value.into()
+}
+
+#[cfg(unix)]
+pub fn disk() -> Detection<DiskInfo> {
+    use std::os::unix::ffi::OsStrExt;
+    let path = std::env::var_os("HOME")
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "/".into());
+    let reported = path.to_string_lossy().into_owned();
+    let Ok(path_c) = std::ffi::CString::new(path.as_os_str().as_bytes()) else {
+        return Detection::error(
+            "statvfs",
+            ErrorCode::InvalidData,
+            "Home path contains a NUL byte",
+        );
+    };
+    let mut raw = std::mem::MaybeUninit::<libc::statvfs>::uninit();
+    // SAFETY: statvfs initializes the structure it is given on success.
+    if unsafe { libc::statvfs(path_c.as_ptr(), raw.as_mut_ptr()) } != 0 {
+        return Detection::error(
+            "statvfs",
+            ErrorCode::ApiFailed,
+            std::io::Error::last_os_error(),
+        );
+    }
+    // SAFETY: the successful call above initialized the structure.
+    let stats = unsafe { raw.assume_init() };
+    // f_frsize is the allocation unit and is zero on some filesystems, where
+    // f_bsize is the documented substitute.
+    let unit = if stats.f_frsize > 0 {
+        stats.f_frsize
+    } else {
+        stats.f_bsize
+    };
+    // A zero unit would make every filesystem look empty while still passing
+    // the consistency check below.
+    if unit == 0 {
+        return Detection::error(
+            "statvfs",
+            ErrorCode::InvalidData,
+            "Filesystem reports a zero block size",
+        );
+    }
+    let total = block_count(stats.f_blocks).checked_mul(unit);
+    let free = block_count(stats.f_bfree).checked_mul(unit);
+    let available = block_count(stats.f_bavail).checked_mul(unit);
+    let used = total
+        .zip(free)
+        .and_then(|(total, free)| total.checked_sub(free));
+    match (total, used, available) {
+        (Some(total_bytes), Some(used_bytes), Some(available_bytes)) => Detection::available(
+            DiskInfo {
+                path: reported,
+                total_bytes,
+                used_bytes,
+                available_bytes,
+            },
+            "statvfs",
+        ),
+        _ => Detection::error(
+            "statvfs",
+            ErrorCode::InvalidData,
+            "Inconsistent filesystem counters",
+        ),
+    }
+}
+
+/// Every routable IPv4 address on an interface that is up, in the order the
+/// kernel reports them. Shared by the Unix adapters.
+#[cfg(unix)]
+pub fn local_ip() -> Detection<LocalIpInfo> {
+    let mut list: *mut libc::ifaddrs = std::ptr::null_mut();
+    // SAFETY: getifaddrs allocates a list that freeifaddrs releases below.
+    if unsafe { libc::getifaddrs(&mut list) } != 0 {
+        return Detection::error(
+            "getifaddrs",
+            ErrorCode::ApiFailed,
+            std::io::Error::last_os_error(),
+        );
+    }
+    let mut addresses = Vec::new();
+    let mut cursor = list;
+    while !cursor.is_null() {
+        // SAFETY: getifaddrs returned a chain of valid entries ending in null.
+        let item = unsafe { &*cursor };
+        if let Some(address) = ipv4_of(item) {
+            // SAFETY: ifa_name is a NUL-terminated string owned by the list.
+            let interface = unsafe { std::ffi::CStr::from_ptr(item.ifa_name) }
+                .to_string_lossy()
+                .into_owned();
+            addresses.push(InterfaceAddress { interface, address });
+        }
+        cursor = item.ifa_next;
+    }
+    // SAFETY: releases the list that getifaddrs allocated.
+    unsafe { libc::freeifaddrs(list) };
+    if addresses.is_empty() {
+        Detection::unavailable("No routable IPv4 interface")
+    } else {
+        Detection::available(LocalIpInfo { addresses }, "getifaddrs")
+    }
+}
+
+#[cfg(unix)]
+fn ipv4_of(item: &libc::ifaddrs) -> Option<String> {
+    if item.ifa_addr.is_null()
+        || item.ifa_flags & libc::IFF_UP as u32 == 0
+        || item.ifa_flags & libc::IFF_LOOPBACK as u32 != 0
+    {
+        return None;
+    }
+    // SAFETY: ifa_addr is non-null and sa_family selects which sockaddr it is.
+    if unsafe { (*item.ifa_addr).sa_family } as i32 != libc::AF_INET {
+        return None;
+    }
+    // SAFETY: the family check above established a sockaddr_in.
+    let raw = unsafe { (*item.ifa_addr.cast::<libc::sockaddr_in>()).sin_addr.s_addr };
+    // s_addr holds the address in network byte order; from_be reads it back as
+    // the integer Ipv4Addr expects, on either endianness.
+    let text = std::net::Ipv4Addr::from(u32::from_be(raw)).to_string();
+    // Link-local addresses are assigned whether or not anything is reachable.
+    (!text.starts_with("169.254.") && text != "0.0.0.0").then_some(text)
 }
 
 #[cfg(all(unix, test))]

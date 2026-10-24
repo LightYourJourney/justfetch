@@ -117,7 +117,11 @@ pub struct SystemSnapshot {
     pub uptime: Detection<UptimeInfo>,
     pub cpu: Detection<CpuInfo>,
     pub memory: Detection<MemoryInfo>,
+    pub swap: Detection<SwapInfo>,
+    pub disk: Detection<DiskInfo>,
     pub shell: Detection<ShellInfo>,
+    pub terminal: Detection<TerminalInfo>,
+    pub local_ip: Detection<LocalIpInfo>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -198,6 +202,48 @@ pub enum MemoryDefinition {
     TotalMinusAvailable,
     TotalMinusFreeBuffersCache,
     AppWiredCompressed,
+}
+
+/// Swap is reported separately from memory because a system can have none, and
+/// zero is an answer rather than a missing one.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct SwapInfo {
+    pub total_bytes: u64,
+    pub used_bytes: u64,
+}
+
+/// The filesystem containing `path`, named by the path that was queried rather
+/// than by a mount point the platform may not expose. `used_bytes +
+/// available_bytes` is deliberately not `total_bytes`: filesystems reserve
+/// blocks that no user can allocate, and folding that difference into either
+/// figure would hide it.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct DiskInfo {
+    pub path: String,
+    pub total_bytes: u64,
+    pub used_bytes: u64,
+    pub available_bytes: u64,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct TerminalInfo {
+    pub name: String,
+    pub version: Option<String>,
+}
+
+/// Every routable IPv4 address on an interface that is up. Listing all of them
+/// rather than picking one avoids an arbitrary choice: on a machine running
+/// containers, whichever interface the kernel happens to report first is often
+/// a bridge, not the one carrying traffic.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct LocalIpInfo {
+    pub addresses: Vec<InterfaceAddress>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct InterfaceAddress {
+    pub interface: String,
+    pub address: String,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]

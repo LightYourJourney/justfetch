@@ -5,6 +5,46 @@ pub mod shell;
 use crate::{model::*, platform};
 use sysinfo::{CpuRefreshKind, System};
 
+/// The terminal application, which is not the shell: TERM_PROGRAM names the
+/// emulator and TERM names the capability set it negotiated. Neither requires a
+/// TTY, so redirected output still reports the same terminal.
+fn terminal() -> Detection<TerminalInfo> {
+    let text = |name: &str| {
+        std::env::var(name)
+            .ok()
+            .map(|value| value.trim().to_owned())
+            .filter(|value| !value.is_empty())
+    };
+    if let Some(name) = text("TERM_PROGRAM") {
+        return Detection::available(
+            TerminalInfo {
+                name,
+                version: text("TERM_PROGRAM_VERSION"),
+            },
+            "TERM_PROGRAM",
+        );
+    }
+    if std::env::var_os("WT_SESSION").is_some() {
+        return Detection::available(
+            TerminalInfo {
+                name: "Windows Terminal".to_owned(),
+                version: None,
+            },
+            "WT_SESSION",
+        );
+    }
+    match text("TERM") {
+        Some(name) => Detection::available(
+            TerminalInfo {
+                name,
+                version: None,
+            },
+            "TERM",
+        ),
+        None => Detection::unavailable("No terminal environment variable is set"),
+    }
+}
+
 pub fn collect() -> SystemSnapshot {
     let data = platform::collect();
     let mut system = System::new();
@@ -56,6 +96,10 @@ pub fn collect() -> SystemSnapshot {
         uptime: data.uptime,
         cpu,
         memory: data.memory,
+        swap: data.swap,
+        disk: data.disk,
         shell,
+        terminal: terminal(),
+        local_ip: data.local_ip,
     }
 }

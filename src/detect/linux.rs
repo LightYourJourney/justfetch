@@ -141,6 +141,42 @@ pub fn memory(text: &str, scope: Scope) -> Result<(MemoryInfo, bool), String> {
     ))
 }
 
+/// SwapTotal is present even when no swap is configured, and zero is an answer:
+/// the machine has none, which is different from not knowing.
+pub fn swap(text: &str) -> Result<SwapInfo, String> {
+    let mut total = None;
+    let mut free = None;
+    for line in text.lines() {
+        let Some((key, value)) = line.split_once(':') else {
+            continue;
+        };
+        let slot = match key {
+            "SwapTotal" => &mut total,
+            "SwapFree" => &mut free,
+            _ => continue,
+        };
+        let mut parts = value.split_whitespace();
+        let number: u64 = parts
+            .next()
+            .ok_or("Missing swap value")?
+            .parse()
+            .map_err(|_| "Invalid swap value")?;
+        if parts.next() != Some("kB") || parts.next().is_some() {
+            return Err("Expected proc swap in kB (KiB)".into());
+        }
+        *slot = Some(number.checked_mul(1024).ok_or("Swap value overflow")?);
+    }
+    let total_bytes = total.ok_or("Missing SwapTotal")?;
+    let free_bytes = free.ok_or("Missing SwapFree")?;
+    let used_bytes = total_bytes
+        .checked_sub(free_bytes)
+        .ok_or("SwapFree exceeds SwapTotal")?;
+    Ok(SwapInfo {
+        total_bytes,
+        used_bytes,
+    })
+}
+
 pub fn uptime(text: &str) -> Result<u64, String> {
     let value = text.split_whitespace().next().ok_or("Missing uptime")?;
     let (seconds, fraction) = value.split_once('.').unwrap_or((value, "0"));
@@ -197,6 +233,30 @@ mod tests {
         assert_eq!(mem.used_bytes, 640 * 1024);
         assert_eq!(mem.scope, Scope::WslEnvironment);
         assert!(estimate);
+    }
+
+    #[test]
+    fn swap_units_and_zero_total() {
+        let configured = swap("SwapTotal: 1000 kB\nSwapFree: 250 kB\n").unwrap();
+        assert_eq!(configured.total_bytes, 1_024_000);
+        assert_eq!(configured.used_bytes, 768_000);
+        // A machine with no swap reports zero, which is a fact, not a failure.
+        let none = swap("SwapTotal: 0 kB\nSwapFree: 0 kB\n").unwrap();
+        assert_eq!(none.total_bytes, 0);
+        assert_eq!(none.used_bytes, 0);
+    }
+
+    #[test]
+    fn swap_rejects_inconsistent_values() {
+        for input in [
+            "",
+            "SwapTotal: 1000 kB",
+            "SwapTotal: 1000 kB\nSwapFree: 2000 kB",
+            "SwapTotal: 1000 MB\nSwapFree: 0 kB",
+            "SwapTotal: 18446744073709551615 kB\nSwapFree: 0 kB",
+        ] {
+            assert!(swap(input).is_err(), "{input}");
+        }
     }
 
     #[test]

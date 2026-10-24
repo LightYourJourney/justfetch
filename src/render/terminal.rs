@@ -120,9 +120,42 @@ pub fn render_with_logo(snapshot: &SystemSnapshot, options: Options, logo: &logo
             mem.used_bytes as f64 / mem.total_bytes.max(1) as f64 * 100.0
         )
     });
+    let swap = display(&snapshot.swap, |swap| {
+        if swap.total_bytes == 0 {
+            "none".to_owned()
+        } else {
+            format!(
+                "{:.2} / {:.2} GiB ({:.0}%)",
+                swap.used_bytes as f64 / 1_073_741_824.0,
+                swap.total_bytes as f64 / 1_073_741_824.0,
+                swap.used_bytes as f64 / swap.total_bytes.max(1) as f64 * 100.0
+            )
+        }
+    });
+    let disk = display(&snapshot.disk, |disk| {
+        format!(
+            "{:.2} / {:.2} GiB ({:.0}%) on {}",
+            disk.used_bytes as f64 / 1_073_741_824.0,
+            disk.total_bytes as f64 / 1_073_741_824.0,
+            disk.used_bytes as f64 / disk.total_bytes.max(1) as f64 * 100.0,
+            disk.path
+        )
+    });
     let shell = display(&snapshot.shell, |shell| match shell.kind {
         ShellKind::CurrentParent => shell.name.clone(),
         ShellKind::ConfiguredDefault => format!("{} (default)", shell.name),
+    });
+    let terminal = display(&snapshot.terminal, |terminal| match &terminal.version {
+        Some(version) => format!("{} {version}", terminal.name),
+        None => terminal.name.clone(),
+    });
+    let local_ip = display(&snapshot.local_ip, |local_ip| {
+        local_ip
+            .addresses
+            .iter()
+            .map(|entry| format!("{} ({})", entry.address, entry.interface))
+            .collect::<Vec<_>>()
+            .join(", ")
     });
     let values = [
         format!("{os}{environment}"),
@@ -131,7 +164,11 @@ pub fn render_with_logo(snapshot: &SystemSnapshot, options: Options, logo: &logo
         uptime,
         cpu,
         memory,
+        swap,
+        disk,
         shell,
+        terminal,
+        local_ip,
     ];
     for (key, value) in FIELD_KEYS.into_iter().zip(values) {
         let value = plain(&value, options.unicode);
@@ -214,7 +251,9 @@ pub fn render_with_logo(snapshot: &SystemSnapshot, options: Options, logo: &logo
 
 /// Field keys in display order. The styling pass reads the same list, so the
 /// rows and the keys they are styled by cannot disagree.
-const FIELD_KEYS: [&str; 7] = ["OS", "Host", "Kernel", "Uptime", "CPU", "Memory", "Shell"];
+const FIELD_KEYS: [&str; 11] = [
+    "OS", "Host", "Kernel", "Uptime", "CPU", "Memory", "Swap", "Disk", "Shell", "Term", "IP",
+];
 
 /// A field row opens with the key column, so this is how many bytes of a
 /// composed row the styling pass replaces with a styled prefix.

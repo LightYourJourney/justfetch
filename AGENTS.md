@@ -2,7 +2,7 @@
 
 ## Goal and scope
 
-Build a fast, accurate, offline Rust system-information CLI. Current scope is v0.1: OS, Host, Kernel, Uptime, CPU, Memory, Shell, terminal/JSON, original ASCII logos and graceful field failures. Configuration, themes, arbitrary modules, custom logos and doctor belong to later releases; see docs/roadmap.md.
+Build a fast, accurate, offline Rust system-information CLI. Current scope: OS, Host, Kernel, Uptime, CPU, Memory, Swap, Disk, Shell, Terminal, Local IP, terminal/JSON, original ASCII logos and graceful field failures. Configuration, themes, arbitrary modules, custom logos and doctor belong to later releases; see docs/roadmap.md.
 
 ## Architecture
 

@@ -8,7 +8,7 @@ A compact Rust CLI that displays real local system information, with a responsiv
 
 ## Features
 
-- OS, device model or labeled hostname, kernel, uptime, CPU, physical memory and shell.
+- OS, device model or labeled hostname, kernel, uptime, CPU, physical memory and swap, the filesystem holding your home directory, shell, terminal and local IPv4 addresses.
 - Explicit available/unavailable/unsupported/error states, source and confidence in JSON.
 - Original ASCII logos for macOS, Windows, Linux, Arch, Debian, Ubuntu, Fedora, Gentoo, openSUSE, NixOS and unknown systems.
 - Unicode display-cell alignment and grapheme-aware wrapping; narrow terminals hide the logo.
@@ -18,7 +18,7 @@ A compact Rust CLI that displays real local system information, with a responsiv
 
 ## Example
 
-Captured from a real `--no-color` invocation on Apple M3 / macOS 26.6.2. The user and host identity is replaced by a shorter placeholder; the divider always tracks the title's width, so it is shorter here than in the original. Memory and uptime naturally change. This is plain output; a compatible TTY adds colors automatically.
+Captured from a real `--no-color` invocation on Apple M3 / macOS 26.6.2. The user and host identity and the home path are replaced by shorter placeholders; the divider tracks the title's width, so it is shorter here than in the original. Memory, swap, disk and uptime naturally change. This is plain output; a compatible TTY adds colors automatically.
 
 ```text
          .'       ~ [user]@[host]
@@ -26,10 +26,14 @@ Captured from a real `--no-color` invocation on Apple M3 / macOS 26.6.2. The use
    .--.  .--.     OS      macOS 26.6.2
   /          \    Host    Mac15,12
  |            |   Kernel  Darwin 25.6.0
- |            |   Uptime  14d 10h 37m
+ |            |   Uptime  5h 54m
   \          /    CPU     Apple M3 (8 logical)
-   `--.  .--'     Memory  13.29 / 16.00 GiB (83%)
+   `--.  .--'     Memory  13.47 / 16.00 GiB (84%)
+                  Swap    11.84 / 13.00 GiB (91%)
+                  Disk    302.06 / 460.43 GiB (66%) on /home/user
                   Shell   zsh
+                  Term    iTerm.app 3.7.1beta1
+                  IP      192.168.137.177 (en0)
                   ───────────────
                   ● ● ● ● ● ● ● ●
 ```
@@ -80,7 +84,7 @@ For example, an available memory field has this structure (numbers here illustra
 }
 ```
 
-The full document has `schema_version: 1`, identity/environment metadata and seven field objects. Missing values have status/reason rather than fake N/A values; errors carry source/code/message. Consumers should ignore new additive fields. See [architecture](docs/architecture.md) and [accounting definitions](docs/compatibility.md).
+The full document has `schema_version: 1`, identity/environment metadata and eleven field objects. Missing values have status/reason rather than fake N/A values; errors carry source/code/message. Consumers should ignore new additive fields. See [architecture](docs/architecture.md) and [accounting definitions](docs/compatibility.md).
 
 ## Platforms and accuracy
 
