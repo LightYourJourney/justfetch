@@ -4,11 +4,11 @@
 
 A compact Rust CLI that displays real local system information, with a responsive ASCII layout and structured JSON. It runs offline, requires no configuration or administrator access, and does not call other fetch tools.
 
-**Status:** v0.1.0 is a [GitHub pre-release](https://github.com/LightYourJourney/justfetch/releases) with prebuilt archives; it is not on crates.io, and the platform coverage is not yet the full matrix this project intends to verify before a real release. Apple Silicon macOS has been exercised locally; Linux x86-64 (Ubuntu 24.04) and Windows x86-64 (Server 2025) have been exercised by the native CI run, which also verifies the declared Rust 1.95 MSRV. Intel macOS and ARM64 Linux are built and published but have never been run on those platforms, so their archives are unverified; WSL and every distribution other than Ubuntu remain untested. See the [compatibility matrix](docs/compatibility.md) and the [v0.1.0 release notes](docs/release-notes/v0.1.0.md).
+**Status:** the published [v0.1.0 pre-release](https://github.com/LightYourJourney/justfetch/releases) carries the **seven-field** build described in its [release notes](docs/release-notes/v0.1.0.md). The eleven fields, `--privacy` and the wider test and CI work described below are in the repository and **not yet released**; nothing is on crates.io. Apple Silicon macOS was exercised locally, Linux x86-64 and Windows x64 in the CI test job, and ARM64 Linux in the release workflow, which also runs each packaged archive on its own runner except the cross-compiled Intel macOS one. Intel macOS is built but has never been run, so its archive is unverified; WSL and distributions other than Ubuntu remain untested. See the [compatibility matrix](docs/compatibility.md).
 
 ## Features
 
-- OS, device model or labeled hostname, kernel, uptime, CPU, physical memory and swap, the filesystem holding your home directory, shell, terminal and local IPv4 addresses.
+- OS, device model or labeled hostname, kernel, uptime, CPU, physical memory and swap, the filesystem holding your home directory, shell, terminal and local IPv4 addresses. Swap is reported as unsupported on Windows, which exposes no page-file figure to the APIs this project uses.
 - Explicit available/unavailable/unsupported/redacted/error states, source and confidence in JSON.
 - `--privacy` withholds the user name, the host name, the local addresses and the home path, identically in text and JSON.
 - Original ASCII logos for macOS, Windows, Linux, Arch, Debian, Ubuntu, Fedora, Gentoo, openSUSE, NixOS and unknown systems.

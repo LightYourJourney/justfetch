@@ -13,7 +13,8 @@ pub struct Cli {
     /// Automatically select a built-in logo, or hide it.
     #[arg(long, value_enum, default_value_t = Logo::Auto)]
     pub logo: Logo,
-    /// Withhold the user name, host name, local IP addresses and the home path.
+    /// Withhold the user name, host name and local IP addresses, and shorten
+    /// the home path to ~.
     #[arg(long)]
     pub privacy: bool,
 }

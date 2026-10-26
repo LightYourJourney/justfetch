@@ -630,6 +630,33 @@ fn logo_mapping_and_builtin_assets() {
 /// A Linux distribution without its own artwork must render the generic Linux
 /// logo, not the unidentified-system emblem.
 #[test]
+fn each_built_in_logo_is_its_own_artwork() {
+    // Asserting a logo's name, ASCII-ness and width would still pass if two
+    // distributions were shipped the same picture; comparing the art does not.
+    let cases = [
+        ("macos", OsFamily::Macos),
+        ("windows", OsFamily::Windows),
+        ("arch", OsFamily::Linux),
+        ("debian", OsFamily::Linux),
+        ("ubuntu", OsFamily::Linux),
+        ("fedora", OsFamily::Linux),
+        ("gentoo", OsFamily::Linux),
+        ("opensuse", OsFamily::Linux),
+        ("nixos", OsFamily::Linux),
+        ("linux", OsFamily::Linux),
+    ];
+    let mut seen: Vec<(&str, &str)> = Vec::new();
+    for (id, family) in cases {
+        let selected = logo::select(Some(id), Some(&family));
+        assert!(!selected.art.trim().is_empty(), "{id} has no artwork");
+        for (other, art) in &seen {
+            assert_ne!(*art, selected.art, "{id} and {other} share artwork");
+        }
+        seen.push((id, selected.art));
+    }
+}
+
+#[test]
 fn unknown_linux_distribution_renders_the_generic_linux_logo() {
     let mut snapshot = fixture();
     snapshot.os = Detection::available(

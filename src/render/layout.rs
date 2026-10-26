@@ -20,7 +20,10 @@ pub fn sanitize(text: &str) -> String {
                 '\u{9b}' => State::Csi,
                 '\u{9d}' => State::String(true),
                 '\u{90}' | '\u{98}' | '\u{9e}' | '\u{9f}' => State::String(false),
-                '\n' | '\r' | '\t' => {
+                // The two Unicode line separators are not control characters,
+                // but some renderers break a line on them, so they are treated
+                // like the ASCII ones rather than left to split a row.
+                '\n' | '\r' | '\t' | '\u{2028}' | '\u{2029}' => {
                     output.push(' ');
                     State::Text
                 }
@@ -138,6 +141,8 @@ mod tests {
             "aredb"
         );
         assert_eq!(sanitize("x\u{9b}2J\u{202e}y\n\tz\x00"), "xy  z");
+        // Unicode line separators would split a row in some renderers.
+        assert_eq!(sanitize("a\u{2028}b\u{2029}c"), "a b c");
         // Every Bidi_Control character is removed, not just the overrides.
         for mark in ['\u{061c}', '\u{200e}', '\u{200f}', '\u{2066}', '\u{2069}'] {
             assert_eq!(sanitize(&format!("a{mark}b")), "ab", "{mark:?}");

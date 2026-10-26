@@ -85,6 +85,27 @@ fn reported_numbers_are_self_consistent() {
 }
 
 #[test]
+fn memory_agrees_with_an_independent_reader() {
+    // A four-fold undercount from pairing Mach counters with the wrong page
+    // size satisfies every `used <= total` check, which is exactly how that
+    // defect survived four green CI jobs. Comparing against a second reader is
+    // what catches it. The bound is loose on purpose: the two use different
+    // definitions of "used".
+    let json = snapshot();
+    let used = json["memory"]["value"]["used_bytes"]
+        .as_u64()
+        .expect("memory used_bytes");
+    let mut system = sysinfo::System::new();
+    system.refresh_memory();
+    let independent = system.used_memory();
+    assert!(independent > 0, "independent reader saw no used memory");
+    assert!(
+        used <= independent.saturating_mul(2) && independent <= used.saturating_mul(2),
+        "justfetch reports {used} bytes used; an independent reader says {independent}"
+    );
+}
+
+#[test]
 fn listed_addresses_are_routable() {
     let json = snapshot();
     if status(&json, "local_ip") != "available" {

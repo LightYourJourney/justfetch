@@ -239,4 +239,18 @@ The reviewer also confirmed the layering judgement — privacy as a separate pas
 
 Two regression tests came out of it: a stdout with no reader must exit successfully, and `supports_ansi` must follow the platform console instead of assuming it. The release workflow now unpacks the archive it built and runs the binary from inside it, checking that `os` and `memory` are available by name, and verifies that `SHA256SUMS` covers every archive. The assertion logic was exercised locally against a deliberately broken document to confirm it fails.
 
-**Test count:** 51, up from 41.
+**Final independent re-evaluation.** A reviewer that had seen none of this work re-ran every check and tried to break the renderer with a PTY sweep at 1–200 columns carrying ANSI, OSC, DCS, bidi, CJK, emoji, ZWJ sequences, flags, combining marks and 500-character `USER`/`TERM_PROGRAM` values. It found **no P0**: no panic, no column overflow, no leaked escape sequence. It found several things worth fixing, all now fixed:
+
+- The README described the eleven fields and `--privacy` as part of the published v0.1.0 pre-release, which actually contains the seven-field build. The status line now separates the published release from the unreleased work in its first sentence.
+- The memory test asserted only `used <= total`, which a four-fold page-size undercount satisfies — exactly how that defect survived four green CI jobs. A test now compares against an independent reader within a factor of two, which a fourfold error fails.
+- The logo test asserted names, ASCII-ness and width, so two distributions shipping the same picture would have passed. It now compares the artwork itself.
+- `--help` described `--privacy` as withholding the home path, while it shortens it to `~` and keeps the field available.
+- `compatibility.md` said ten fields were available on Windows (nine are; `swap` is unsupported and `terminal` unavailable in a CI job), claimed Host was the only field with a fallback chain (Shell, Terminal, Linux OS and Disk have them too), and still recorded ARM64 Linux as never run after the release workflow executed its packaged archive.
+- `roadmap.md` still said v0.1 was not published.
+- `Cargo.toml` omitted `release.yml` from the package while the CHANGELOG links to it, so the packaged crate carried a broken link.
+- `architecture.md` said the collector owns all system access; `Config` also calls the terminal capability query.
+- U+2028 and U+2029 are not control characters, but some renderers break a line on them, so they now become spaces like the ASCII line breaks. Unix disk now rejects a zero-block filesystem, matching Windows, instead of rendering `0.00 / 0.00 GiB`.
+
+Two of its findings were stale rather than real: it reported the release workflow's execution step as never having run, and no CI result for the commit under review. Both exist — the release workflow was dispatched at that commit (run 40304542365: five builds, four packaged-binary runs, the cross-compiled Intel macOS correctly skipped) and CI passed at the same commit (run 40304508178).
+
+**Test count:** 53, up from 41.

@@ -175,6 +175,15 @@ pub fn disk() -> Detection<DiskInfo> {
             "Inconsistent filesystem counters",
         );
     };
+    // The Windows adapter already rejects this; a filesystem with no blocks at
+    // all would render as 0.00 / 0.00 GiB and read as a real measurement.
+    if total_bytes == 0 {
+        return Detection::error(
+            "statvfs",
+            ErrorCode::InvalidData,
+            "Filesystem reports zero total bytes",
+        );
+    }
     let info = DiskInfo {
         path: reported,
         total_bytes,
