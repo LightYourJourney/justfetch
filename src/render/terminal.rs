@@ -3,15 +3,22 @@ use super::{
     logo, theme,
 };
 use crate::model::*;
+use crate::module::ModuleId;
 use anstyle::AnsiColor;
 use std::ffi::OsStr;
 
 #[derive(Debug, Clone, Copy)]
-pub struct Options {
+pub struct Options<'a> {
     pub columns: usize,
     pub color: bool,
     pub unicode: bool,
     pub logo: bool,
+    /// Which rows to draw, in this order.
+    pub modules: &'a [ModuleId],
+    /// Custom labels, by module. Anything absent keeps its default label.
+    pub labels: &'a [(ModuleId, String)],
+    /// Text between the label column and the value.
+    pub separator: &'a str,
 }
 
 /// Pure policy: NO_COLOR has effect only when nonempty, per no-color.org.
@@ -66,6 +73,9 @@ fn display<T>(detection: &Detection<T>, f: impl FnOnce(&T) -> String) -> String 
         Detection::Unavailable { .. } => "Unavailable".into(),
         Detection::Unsupported { .. } => "Unsupported".into(),
         Detection::Redacted => "redacted".into(),
+        // Not reachable through the renderer, which skips deselected modules,
+        // but the state must still have a textual form.
+        Detection::Deselected => "not selected".into(),
         Detection::Error {
             source, message, ..
         } => format!("Error ({source}: {message})"),
@@ -83,14 +93,18 @@ fn plain(text: &str, unicode: bool) -> String {
     }
 }
 
-pub fn render(snapshot: &SystemSnapshot, options: Options) -> String {
+pub fn render(snapshot: &SystemSnapshot, options: Options<'_>) -> String {
     let os = snapshot.os.value();
     let logo = logo::select(os.and_then(|os| os.id.as_deref()), os.map(|os| &os.family));
     render_with_logo(snapshot, options, &logo)
 }
 
 /// Explicit logo input also exercises shorter and taller custom fixtures.
-pub fn render_with_logo(snapshot: &SystemSnapshot, options: Options, logo: &logo::Logo) -> String {
+pub fn render_with_logo(
+    snapshot: &SystemSnapshot,
+    options: Options<'_>,
+    logo: &logo::Logo,
+) -> String {
     let columns = options.columns.clamp(1, 4096);
     let logo_lines: Vec<&str> = logo.art.lines().collect();
     let logo_width = logo_lines.iter().map(|l| width(l)).max().unwrap_or(0);
@@ -118,20 +132,35 @@ pub fn render_with_logo(snapshot: &SystemSnapshot, options: Options, logo: &logo
         accent: None,
     });
 
-    let rows = field_rows(snapshot);
-    // The label column is derived, so a longer label widens it instead of
-    // breaking the alignment the styling pass relies on.
-    let label_width = rows.iter().map(|row| width(row.label)).max().unwrap_or(0);
-    let prefix_width = label_width + 2;
+    let rows = field_rows(snapshot, options.modules, options.labels);
+    // Custom labels and separators are user input, so they are sanitised and
+    // measured exactly like values: no escape reaches the terminal unstripped,
+    // and a wide character cannot shift the column.
+    let labels: Vec<String> = rows
+        .iter()
+        .map(|row| plain(&row.label, options.unicode))
+        .collect();
+    let separator = plain(options.separator, options.unicode);
+    // The column is as wide as the built-in labels need, or as wide as a custom
+    // label on a visible row makes it. It deliberately does not shrink to fit a
+    // subset: the same row should align the same way whatever else is shown.
+    let mut label_width = ModuleId::ALL
+        .iter()
+        .map(|module| width(module.label()))
+        .max()
+        .unwrap_or(0);
+    for label in &labels {
+        label_width = label_width.max(width(label));
+    }
+    let prefix_width = label_width + width(&separator);
     let continuation = " ".repeat(prefix_width);
-    for row in &rows {
+    for (row, label) in rows.iter().zip(&labels) {
         let value = plain(&row.value, options.unicode);
         // Padded by display width, not character count, so a wide-character
         // label would still line up.
         let prefix = format!(
-            "{}{}",
-            row.label,
-            " ".repeat(label_width - width(row.label) + 2)
+            "{label}{}{separator}",
+            " ".repeat(label_width - width(label))
         );
         // Keep a readable continuation indent whenever enough width exists.
         if info_columns > prefix_width + 2 {
@@ -227,10 +256,9 @@ pub fn render_with_logo(snapshot: &SystemSnapshot, options: Options, logo: &logo
     output
 }
 
-/// One information row before layout. This list is the display order, and it is
-/// the single place that has to change to select, reorder or relabel fields.
+/// One information row before layout: the label to show and the composed value.
 struct Row {
-    label: &'static str,
+    label: String,
     value: String,
 }
 
@@ -248,110 +276,91 @@ enum Accent {
     Prefix(usize),
 }
 
-fn field_rows(snapshot: &SystemSnapshot) -> Vec<Row> {
-    let os = display(&snapshot.os, |os| match &os.version {
-        Some(version) if !os.name.contains(version) => format!("{} {version}", os.name),
-        _ => os.name.clone(),
-    });
-    let environment = match snapshot.environment {
-        Environment::Native => "",
-        Environment::Wsl { version: Some(2) } => " (WSL2)",
-        Environment::Wsl { .. } => " (WSL)",
-    };
-    let host = display(&snapshot.host, |host| match host.kind {
-        HostKind::DeviceModel => host.name.clone(),
-        HostKind::Hostname => format!("{} (hostname)", host.name),
-    });
-    let kernel = display(&snapshot.kernel, Clone::clone);
-    let uptime = display(&snapshot.uptime, |v| format_uptime(v.seconds));
-    let cpu = display(&snapshot.cpu, |cpu| {
-        format!("{} ({} logical)", cpu.name, cpu.logical_cores)
-    });
-    let memory = display(&snapshot.memory, |mem| {
-        capacity(mem.used_bytes, mem.total_bytes)
-    });
-    let swap = display(&snapshot.swap, |swap| {
-        if swap.total_bytes == 0 {
-            "none".to_owned()
-        } else {
-            capacity(swap.used_bytes, swap.total_bytes)
+/// The rows to draw, in the order the user asked for. A module that is not in
+/// the selection produces no row at all.
+fn field_rows(
+    snapshot: &SystemSnapshot,
+    modules: &[ModuleId],
+    labels: &[(ModuleId, String)],
+) -> Vec<Row> {
+    modules
+        .iter()
+        .map(|&module| Row {
+            label: labels
+                .iter()
+                .find(|(id, _)| *id == module)
+                .map(|(_, label)| label.clone())
+                .unwrap_or_else(|| module.label().to_owned()),
+            value: value_for(snapshot, module),
+        })
+        .collect()
+}
+
+/// The composed value for one module. One arm per module: adding a module is a
+/// compile error here rather than a row that silently renders nothing.
+fn value_for(snapshot: &SystemSnapshot, module: ModuleId) -> String {
+    match module {
+        ModuleId::Os => {
+            let name = display(&snapshot.os, |os| match &os.version {
+                Some(version) if !os.name.contains(version) => format!("{} {version}", os.name),
+                _ => os.name.clone(),
+            });
+            let environment = match snapshot.environment {
+                Environment::Native => "",
+                Environment::Wsl { version: Some(2) } => " (WSL2)",
+                Environment::Wsl { .. } => " (WSL)",
+            };
+            format!("{name}{environment}")
         }
-    });
-    let disk = display(&snapshot.disk, |disk| {
-        format!(
-            "{} on {}",
-            capacity(disk.used_bytes, disk.total_bytes),
-            disk.path
-        )
-    });
-    let shell = display(&snapshot.shell, |shell| match shell.kind {
-        ShellKind::CurrentParent => shell.name.clone(),
-        ShellKind::ConfiguredDefault => format!("{} (default)", shell.name),
-    });
-    let terminal = display(&snapshot.terminal, |terminal| match terminal.kind {
-        TerminalKind::Application => match &terminal.version {
-            Some(version) => format!("{} {version}", terminal.name),
-            None => terminal.name.clone(),
-        },
-        TerminalKind::CapabilityType => format!("{} (TERM type)", terminal.name),
-    });
-    let local_ip = display(&snapshot.local_ip, |local_ip| {
-        local_ip
-            .addresses
-            .iter()
-            .map(|entry| match &entry.interface {
-                Some(interface) => format!("{} ({interface})", entry.address),
-                None => entry.address.to_string(),
-            })
-            .collect::<Vec<_>>()
-            .join(", ")
-    });
-    vec![
-        Row {
-            label: "OS",
-            value: format!("{os}{environment}"),
-        },
-        Row {
-            label: "Host",
-            value: host,
-        },
-        Row {
-            label: "Kernel",
-            value: kernel,
-        },
-        Row {
-            label: "Uptime",
-            value: uptime,
-        },
-        Row {
-            label: "CPU",
-            value: cpu,
-        },
-        Row {
-            label: "Memory",
-            value: memory,
-        },
-        Row {
-            label: "Swap",
-            value: swap,
-        },
-        Row {
-            label: "Disk",
-            value: disk,
-        },
-        Row {
-            label: "Shell",
-            value: shell,
-        },
-        Row {
-            label: "Term",
-            value: terminal,
-        },
-        Row {
-            label: "IP",
-            value: local_ip,
-        },
-    ]
+        ModuleId::Host => display(&snapshot.host, |host| match host.kind {
+            HostKind::DeviceModel => host.name.clone(),
+            HostKind::Hostname => format!("{} (hostname)", host.name),
+        }),
+        ModuleId::Kernel => display(&snapshot.kernel, Clone::clone),
+        ModuleId::Uptime => display(&snapshot.uptime, |value| format_uptime(value.seconds)),
+        ModuleId::Cpu => display(&snapshot.cpu, |cpu| {
+            format!("{} ({} logical)", cpu.name, cpu.logical_cores)
+        }),
+        ModuleId::Memory => display(&snapshot.memory, |mem| {
+            capacity(mem.used_bytes, mem.total_bytes)
+        }),
+        ModuleId::Swap => display(&snapshot.swap, |swap| {
+            if swap.total_bytes == 0 {
+                "none".to_owned()
+            } else {
+                capacity(swap.used_bytes, swap.total_bytes)
+            }
+        }),
+        ModuleId::Disk => display(&snapshot.disk, |disk| {
+            format!(
+                "{} on {}",
+                capacity(disk.used_bytes, disk.total_bytes),
+                disk.path
+            )
+        }),
+        ModuleId::Shell => display(&snapshot.shell, |shell| match shell.kind {
+            ShellKind::CurrentParent => shell.name.clone(),
+            ShellKind::ConfiguredDefault => format!("{} (default)", shell.name),
+        }),
+        ModuleId::Terminal => display(&snapshot.terminal, |terminal| match terminal.kind {
+            TerminalKind::Application => match &terminal.version {
+                Some(version) => format!("{} {version}", terminal.name),
+                None => terminal.name.clone(),
+            },
+            TerminalKind::CapabilityType => format!("{} (TERM type)", terminal.name),
+        }),
+        ModuleId::LocalIp => display(&snapshot.local_ip, |local_ip| {
+            local_ip
+                .addresses
+                .iter()
+                .map(|entry| match &entry.interface {
+                    Some(interface) => format!("{} ({interface})", entry.address),
+                    None => entry.address.to_string(),
+                })
+                .collect::<Vec<_>>()
+                .join(", ")
+        }),
+    }
 }
 
 #[cfg(test)]

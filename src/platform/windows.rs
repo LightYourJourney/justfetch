@@ -1,5 +1,6 @@
 use super::{PlatformData, disk_detection, reportable};
 use crate::model::*;
+use crate::module::{ModuleId, wanted};
 use std::io;
 use sysinfo::System;
 use windows_sys::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
@@ -290,42 +291,64 @@ fn ipv4_of(
     reportable(parsed).then_some(parsed)
 }
 
-pub fn collect() -> PlatformData {
+pub fn collect(selection: &[ModuleId]) -> PlatformData {
+    // The hostname is needed for the title even when no module asks for it.
     let hostname = match System::host_name().filter(|s| !s.is_empty()) {
         Some(name) => Detection::available(name, "sysinfo GetComputerNameExW"),
         None => Detection::unavailable("Hostname is not exposed by the Windows adapter"),
     };
-    let build = System::kernel_version().filter(|s| !s.is_empty());
-    let os = match (System::long_os_version(), &build) {
-        (Some(name), Some(build)) => Detection::available(
-            OsInfo {
-                family: OsFamily::Windows,
-                name,
-                version: Some(format!("build {build}")),
-                id: Some("windows".into()),
+    // `long_os_version` and `kernel_version` both read the registry, so they are
+    // only asked for when the OS or Kernel row is actually wanted.
+    let wants_build = wanted(selection, ModuleId::Os) || wanted(selection, ModuleId::Kernel);
+    let build = wants_build
+        .then(|| System::kernel_version().filter(|s| !s.is_empty()))
+        .flatten();
+    let os = if wanted(selection, ModuleId::Os) {
+        match (System::long_os_version(), &build) {
+            (Some(name), Some(build)) => Detection::available(
+                OsInfo {
+                    family: OsFamily::Windows,
+                    name,
+                    version: Some(format!("build {build}")),
+                    id: Some("windows".into()),
+                },
+                "sysinfo Windows version registry",
+            ),
+            _ => Detection::unavailable("Windows product name or build registry value unavailable"),
+        }
+    } else {
+        Detection::deselected()
+    };
+    let kernel = if wanted(selection, ModuleId::Kernel) {
+        match build {
+            Some(build) => Detection::available(
+                format!("Windows NT build {build}"),
+                "sysinfo Windows CurrentBuildNumber",
+            ),
+            None => Detection::unavailable("Windows kernel build is unavailable"),
+        }
+    } else {
+        Detection::deselected()
+    };
+    let host = if wanted(selection, ModuleId::Host) {
+        hostname.clone().map(|name| HostInfo {
+            name,
+            kind: HostKind::Hostname,
+        })
+    } else {
+        Detection::deselected()
+    };
+    let uptime = if wanted(selection, ModuleId::Uptime) {
+        Detection::available(
+            UptimeInfo {
+                seconds: System::uptime(),
+                scope: Scope::OperatingSystem,
             },
-            "sysinfo Windows version registry",
-        ),
-        _ => Detection::unavailable("Windows product name or build registry value unavailable"),
+            "GetTickCount64",
+        )
+    } else {
+        Detection::deselected()
     };
-    let kernel = match build {
-        Some(build) => Detection::available(
-            format!("Windows NT build {build}"),
-            "sysinfo Windows CurrentBuildNumber",
-        ),
-        None => Detection::unavailable("Windows kernel build is unavailable"),
-    };
-    let host = hostname.clone().map(|name| HostInfo {
-        name,
-        kind: HostKind::Hostname,
-    });
-    let uptime = Detection::available(
-        UptimeInfo {
-            seconds: System::uptime(),
-            scope: Scope::OperatingSystem,
-        },
-        "GetTickCount64",
-    );
     PlatformData {
         hostname,
         environment: Environment::Native,
@@ -333,9 +356,25 @@ pub fn collect() -> PlatformData {
         host,
         kernel,
         uptime,
-        memory: memory(),
-        swap: swap(),
-        disk: disk(),
-        local_ip: local_ip(),
+        memory: if wanted(selection, ModuleId::Memory) {
+            memory()
+        } else {
+            Detection::deselected()
+        },
+        swap: if wanted(selection, ModuleId::Swap) {
+            swap()
+        } else {
+            Detection::deselected()
+        },
+        disk: if wanted(selection, ModuleId::Disk) {
+            disk()
+        } else {
+            Detection::deselected()
+        },
+        local_ip: if wanted(selection, ModuleId::LocalIp) {
+            local_ip()
+        } else {
+            Detection::deselected()
+        },
     }
 }

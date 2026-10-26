@@ -1,0 +1,107 @@
+# Configuration
+
+justfetch works without a configuration file. Everything below is optional, and a missing file is not an error — only a file that exists and does not parse is.
+
+## Where the file lives
+
+| Platform | Path |
+| --- | --- |
+| Linux | `$XDG_CONFIG_HOME/justfetch/config.toml`, or `~/.config/justfetch/config.toml` when `XDG_CONFIG_HOME` is unset |
+| macOS | the same XDG path: `$XDG_CONFIG_HOME/justfetch/config.toml`, or `~/.config/justfetch/config.toml` |
+| Windows | `%APPDATA%\justfetch\config.toml` |
+
+macOS deliberately uses the XDG location rather than `~/Library/Application Support`, so one documented path covers every Unix-like platform and the file sits next to the other command-line tools it is used with. If `HOME` (or `APPDATA` on Windows) is absent, there is no user path; `--config` still works, and `init` says so.
+
+## Precedence
+
+Tightest first:
+
+1. Command-line arguments (`--modules`, `--logo`, `--color`, `--no-color`).
+2. The file named by `--config`.
+3. The user configuration file at the path above.
+4. Built-in defaults.
+
+`--config` replaces the user file rather than merging with it: a run either reads the file you named or the user one, never both. Command-line values then override whichever file was read.
+
+Nothing is ever written to the user directory unless you run `justfetch init`.
+
+## Example
+
+```toml
+# Modules to show, in display order.
+modules = ["os", "kernel", "cpu", "memory", "disk"]
+
+[layout]
+# "auto" shows a logo when the terminal is wide enough; "none" never does.
+logo = "auto"
+# Text between the label column and the value.
+separator = "  "
+
+[color]
+# ANSI colour, only on a terminal that supports it.
+enabled = true
+
+[labels]
+cpu = "Processor"
+```
+
+Running `justfetch init` writes this shape with every key at its default, so you can delete the lines you do not want to change. `init` never overwrites an existing file; it fails and says so.
+
+## Reference
+
+| Key | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `modules` | array of strings | all eleven, in display order | Which rows to show, in the order given. The same list decides what is collected. |
+| `layout.logo` | `"auto"` or `"none"` | `"auto"` | `auto` hides the logo when the terminal is too narrow; `none` never draws it. |
+| `layout.separator` | string, non-empty | `"  "` | Text between the label column and the value. |
+| `color.enabled` | boolean | `true` | ANSI colour, still subject to `NO_COLOR`, `TERM=dumb`, a non-terminal stdout and the platform's ANSI support. |
+| `labels.<module>` | string, non-blank | the built-in label | Replaces the label shown for that module. |
+
+Unknown keys are an error rather than being ignored, so a misspelt key is reported instead of silently doing nothing.
+
+### Module identifiers
+
+`os`, `host`, `kernel`, `uptime`, `cpu`, `memory`, `swap`, `disk`, `shell`, `terminal`, `local_ip`.
+
+Identifiers are case-insensitive and `local-ip` is accepted as an alias for `local_ip`. `justfetch --help` lists them too.
+
+### What is collected
+
+The module list decides collection, not just drawing. A module that is not listed is never queried: choosing `--modules cpu` skips the address enumeration, the filesystem query, the process lookup and the registry reads that the other rows would need. The saving is real but small — about 2% of the process's instructions for a one-module selection — because process startup dominates; the measurement and its raw data are in `docs/validation.md`.
+
+The logo is chosen from the OS module. If `os` is not selected there is no distribution to choose from, so the generic fallback emblem is used; selecting `os` brings the real one back.
+
+The user and host name are collected even when no module asks for them, because the title line shows both. They are cheap, and `--privacy` withholds them.
+
+## Diagnostics
+
+`justfetch doctor` reports what it can actually check: the resolved user path and whether it exists, the path given to `--config`, the effective module list and layout, and any configuration error with the file and position that produced it. It exits non-zero when it finds a problem and prints `no problems found` when it does not.
+
+```
+$ justfetch --config broken.toml doctor
+user config: /home/you/.config/justfetch/config.toml (not present; built-in defaults apply)
+--config: broken.toml (found)
+problem: configuration error: broken.toml: modules: `gpu` is not a module id; expected one of os, host, kernel, uptime, cpu, memory, swap, disk, shell, terminal, local_ip
+```
+
+Errors from a normal run go to stderr with a non-zero exit code, and nothing is written to stdout:
+
+| Situation | Message |
+| --- | --- |
+| Unknown module | `` `gpu` is not a module id; expected one of … `` |
+| Duplicate module | `` `os` is listed twice `` |
+| Empty list | `the module list is empty; name at least one module or omit the setting` |
+| `--config` missing | `--config PATH: file not found` |
+| Malformed TOML | `TOML parse error at line N, column M` |
+| Wrong value type | `TOML parse error …` naming the field |
+| Unknown key | `unknown field` naming the key |
+| Bad `layout.logo` | `` expected `auto` or `none` `` |
+| Blank label | `labels.cpu is empty; omit it to keep the default label` |
+
+## JSON
+
+Module selection does not change the document's shape. A module that was not selected reports `"status": "deselected"` and carries no `value`, which is distinct from a module that was attempted and failed (`error`), could not be answered (`unavailable`), or is not available on the platform (`unsupported`). `schema_version` stays `1`; the value only appears when a run selects a subset.
+
+Labels, separator, logo and colour are presentation only and never reach the JSON.
+
+Control characters in a label or separator are stripped before rendering, and `doctor` reports them so the file is not silently altered from what it says.

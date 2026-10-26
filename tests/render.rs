@@ -2,6 +2,7 @@ use anstyle::AnsiColor;
 use justfetch::{
     detect::shell::recognized_name,
     model::*,
+    module::ModuleId,
     privacy,
     render::{
         json, layout, logo,
@@ -101,12 +102,15 @@ fn fixture() -> SystemSnapshot {
     }
 }
 
-fn options(columns: usize) -> Options {
+fn options(columns: usize) -> Options<'static> {
     Options {
         columns,
         color: false,
         unicode: true,
         logo: true,
+        modules: &ModuleId::ALL,
+        labels: &[],
+        separator: "  ",
     }
 }
 
@@ -318,10 +322,9 @@ fn a_narrow_colored_row_still_accents_its_label() {
         let text = terminal::render(
             &fixture(),
             Options {
-                columns,
                 color: true,
-                unicode: true,
                 logo: false,
+                ..options(columns)
             },
         );
         let row = text
@@ -399,10 +402,10 @@ fn every_column_count_and_capability_combination_stays_in_bounds() {
                 let text = terminal::render(
                     &snapshot,
                     Options {
-                        columns,
                         color,
                         unicode,
                         logo: true,
+                        ..options(columns)
                     },
                 );
                 // Generated escapes occupy no display cells, so visual width is
@@ -711,4 +714,98 @@ fn shell_recognition_does_not_mislabel_a_runner() {
     );
     assert_eq!(recognized_name("/usr/bin/python3"), None);
     assert_eq!(recognized_name("/usr/bin/notbash"), None);
+}
+
+#[test]
+fn the_selection_decides_which_rows_exist_and_in_what_order() {
+    let snapshot = fixture();
+    let modules = [ModuleId::Memory, ModuleId::Os];
+    let text = terminal::render(
+        &snapshot,
+        Options {
+            logo: false,
+            unicode: false,
+            modules: &modules,
+            ..options(80)
+        },
+    );
+    let memory = text.find("Memory").expect("Memory row");
+    let os = text.find("OS ").expect("OS row");
+    assert!(memory < os, "rows follow the selection order:\n{text}");
+    for absent in ["Kernel", "Uptime", "Shell", "Disk"] {
+        assert!(!text.contains(absent), "{absent} was not selected:\n{text}");
+    }
+}
+
+#[test]
+fn custom_labels_and_separator_are_used_and_sanitised() {
+    let snapshot = fixture();
+    let labels = [
+        (ModuleId::Cpu, "Processor".to_owned()),
+        // A label is configuration input, so an escape in it must not reach the
+        // terminal.
+        (ModuleId::Os, "Sys\u{1b}[31m".to_owned()),
+    ];
+    let text = terminal::render(
+        &snapshot,
+        Options {
+            logo: false,
+            unicode: false,
+            labels: &labels,
+            separator: " :: ",
+            ..options(80)
+        },
+    );
+    assert!(text.contains("Processor :: Test CPU (8 logical)"), "{text}");
+    assert!(
+        text.lines()
+            .any(|line| line.starts_with("Sys") && line.contains(":: Example Linux 42")),
+        "{text}"
+    );
+    assert!(!text.contains('\u{1b}'), "an escape survived:\n{text:?}");
+}
+
+#[test]
+fn a_longer_label_widens_the_column_instead_of_breaking_alignment() {
+    let snapshot = fixture();
+    let labels = [(ModuleId::Os, "Operating system".to_owned())];
+    let text = terminal::render(
+        &snapshot,
+        Options {
+            logo: false,
+            unicode: false,
+            labels: &labels,
+            ..options(80)
+        },
+    );
+    let short = text
+        .lines()
+        .find(|line| line.starts_with("CPU"))
+        .expect("a CPU row");
+    assert!(
+        short.starts_with("CPU             "),
+        "short labels are padded to the new column width: {short:?}"
+    );
+}
+
+#[test]
+fn a_subset_keeps_the_default_label_column_width() {
+    // The column must not shrink to fit a subset: the same row should align the
+    // same way whatever else is on screen.
+    let snapshot = fixture();
+    let modules = [ModuleId::Os, ModuleId::Cpu];
+    let text = terminal::render(
+        &snapshot,
+        Options {
+            logo: false,
+            unicode: false,
+            modules: &modules,
+            ..options(80)
+        },
+    );
+    let os = text.lines().find(|line| line.starts_with("OS")).unwrap();
+    assert!(
+        os.starts_with("OS      "),
+        "the label column kept its default width: {os:?}"
+    );
 }

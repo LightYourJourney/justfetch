@@ -71,7 +71,7 @@ An independent pass re-ran every claim above against the actual checkout rather 
 - Cross-target checks reproduce. `RUSTC=~/.rustup/toolchains/stable-aarch64-apple-darwin/bin/rustc cargo check --locked --all-targets --target <t>` passes for `aarch64-unknown-linux-gnu`, `x86_64-unknown-linux-gnu`, `x86_64-pc-windows-gnu` and `x86_64-apple-darwin`. A first attempt failed with `can't find crate for std`; the cause is the documented one — PATH resolves Homebrew rustc 1.99.0, which does not know the Rustup targets — and it is an environment error, not a code error.
 - The macOS memory figure is not fabricated and matches its documented formula exactly. A C program calling `host_statistics64` directly computed `(internal_page_count - purgeable_count + wire_count + compressor_page_count) * page_size = 13953368064`, and `justfetch --format json` reported `used_bytes = 13953368064` in the same window.
 - Tool versions in `docs/performance.md` are accurate: `fastfetch 2.69.0`, `hyperfine 2.0.0`, and `/opt/homebrew/bin/pfetch` reports `pfetch-rs 3.0.2`, so the "pfetch-rs" label is correct rather than the shell `pfetch`.
-- Dependency MSRVs in `docs/research.md` match the registry manifests: sysinfo 0.39.6 declares 1.95, clap 4.6.7 declares 1.85, serde 1.0.229 declares 1.56, serde_json 1.0.151 declares 1.71, unicode-width 0.2.2 declares 1.66, unicode-segmentation 1.13.3 declares 1.85, anstyle 1.0.14 declares 1.66, libc 0.2.190 declares 1.65, windows-sys 0.61.2 declares 1.71.
+- Dependency MSRVs in `docs/research.md` match the registry manifests: sysinfo 0.39.6 declares 1.95, clap 4.6.7 declares 1.85, serde 1.0.229 declares 1.56, serde_json 1.0.151 declares 1.71, unicode-width 0.2.2 declares 1.66, unicode-segmentation 1.13.3 declares 1.85, anstyle 1.0.14 declares 1.66, libc 0.2.190 declares 1.65, windows-sys 0.61.2 declares 1.71, toml 1.1.8 and its chain declare 1.85.
 
 ### Defect found and fixed
 
@@ -265,3 +265,30 @@ Two of its findings were stale rather than real: it reported the release workflo
 - The disk counter arithmetic moved into a pure function so the cases that must error — zero block size, zero total, more free than total — are covered by tests rather than being unreachable branches.
 
 **Test count:** 54, up from 41. That figure is local: the most recent CI run (40304508178) covered an earlier commit's 51, and this one has not been pushed.
+
+## Module and configuration round (2026-10-27)
+
+Phase 10 added a module system and a TOML configuration file. `docs/configuration.md` is the reference; this records what was exercised.
+
+**Selection-driven collection.** The claim that an unselected module is never queried was measured rather than asserted: 100 runs each with `hyperfine --shell none --output pipe`, comparing a full run against progressively smaller selections. Instruction medians: full run 28.47 M, `--modules cpu` 27.81 M (97.7%), `--modules cpu,memory` 27.91 M (98.0%), every module except `host` 28.34 M (99.6%). Raw measurements are in [benchmarks/module-selection-2026-10-27.json](benchmarks/module-selection-2026-10-27.json). The saving is real and small because process startup dominates; no wall-clock figure is quoted, for the reason recorded in performance.md.
+
+**Configuration.** Paths resolve to `$XDG_CONFIG_HOME/justfetch/config.toml` or `~/.config/justfetch/config.toml` on Unix-like platforms, and `%APPDATA%\justfetch\config.toml` on Windows. Precedence was exercised at every layer with conflicting values: the command line beats `--config`, which beats the user file, which beats the defaults, and `--color`/`--no-color` override the file in both directions. Every malformed case — unknown module, duplicate module, empty list, unknown key, wrong type, malformed TOML, blank label, invalid `layout.logo`, missing `--config` file, empty `--modules` value — exits non-zero, writes nothing to stdout, and names the file and position.
+
+**init and doctor.** `init` writes a file that parses back to the defaults, creates only the target, and refuses to overwrite. `doctor` reports the resolved path, the effective settings and any error, exits non-zero on a broken file and zero on a good one — including when no home directory exists and `--config` supplies a valid file.
+
+**JSON compatibility.** A default run's text and JSON are identical to the previous commit: same keys, same shapes, same statuses, `schema_version: 1`. A selected subset reports `"status": "deselected"` for the rest, which is distinct from `error`, `unavailable` and `unsupported`.
+
+**Independent review.** A reviewer that had seen none of this work compared the default output against HEAD byte for byte, probed precedence through a real PTY, and tried every malformed configuration. It found no P0. Its findings, all now fixed:
+
+- `--privacy` rewrote a deselected module as `redacted`, contradicting the JSON contract this round introduced. Redaction now withholds only values that were actually collected, so a deselected module stays deselected and a failure stays a failure.
+- The ~1.5% saving was quoted in two documents as measured in this file, which did not yet contain the measurement. It has been measured and the raw data committed; the figure is 2.3% for a one-module selection.
+- `doctor` treated a missing home directory as a problem even when `--config` supplied a valid file, so a run that works was reported as broken.
+- `--config` was not a global option, so `justfetch init --config PATH` — the form the error message recommends — was rejected by the parser.
+- Two label keys naming the same module (`cpu` and `CPU`) were accepted with one silently winning.
+- `doctor` printed a label containing only bidi controls verbatim; its check now uses the same sanitizer the renderer does, so anything that would be stripped is reported.
+- With `os` deselected, the logo fell back to the generic emblem. That is the honest consequence of not querying the distribution and is now documented rather than changed.
+- Smaller corrections: the test count, the claim that only one status value had been added, `research.md` still saying TOML was omitted, and the dependency-MSRV list missing the new crate.
+
+**Not verified.** No Windows or Linux machine was available interactively. The configuration paths, `%APPDATA%` resolution and `--config` were exercised on macOS only; the other platforms are covered by cross-target `cargo check` and by CI, which has not run for this round yet.
+
+**Test count:** 79, up from 54.

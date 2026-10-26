@@ -2,7 +2,11 @@
 pub mod linux;
 pub mod shell;
 
-use crate::{model::*, platform};
+use crate::{
+    model::*,
+    module::{ModuleId, wanted},
+    platform,
+};
 use sysinfo::{CpuRefreshKind, System};
 
 /// The terminal application, which is not the shell. `TERM_PROGRAM` and
@@ -57,32 +61,45 @@ fn terminal() -> Detection<TerminalInfo> {
     }
 }
 
-pub fn collect() -> SystemSnapshot {
-    let data = platform::collect();
-    let mut system = System::new();
-    system.refresh_cpu_list(CpuRefreshKind::nothing());
-    let cpu = match (
-        system
-            .cpus()
-            .first()
-            .filter(|cpu| !cpu.brand().trim().is_empty()),
-        crate::platform::logical_cpu_count(system.cpus().len()),
-    ) {
-        (Some(cpu), Ok(logical_cores)) => Detection::available(
-            CpuInfo {
-                name: cpu.brand().trim().to_owned(),
-                logical_cores,
-            },
-            if cfg!(windows) {
-                "sysinfo CPU brand + GetActiveProcessorCount(all groups)"
-            } else {
-                "sysinfo CPU native adapter"
-            },
-        ),
-        (_, Err(error)) => Detection::error("logical processor count", ErrorCode::ApiFailed, error),
-        (None, _) => Detection::unavailable("CPU brand not exposed by the system adapter"),
+/// Collect only what `selection` asks for. Anything else is reported as
+/// deselected, and its collector is never called.
+pub fn collect(selection: &[ModuleId]) -> SystemSnapshot {
+    let data = platform::collect(selection);
+    // Enumerating processors is not free, so it happens only for a CPU row.
+    let cpu = if wanted(selection, ModuleId::Cpu) {
+        let mut system = System::new();
+        system.refresh_cpu_list(CpuRefreshKind::nothing());
+        match (
+            system
+                .cpus()
+                .first()
+                .filter(|cpu| !cpu.brand().trim().is_empty()),
+            crate::platform::logical_cpu_count(system.cpus().len()),
+        ) {
+            (Some(cpu), Ok(logical_cores)) => Detection::available(
+                CpuInfo {
+                    name: cpu.brand().trim().to_owned(),
+                    logical_cores,
+                },
+                if cfg!(windows) {
+                    "sysinfo CPU brand + GetActiveProcessorCount(all groups)"
+                } else {
+                    "sysinfo CPU native adapter"
+                },
+            ),
+            (_, Err(error)) => {
+                Detection::error("logical processor count", ErrorCode::ApiFailed, error)
+            }
+            (None, _) => Detection::unavailable("CPU brand not exposed by the system adapter"),
+        }
+    } else {
+        Detection::deselected()
     };
-    let shell = shell::collect();
+    let shell = if wanted(selection, ModuleId::Shell) {
+        shell::collect()
+    } else {
+        Detection::deselected()
+    };
     let variable = if cfg!(windows) { "USERNAME" } else { "USER" };
     let username = match std::env::var(variable)
         .ok()
@@ -111,7 +128,11 @@ pub fn collect() -> SystemSnapshot {
         swap: data.swap,
         disk: data.disk,
         shell,
-        terminal: terminal(),
+        terminal: if wanted(selection, ModuleId::Terminal) {
+            terminal()
+        } else {
+            Detection::deselected()
+        },
         local_ip: data.local_ip,
     }
 }

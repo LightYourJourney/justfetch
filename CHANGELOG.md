@@ -24,6 +24,18 @@
 - Windows rejects a `SOCKADDR` whose declared length is shorter than the structure it is cast to.
 - Re-measure the performance baseline on the eleven-field binary, asking each competitor for as many of the same fields as it supports. Four extra fields cost 1.4% more instructions; the competitor figures from the previous round are no longer comparable and are labelled as such.
 
+### Modules and configuration
+
+- Add `ModuleId`, one stable identifier per module. Selection, ordering, labels, diagnostics, collection and rendering all key off it, so a module is named once instead of appearing in several parallel lists.
+- Make collection follow the selection instead of filtering at render time. An unselected module is never queried: `--modules cpu` skips the address enumeration, the filesystem query, the process lookup and the registry reads the other rows would need. Measured saving is about 2% of the process's instructions for a one-module selection, which is real but dwarfed by process startup; the numbers and raw data are in `docs/validation.md`.
+- Add a TOML configuration file covering `modules`, `layout.logo`, `layout.separator`, `color.enabled` and per-module `labels`. Unknown keys, unknown modules, duplicate modules, empty lists, blank labels and wrong value types are errors with the file and position that produced them. A missing file is not an error.
+- Add the precedence chain — command line, `--config`, user file, defaults — in one function, with tests for each layer and for a conflicting pair.
+- Add `--modules`, `--config` and `--color`; `--no-color` keeps its meaning and now conflicts with `--color` rather than being ignored.
+- Add `justfetch init`, which writes a commented file with every key at its default and refuses to overwrite an existing one, and `justfetch doctor`, which reports the resolved path, whether it exists, the effective settings and any configuration error, exiting non-zero when it finds one.
+- Add a `deselected` field status so an unselected module is distinguishable from one that failed, was unavailable or is unsupported. Default runs are unchanged; `schema_version` stays 1.
+- Document the whole system in `docs/configuration.md`.
+- 79 tests, up from 54.
+
 ## 0.1.0 — pre-release
 
 - Add Rust CLI with text/JSON, no-color and automatic/no-logo options.

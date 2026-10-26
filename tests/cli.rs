@@ -1,11 +1,27 @@
 use std::process::{Command, Output};
 
+/// A directory that is never created, so the binary looks for a user
+/// configuration and finds none — whatever the person running the suite has in
+/// their real one.
+fn isolated_config_dir() -> std::path::PathBuf {
+    std::env::temp_dir().join("jf-cli-suite-has-no-config-here")
+}
+
 fn run(args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_justfetch"))
         .args(args)
         .env("NO_COLOR", "1")
+        .env("XDG_CONFIG_HOME", isolated_config_dir())
+        .env("APPDATA", isolated_config_dir())
         .output()
         .expect("run justfetch")
+}
+
+fn temp_dir(tag: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!("jf-cli-test-{tag}"));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
 }
 
 #[test]
@@ -159,4 +175,181 @@ fn json_ignores_visual_flags_and_environment() {
     let value: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert!(value["identity"]["hostname"].is_object());
     assert!(!out.stdout.contains(&27));
+}
+
+#[test]
+fn modules_select_and_order_the_rows() {
+    let out = run(&["--modules", "memory,cpu", "--logo", "none", "--no-color"]);
+    assert!(out.status.success());
+    assert!(out.stderr.is_empty());
+    let text = String::from_utf8(out.stdout).unwrap();
+    let memory = text.find("Memory").expect("a Memory row");
+    let cpu = text.find("CPU").expect("a CPU row");
+    assert!(memory < cpu, "rows follow the requested order:\n{text}");
+    for absent in [
+        "OS ", "Host", "Kernel", "Uptime", "Swap", "Disk", "Shell", "Term", "IP ",
+    ] {
+        assert!(
+            !text.lines().any(|line| line.starts_with(absent)),
+            "{absent} was not selected but was drawn:\n{text}"
+        );
+    }
+}
+
+#[test]
+fn json_marks_unselected_modules_as_deselected() {
+    let out = run(&["--format", "json", "--modules", "cpu"]);
+    assert!(out.status.success());
+    let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(json["schema_version"], 1);
+    assert_eq!(json["cpu"]["status"], "available");
+    for field in [
+        "os", "host", "kernel", "uptime", "memory", "swap", "disk", "shell", "terminal", "local_ip",
+    ] {
+        assert_eq!(json[field]["status"], "deselected", "{field}");
+        assert!(json[field].get("value").is_none(), "{field} kept a value");
+    }
+    // Identity is not a module: it stays for the title line.
+    assert!(json["identity"]["hostname"].is_object());
+}
+
+#[test]
+fn a_config_file_sets_modules_labels_and_separator() {
+    let dir = temp_dir("config");
+    let path = dir.join("config.toml");
+    std::fs::write(
+        &path,
+        "modules = [\"cpu\"]\n\n[layout]\nlogo = \"none\"\nseparator = \" :: \"\n\n[labels]\ncpu = \"Processor\"\n",
+    )
+    .unwrap();
+    let out = run(&["--config", path.to_str().unwrap(), "--no-color"]);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let text = String::from_utf8(out.stdout).unwrap();
+    assert!(text.contains("Processor :: "), "{text}");
+    assert!(!text.contains("CPU "), "{text}");
+}
+
+#[test]
+fn the_command_line_overrides_the_config_file() {
+    let dir = temp_dir("precedence");
+    let path = dir.join("config.toml");
+    std::fs::write(
+        &path,
+        "modules = [\"cpu\"]\n\n[layout]\nlogo = \"auto\"\n\n[color]\nenabled = false\n",
+    )
+    .unwrap();
+    let out = run(&[
+        "--config",
+        path.to_str().unwrap(),
+        "--modules",
+        "os",
+        "--logo",
+        "none",
+        "--no-color",
+    ]);
+    let text = String::from_utf8(out.stdout).unwrap();
+    assert!(text.contains("OS "), "{text}");
+    assert!(
+        !text.contains("CPU "),
+        "the file's module list should be overridden:\n{text}"
+    );
+}
+
+#[test]
+fn init_writes_a_usable_file_and_refuses_to_overwrite() {
+    let dir = temp_dir("init");
+    let path = dir.join("config.toml");
+    let first = run(&["--config", path.to_str().unwrap(), "init"]);
+    assert!(
+        first.status.success(),
+        "{}",
+        String::from_utf8_lossy(&first.stderr)
+    );
+    assert!(path.exists());
+    // What init writes must itself be a valid configuration.
+    let used = run(&[
+        "--config",
+        path.to_str().unwrap(),
+        "--no-color",
+        "--logo",
+        "none",
+    ]);
+    assert!(
+        used.status.success(),
+        "{}",
+        String::from_utf8_lossy(&used.stderr)
+    );
+    let second = run(&["--config", path.to_str().unwrap(), "init"]);
+    assert!(!second.status.success());
+    assert!(String::from_utf8_lossy(&second.stderr).contains("already exists"));
+}
+
+#[test]
+fn doctor_distinguishes_a_good_configuration_from_a_broken_one() {
+    let dir = temp_dir("doctor");
+    let good = dir.join("good.toml");
+    std::fs::write(&good, "modules = [\"cpu\"]\n").unwrap();
+    let ok = run(&["--config", good.to_str().unwrap(), "doctor"]);
+    assert!(
+        ok.status.success(),
+        "{}",
+        String::from_utf8_lossy(&ok.stdout)
+    );
+    assert!(String::from_utf8_lossy(&ok.stdout).contains("no problems found"));
+
+    let bad = dir.join("bad.toml");
+    std::fs::write(&bad, "modules = [\"gpu\"]\n").unwrap();
+    let broken = run(&["--config", bad.to_str().unwrap(), "doctor"]);
+    assert!(!broken.status.success());
+    let report = String::from_utf8_lossy(&broken.stdout);
+    assert!(report.contains("problem:"), "{report}");
+    assert!(report.contains("not a module id"), "{report}");
+}
+
+#[test]
+fn configuration_errors_reach_stderr_without_stdout() {
+    for (args, expected) in [
+        (&["--modules", "gpu"][..], "not a module id"),
+        (&["--modules", "os,os"], "listed twice"),
+        (
+            &["--config", "/nonexistent/justfetch.toml"],
+            "file not found",
+        ),
+    ] {
+        let out = run(args);
+        assert!(!out.status.success(), "{args:?}");
+        assert!(out.stdout.is_empty(), "{args:?}");
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(stderr.contains(expected), "{args:?}: {stderr}");
+    }
+}
+
+#[test]
+fn privacy_does_not_turn_deselection_into_redaction() {
+    // The two are different facts: the identity is withheld, the address was
+    // never collected.
+    let out = run(&["--format", "json", "--privacy", "--modules", "cpu"]);
+    assert!(out.status.success());
+    let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(json["identity"]["username"]["status"], "redacted");
+    assert_eq!(json["identity"]["hostname"]["status"], "redacted");
+    assert_eq!(json["local_ip"]["status"], "deselected");
+    assert_eq!(json["host"]["status"], "deselected");
+}
+
+#[test]
+fn config_is_accepted_after_a_subcommand() {
+    let dir = temp_dir("subcommand-config");
+    let path = dir.join("config.toml");
+    let out = run(&["init", "--config", path.to_str().unwrap()]);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(path.exists());
 }

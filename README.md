@@ -13,6 +13,7 @@ This list describes the current source. The published v0.1.0 archive is older an
 - OS, device model or labeled hostname, kernel, uptime, CPU, physical memory and swap, the filesystem holding your home directory, shell, terminal and local IPv4 addresses. Swap is reported as unsupported on Windows, which exposes no page-file figure to the APIs this project uses.
 - Explicit available/unavailable/unsupported/redacted/error states, source and confidence in JSON.
 - `--privacy` withholds the user name, the host name and the local addresses, and shortens the home path to `~`, identically in text and JSON.
+- Module selection and ordering, custom labels, a custom separator, and a TOML file to keep them in. Unselected modules are not collected at all. `justfetch init` writes a commented file; `justfetch doctor` explains what is wrong with a broken one.
 - Original ASCII logos for macOS, Windows, Linux, Arch, Debian, Ubuntu, Fedora, Gentoo, openSUSE, NixOS and unknown systems.
 - Unicode display-cell alignment and grapheme-aware wrapping; narrow terminals hide the logo.
 - Conservative ANSI colors, NO_COLOR, TERM=dumb and redirected-output support; no terminal state changes.
@@ -64,13 +65,17 @@ justfetch --version
 justfetch --no-color
 justfetch --logo none
 justfetch --privacy
+justfetch --modules os,cpu,memory
+justfetch --config ./justfetch.toml
 justfetch --format text
 justfetch --format json
+justfetch init
+justfetch doctor
 ```
 
 `--privacy` is for output that leaves the machine. The user name, host name and local addresses are withheld: JSON marks those fields `"status": "redacted"` with no value, rather than inventing a placeholder string. The disk path is only shortened to `~` — that field stays `available`, because its counters are exact and `~` is a true shorthand for the directory that was read. A device-model Host row and everything else are left alone; shell and terminal are not redacted, because neither names a person.
 
-`--logo auto` is the default. Other explicit logo choices and configurable themes/modules are planned, not implemented in v0.1. Non-TTY output is plain text; nonempty NO_COLOR or TERM=dumb disables ANSI even in a TTY. Long fields wrap within the detected terminal width. Legacy non-UTF-8 locales use ASCII presentation; JSON retains the original strings.
+`--logo auto` is the default. `--modules` picks the rows and their order, and a module that is not selected is never collected — not merely hidden. Non-TTY output is plain text; nonempty NO_COLOR or TERM=dumb disables ANSI even in a TTY. Long fields wrap within the detected terminal width. Legacy non-UTF-8 locales use ASCII presentation; JSON retains the original strings.
 
 JSON stdout is exactly one document, with raw seconds/bytes and no logo, ANSI or diagnostic logs. Field failures remain structured data; successful output returns zero even when a field is unavailable. Invalid options return a nonzero code with diagnostics on stderr. Output-write failures also return nonzero; closed pipes exit quietly.
 
@@ -117,6 +122,7 @@ The package has a small library for deterministic tests and a thin binary. Detec
 - [Architecture and implementation plan](docs/architecture.md)
 - [Validation record](docs/validation.md)
 - [Measured performance and reproducible commands](docs/performance.md)
+- [Configuration reference](docs/configuration.md)
 - [Version roadmap](docs/roadmap.md)
 - [Changelog](CHANGELOG.md)
 

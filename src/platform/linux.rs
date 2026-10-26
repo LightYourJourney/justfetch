@@ -1,4 +1,5 @@
 use super::{PlatformData, c_chars, disk, local_ip, uname, uname_identity};
+use crate::module::{ModuleId, wanted};
 use crate::{detect::linux as parse, model::*};
 use std::{
     fs::File,
@@ -47,6 +48,7 @@ fn parsed<T>(
         Detection::Unavailable { reason } => Detection::Unavailable { reason },
         Detection::Unsupported { reason } => Detection::Unsupported { reason },
         Detection::Redacted => Detection::Redacted,
+        Detection::Deselected => Detection::Deselected,
         Detection::Error {
             source,
             code,
@@ -108,8 +110,9 @@ fn host(hostname: Detection<String>, environment: &Environment) -> Detection<Hos
     })
 }
 
-pub fn collect() -> PlatformData {
+pub fn collect(selection: &[ModuleId]) -> PlatformData {
     let uname = uname();
+    // The hostname is needed for the title even when no module asks for it.
     let (hostname, kernel) = uname_identity(&uname);
     let environment = match &uname {
         Ok(data) => parse::environment(
@@ -126,44 +129,82 @@ pub fn collect() -> PlatformData {
         Scope::OperatingSystem
     };
     // /etc takes precedence. Fall back only when absent, never on malformed data.
-    let release = read("/etc/os-release");
-    let release = if matches!(release, Detection::Unavailable { .. }) {
-        read("/usr/lib/os-release")
+    let os = if wanted(selection, ModuleId::Os) {
+        let release = read("/etc/os-release");
+        let release = if matches!(release, Detection::Unavailable { .. }) {
+            read("/usr/lib/os-release")
+        } else {
+            release
+        };
+        parsed(release, parse::os_release)
     } else {
-        release
+        Detection::deselected()
     };
-    let os = parsed(release, parse::os_release);
-    let uptime = parsed(read("/proc/uptime"), parse::uptime).map(|seconds| UptimeInfo {
-        seconds,
-        scope: scope.clone(),
-    });
-    // One read serves both fields; the parser only looks at the keys it needs.
-    let meminfo = read("/proc/meminfo");
-    let swap = parsed(meminfo.clone(), parse::swap);
-    let memory = match parsed(meminfo, |text| parse::memory(text, scope)) {
-        Detection::Available {
-            value: (value, true),
-            source,
-            ..
-        } => Detection::estimated(
-            value,
-            source,
-            "MemAvailable is absent; estimated from free, buffers and reclaimable cache",
-        ),
-        other => other.map(|(value, _)| value),
+    let uptime = if wanted(selection, ModuleId::Uptime) {
+        parsed(read("/proc/uptime"), parse::uptime).map(|seconds| UptimeInfo {
+            seconds,
+            scope: scope.clone(),
+        })
+    } else {
+        Detection::deselected()
     };
-    let host = host(hostname.clone(), &environment);
+    // /proc/meminfo carries both fields, so it is read when either is wanted.
+    let (memory, swap) = if wanted(selection, ModuleId::Memory) || wanted(selection, ModuleId::Swap)
+    {
+        let meminfo = read("/proc/meminfo");
+        let swap = if wanted(selection, ModuleId::Swap) {
+            parsed(meminfo.clone(), parse::swap)
+        } else {
+            Detection::deselected()
+        };
+        let memory = if wanted(selection, ModuleId::Memory) {
+            match parsed(meminfo, |text| parse::memory(text, scope)) {
+                Detection::Available {
+                    value: (value, true),
+                    source,
+                    ..
+                } => Detection::estimated(
+                    value,
+                    source,
+                    "MemAvailable is absent; estimated from free, buffers and reclaimable cache",
+                ),
+                other => other.map(|(value, _)| value),
+            }
+        } else {
+            Detection::deselected()
+        };
+        (memory, swap)
+    } else {
+        (Detection::deselected(), Detection::deselected())
+    };
+    let host = if wanted(selection, ModuleId::Host) {
+        host(hostname.clone(), &environment)
+    } else {
+        Detection::deselected()
+    };
     // Do not query /mnt/c, Windows executables, DMI or host hardware under WSL.
     PlatformData {
         hostname,
         environment,
         os,
         host,
-        kernel,
+        kernel: if wanted(selection, ModuleId::Kernel) {
+            kernel
+        } else {
+            Detection::deselected()
+        },
         uptime,
         memory,
         swap,
-        disk: disk(),
-        local_ip: local_ip(),
+        disk: if wanted(selection, ModuleId::Disk) {
+            disk()
+        } else {
+            Detection::deselected()
+        },
+        local_ip: if wanted(selection, ModuleId::LocalIp) {
+            local_ip()
+        } else {
+            Detection::deselected()
+        },
     }
 }

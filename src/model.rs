@@ -26,6 +26,9 @@ pub enum Detection<T> {
     /// Withheld because `--privacy` was passed. Different from unavailable: the
     /// value exists and was collected, and this output deliberately omits it.
     Redacted,
+    /// Not collected because the user did not select this module. Different
+    /// from unavailable: nothing was attempted, and nothing failed.
+    Deselected,
     Error {
         source: String,
         code: ErrorCode,
@@ -94,6 +97,10 @@ impl<T> Detection<T> {
         Self::Redacted
     }
 
+    pub fn deselected() -> Self {
+        Self::Deselected
+    }
+
     pub fn error(source: impl Into<String>, code: ErrorCode, message: impl ToString) -> Self {
         Self::Error {
             source: source.into(),
@@ -125,6 +132,7 @@ impl<T> Detection<T> {
             Self::Unavailable { reason } => Detection::Unavailable { reason },
             Self::Unsupported { reason } => Detection::Unsupported { reason },
             Self::Redacted => Detection::Redacted,
+            Self::Deselected => Detection::Deselected,
             Self::Error {
                 source,
                 code,
