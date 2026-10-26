@@ -81,10 +81,16 @@ fn tty_colors_and_non_utf8_no_color() {
 fn actual_terminal_width_controls_wrapping() {
     for columns in [1, 25, 80] {
         let text = run(columns, &[], None, "xterm-256color");
-        assert!(
-            text.lines()
-                .all(|line| width(&sanitize(line)) <= usize::from(columns)),
-            "width {columns}: {text}"
-        );
+        // Report the offending line alone: dumping the whole render floods the
+        // CI log and gets truncated before the useful part.
+        if let Some(line) = text
+            .lines()
+            .find(|line| width(&sanitize(line)) > usize::from(columns))
+        {
+            panic!(
+                "width {columns}: line {line:?} measures {} columns",
+                width(&sanitize(line))
+            );
+        }
     }
 }
