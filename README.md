@@ -66,7 +66,7 @@ justfetch --format text
 justfetch --format json
 ```
 
-`--privacy` is for output that leaves the machine. It replaces the user name and host name with `redacted`, drops the local addresses, and shortens the disk path to `~`; the numbers either field reports are unchanged and still exact. The values are withheld, not fabricated, so JSON marks those fields `"status": "redacted"` rather than inventing a string. A device-model Host row and everything else are left alone. Shell detection and the terminal row are not redacted, because neither names a person.
+`--privacy` is for output that leaves the machine. The user name, host name and local addresses are withheld: JSON marks those fields `"status": "redacted"` with no value, rather than inventing a placeholder string. The disk path is only shortened to `~` — that field stays `available`, because its counters are exact and `~` is a true shorthand for the directory that was read. A device-model Host row and everything else are left alone; shell and terminal are not redacted, because neither names a person.
 
 `--logo auto` is the default. Other explicit logo choices and configurable themes/modules are planned, not implemented in v0.1. Non-TTY output is plain text; nonempty NO_COLOR or TERM=dumb disables ANSI even in a TTY. Long fields wrap within the detected terminal width. Legacy non-UTF-8 locales use ASCII presentation; JSON retains the original strings.
 
@@ -96,7 +96,7 @@ Linux reads os-release, proc and sysfs without assuming systemd or a package man
 
 Memory accounting differs across operating systems. Container values can reflect the host kernel rather than container quotas; cgroup accounting is outside v0.1. Shell detection checks the immediate parent executable, then a labeled configured default. Sandboxes may deny individual system APIs. [Compatibility](docs/compatibility.md) explains the boundaries and distinguishes implemented, compiled, tested and hardware-verified capabilities.
 
-Usernames and hostnames can identify a person or device. Review/redact output before sharing screenshots or JSON. justfetch does not upload it; privacy mode is planned for a later version.
+Usernames and hostnames can identify a person or device. Review output before sharing screenshots or JSON; `--privacy` withholds the identifying fields for anything that leaves the machine. justfetch does not upload it.
 
 ## Development
 

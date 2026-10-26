@@ -126,6 +126,14 @@ fn terminal_never_claims_an_application_it_cannot_name() {
 }
 
 #[test]
+fn ansi_support_follows_the_platform_console() {
+    // Under `cargo test` stdout is a pipe. Unix reports the capability
+    // unconditionally; Windows has to ask the console and must not assume it,
+    // which is the behaviour this pins.
+    assert_eq!(justfetch::platform::supports_ansi(), cfg!(unix));
+}
+
+#[test]
 fn windows_does_not_fabricate_a_swap_figure() {
     // The documented contract: Windows exposes a commit limit, not page-file
     // usage, and no permitted API supplies the latter. Change this deliberately

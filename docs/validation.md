@@ -233,4 +233,10 @@ That refactor introduced a regression, which the independent review caught rathe
 
 **Independent review.** A reviewer that had not seen this round's work re-ran the checks and wrote its own experiments. It found no blocking defect and four worth fixing, all now fixed: the narrow-width accent above; `tests/detection.rs` asserting that shell detection is available, which fails on any host without `SHELL` exported (reproduced with `env -u SHELL`); an empty `WT_SESSION` being taken as evidence of Windows Terminal; and `--help` not mentioning that `--privacy` also shortens the home path. It also confirmed privacy end to end, that every exhaustive match handles `redacted`, and that the workflow shell steps are safe under `set -e`.
 
-**Test count:** 49, up from 41.
+**Second review round.** A further two-axis review over this round's own commits found no blocking issue and five worth fixing, all now fixed. The README still said `--privacy` was planned for a later version, in a file that elsewhere documents it as shipped. `architecture.md` said every breaking schema change raises the version, while `redacted` is a new status value at version 1 — now explained rather than left silent. The PTY capture normalisation deleted every carriage return instead of only a trailing one, which would also have hidden a CR leaking from the data. The release workflow ran the build output rather than the archive it produced, and neither workflow asserted a named field, so one working detector could keep them green. `compatibility.md` still described seven fields and the older run.
+
+The reviewer also confirmed the layering judgement — privacy as a separate pass over the snapshot, `Row`/`Line`/`Accent` as a minimal replacement for the parallel arrays rather than speculation about v0.2 — and agreed that `redacted` is the correct opposite of erasing a state.
+
+Two regression tests came out of it: a stdout with no reader must exit successfully, and `supports_ansi` must follow the platform console instead of assuming it. The release workflow now unpacks the archive it built and runs the binary from inside it, checking that `os` and `memory` are available by name, and verifies that `SHA256SUMS` covers every archive. The assertion logic was exercised locally against a deliberately broken document to confirm it fails.
+
+**Test count:** 51, up from 41.

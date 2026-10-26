@@ -65,14 +65,42 @@ fn run(columns: u16, args: &[&str], no_color: Option<&OsStr>, term: &str) -> Str
     let output = child.wait_with_output().unwrap();
     assert!(output.status.success());
     assert!(output.stderr.is_empty());
-    // A PTY with OPOST delivers each newline as CRLF, and the capture can carry
-    // a further CR at a line boundary depending on the platform. The program
-    // never writes a meaningful carriage return — `sanitize` turns any in the
-    // data into a space — so dropping them here leaves the rendered columns
-    // intact and stops the width check from counting a line-ending artifact.
+    // A PTY with OPOST delivers each newline as CRLF, and a capture can carry a
+    // further trailing CR at a line end depending on the platform. Strip only
+    // that trailing one: deleting every CR would also hide a carriage return
+    // that leaked into a line from the data, which is a real defect.
     String::from_utf8(bytes)
-        .map(|text| text.replace('\r', ""))
+        .map(|text| {
+            text.lines()
+                .map(|line| line.strip_suffix('\r').unwrap_or(line))
+                .collect::<Vec<_>>()
+                .join("\n")
+        })
         .unwrap()
+}
+
+#[test]
+fn a_stdout_with_no_reader_exits_successfully() {
+    use std::os::fd::FromRawFd;
+    let mut fds = [0 as libc::c_int; 2];
+    // SAFETY: pipe() fills both descriptors on success and we take ownership of
+    // each exactly once below.
+    assert_eq!(unsafe { libc::pipe(fds.as_mut_ptr()) }, 0);
+    // SAFETY: the pair is owned here and not used elsewhere.
+    let read = unsafe { File::from_raw_fd(fds[0]) };
+    // SAFETY: ownership of the other descriptor is transferred exactly once.
+    let write = unsafe { File::from_raw_fd(fds[1]) };
+    // Closing the only reader first guarantees the child's write gets EPIPE
+    // rather than fitting into a pipe buffer.
+    drop(read);
+    let status = Command::new(env!("CARGO_BIN_EXE_justfetch"))
+        .stdout(Stdio::from(write))
+        .status()
+        .unwrap();
+    assert!(
+        status.success(),
+        "a closed pipe should be a quiet success, got {status:?}"
+    );
 }
 
 #[test]

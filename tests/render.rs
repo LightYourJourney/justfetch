@@ -244,6 +244,9 @@ fn privacy_withholds_identity_but_keeps_the_counters() {
     assert!(matches!(snapshot.local_ip, Detection::Redacted));
     // The fixture's Host is a device model, not the hostname, so it survives.
     assert!(snapshot.host.value().is_some());
+    // The path is shortened, not withheld: the field stays available because
+    // its counters are exact. That distinction is documented, so it is pinned.
+    assert!(matches!(snapshot.disk, Detection::Available { .. }));
     let disk = snapshot.disk.value().unwrap();
     assert_eq!(disk.path, "~");
     assert_eq!(disk.total_bytes, 500 * 1_073_741_824);

@@ -39,7 +39,10 @@ jobs:
           [ -f "$binary.exe" ] && binary="$binary.exe"
           "$binary" --format json > smoke.json
           grep -q '"schema_version": 1' smoke.json
-          grep -q '"status": "available"' smoke.json
+          # Named fields, not "some field is available": a detector that fails
+          # outright would otherwise leave this step green.
+          grep -A1 '"os": {' smoke.json | grep -q '"status": "available"'
+          grep -A1 '"memory": {' smoke.json | grep -q '"status": "available"'
 
   msrv:
     name: MSRV / 1.95.0

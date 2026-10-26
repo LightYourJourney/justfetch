@@ -48,19 +48,6 @@ jobs:
         run: rustup target add --toolchain stable ${{ matrix.target }}
       - name: Build
         run: cargo +stable build --release --locked --target ${{ matrix.target }}
-      # A successful cross-compile says nothing about whether the archive runs.
-      # This executes the binary on the runner that built it, for every target
-      # except the one that cannot run here.
-      - name: Run the built binary
-        if: matrix.native
-        shell: bash
-        run: |
-          set -eu
-          binary="target/${{ matrix.target }}/release/justfetch"
-          [ -f "$binary.exe" ] && binary="$binary.exe"
-          "$binary" --format json > run.json
-          grep -q '"schema_version": 1' run.json
-          grep -q '"status": "available"' run.json
       - name: Stage the archive contents
         shell: bash
         run: |
@@ -82,6 +69,36 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: Compress-Archive -Path "stage/$env:NAME" -DestinationPath "$env:NAME.zip"
+      # A successful cross-compile says nothing about whether the archive runs,
+      # and running the build output would not prove the archive is usable. This
+      # unpacks the archive it just produced and runs the binary from inside it,
+      # for every target that can run on its own runner. The one that cannot is
+      # marked `native: false` rather than left implied to have been tested.
+      - name: Run the packaged binary (unix)
+        if: matrix.native && runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -eu
+          mkdir -p artifact
+          tar -xzf ./*.tar.gz -C artifact
+          binary=$(find artifact -type f -name justfetch | head -1)
+          "$binary" --format json > run.json
+          grep -A1 '"os": {' run.json | grep -q '"status": "available"'
+          grep -A1 '"memory": {' run.json | grep -q '"status": "available"'
+      - name: Run the packaged binary (windows)
+        if: matrix.native && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Expand-Archive -Path (Get-ChildItem *.zip)[0].FullName -DestinationPath artifact
+          $binary = Get-ChildItem artifact -Recurse -Filter justfetch.exe | Select-Object -First 1
+          & $binary.FullName --format json > run.json
+          if ($LASTEXITCODE -ne 0) { throw "packaged justfetch exited $LASTEXITCODE" }
+          $json = Get-Content run.json -Raw
+          foreach ($field in 'os', 'memory') {
+            if (-not ($json -match ('"' + $field + '": \{\s*"status": "available"'))) {
+              throw "$field is not available in the packaged binary"
+            }
+          }
       - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.target }}
@@ -102,9 +119,18 @@ jobs:
           merge-multiple: true
       - name: Write checksums
         run: |
+          set -eu
           cd dist
           sha256sum ./* > SHA256SUMS
           cat SHA256SUMS
+          # A checksum file that silently covers four of five archives is worse
+          # than none, so the count is checked rather than assumed.
+          listed=$(wc -l < SHA256SUMS)
+          archives=$(find . -maxdepth 1 -type f \( -name '*.tar.gz' -o -name '*.zip' \) | wc -l)
+          if [ "$listed" -ne "$archives" ]; then
+            echo "SHA256SUMS lists $listed files but $archives archives exist"
+            exit 1
+          fi
       # --prerelease is deliberate: the three CI-verified platforms are not the
       # whole matrix. Removing this one word is the change once the real-hardware
       # verification in docs/roadmap.md is done.
