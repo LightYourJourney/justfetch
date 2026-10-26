@@ -65,7 +65,14 @@ fn run(columns: u16, args: &[&str], no_color: Option<&OsStr>, term: &str) -> Str
     let output = child.wait_with_output().unwrap();
     assert!(output.status.success());
     assert!(output.stderr.is_empty());
-    String::from_utf8(bytes).unwrap()
+    // A PTY with OPOST delivers each newline as CRLF, and the capture can carry
+    // a further CR at a line boundary depending on the platform. The program
+    // never writes a meaningful carriage return — `sanitize` turns any in the
+    // data into a space — so dropping them here leaves the rendered columns
+    // intact and stops the width check from counting a line-ending artifact.
+    String::from_utf8(bytes)
+        .map(|text| text.replace('\r', ""))
+        .unwrap()
 }
 
 #[test]
