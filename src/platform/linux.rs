@@ -46,6 +46,7 @@ fn parsed<T>(
         },
         Detection::Unavailable { reason } => Detection::Unavailable { reason },
         Detection::Unsupported { reason } => Detection::Unsupported { reason },
+        Detection::Redacted => Detection::Redacted,
         Detection::Error {
             source,
             code,

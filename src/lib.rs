@@ -4,4 +4,5 @@ pub mod config;
 pub mod detect;
 pub mod model;
 pub mod platform;
+pub mod privacy;
 pub mod render;

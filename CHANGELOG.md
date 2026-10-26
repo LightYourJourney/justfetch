@@ -8,10 +8,20 @@
 - Disk reports the filesystem containing the home directory, via `statvfs` on Unix and `GetDiskFreeSpaceExW` on Windows. `used` is `total - free` and `available` is what a user may still allocate, so the two coincide where no blocks are reserved and differ by the reserve where they are. On APFS the kernel reports container-wide counters, so the figure matches Fastfetch's and can differ from `df`'s per-volume usage.
 - Local IP lists every routable IPv4 address rather than picking one, because the first interface the kernel reports is often a container bridge. Windows walks `GetAdaptersAddresses` and filters on `OperStatus`.
 - Swap is exact on Linux and macOS. Windows reports `unsupported`, for the reason measured below rather than assumed.
-- Terminal prefers the emulator name over the shell: `TERM_PROGRAM` (with its version when set), then `WT_SESSION`, then `TERM`. The last of those is a capability string rather than an application name, so the plain `TERM` fallback is reported as-is rather than dressed up as an emulator. It reads environment variables only, so redirected output reports the same terminal.
+- Terminal prefers the emulator name over the shell: `TERM_PROGRAM` (with its version when set), then `WT_SESSION`, then `TERM`. It reads environment variables only, so redirected output reports the same terminal. How the `TERM` fallback is classified is described under Stabilisation below.
 - `f_blocks` is a 32-bit counter on macOS and a 64-bit one on Linux, so the widening conversion is explicit on both instead of relying on a cast that happens to compile.
 - Local IP filters loopback, link-local and unspecified addresses through one shared predicate, so the Unix and Windows adapters exclude the same set. An address on an adapter the platform cannot name is reported without an empty `()`, and the interface field is omitted from JSON rather than sent as `""`.
 - Windows swap now reports `unsupported`, the first field to use that state. Windows exposes a commit limit rather than page-file usage, and the derivation from it does not hold: the CI runner reported 2.41 GiB committed against 2.62 GiB resident, so the subtraction went negative, because file-backed mappings and driver memory are resident without being committed. No permitted API exposes the figure, so it is named as unsupported rather than approximated.
+
+### Stabilisation
+
+- Terminal detection no longer presents `TERM` as the terminal application. `TERM_PROGRAM` and `WT_SESSION` name the program and stay confirmed; `TERM` carries a capability type such as `xterm-256color`, so it is reported with `"kind": "capability_type"` and marked estimated with a note. The text row reads `~ xterm-256color (TERM type)`.
+- Add `--privacy`, which withholds the user name, host name, local addresses and home path identically in text and JSON. Withheld fields report a new `redacted` status rather than a placeholder string, so a withheld value cannot be mistaken for an invented one.
+- Replace the renderer's parallel field arrays with one ordered row list, and derive the label column width from the labels instead of a constant. Pinned output is unchanged; an independent review then found that the narrow branch (8–10 columns) had lost the label accent, which is now restored and covered by a width sweep. The list is the one place a later version would select, reorder or relabel fields.
+- Add `tests/detection.rs`, which asserts on every platform that the core fields are actually available and that the reported numbers are self-consistent. The CI smoke step previously proved only that the process started.
+- The release workflow now runs the binary it just built, for every target that can run on its own runner. The cross-compiled Intel macOS archive is excluded explicitly and stays built-but-not-executed.
+- Windows rejects a `SOCKADDR` whose declared length is shorter than the structure it is cast to.
+- Re-measure the performance baseline on the eleven-field binary, asking each competitor for as many of the same fields as it supports. Four extra fields cost 1.4% more instructions; the competitor figures from the previous round are no longer comparable and are labelled as such.
 
 ## 0.1.0 — pre-release
 
@@ -46,7 +56,7 @@
 
 - Measure Macchina 6.4.0, the comparator the spec asked for and the two earlier rounds had to leave open. It is included in the baseline table and in the new raw artifact.
 - Move the baseline onto instruction counts. Wall clock on a loaded host varied by 59–125% across commands while instruction counts varied by 1.2–2.1%, so wall clock was demoted to a load-contaminated upper bound. Ten interleaved rounds with a rotating command order replaced the sequential protocol, which let a single load spike bias a whole command.
-- Record the raw 700-sample evidence in `docs/benchmarks/macos-arm64-interleaved.json`, including every metric Hyperfine emitted and the load samples, with no statistic baked in.
+- Record the raw 700-sample evidence in `docs/benchmarks/macos-arm64-interleaved-2026-10-16.json`, including every metric Hyperfine emitted and the load samples, with no statistic baked in.
 - Correct the hypothesis recorded in `docs/performance.md` for the 2026-10-11 re-measurement: the 3x wall-time drift was attributed to a per-run harness cost, and measuring sandboxed against unsandboxed showed it was host load instead.
 - Report the result that collection and rendering are about 1.5% of the process's instructions — `--help` costs 27.4 M against 27.8 M for a full run — so the remaining cost is startup, linking and argument parsing.
 

@@ -65,6 +65,7 @@ fn display<T>(detection: &Detection<T>, f: impl FnOnce(&T) -> String) -> String 
         }
         Detection::Unavailable { .. } => "Unavailable".into(),
         Detection::Unsupported { .. } => "Unsupported".into(),
+        Detection::Redacted => "redacted".into(),
         Detection::Error {
             source, message, ..
         } => format!("Error ({source}: {message})"),
@@ -104,8 +105,150 @@ pub fn render_with_logo(snapshot: &SystemSnapshot, options: Options, logo: &logo
     let title = plain(&format!("{username}@{hostname}"), options.unicode);
     let divider = if options.unicode { "─" } else { "-" }
         .repeat(width(&title).clamp(12, 40).min(info_columns));
-    let mut rows = wrap(&title, info_columns);
-    rows.push(divider.clone());
+    let mut lines: Vec<Line> = wrap(&title, info_columns)
+        .into_iter()
+        .enumerate()
+        .map(|(index, text)| Line {
+            text,
+            accent: (index == 0).then_some(Accent::Whole),
+        })
+        .collect();
+    lines.push(Line {
+        text: divider.clone(),
+        accent: None,
+    });
+
+    let rows = field_rows(snapshot);
+    // The label column is derived, so a longer label widens it instead of
+    // breaking the alignment the styling pass relies on.
+    let label_width = rows.iter().map(|row| width(row.label)).max().unwrap_or(0);
+    let prefix_width = label_width + 2;
+    let continuation = " ".repeat(prefix_width);
+    for row in &rows {
+        let value = plain(&row.value, options.unicode);
+        // Padded by display width, not character count, so a wide-character
+        // label would still line up.
+        let prefix = format!(
+            "{}{}",
+            row.label,
+            " ".repeat(label_width - width(row.label) + 2)
+        );
+        // Keep a readable continuation indent whenever enough width exists.
+        if info_columns > prefix_width + 2 {
+            let chunks = wrap(&value, info_columns - prefix_width);
+            for (index, chunk) in chunks.into_iter().enumerate() {
+                lines.push(if index == 0 {
+                    Line {
+                        text: format!("{prefix}{chunk}"),
+                        accent: Some(Accent::Prefix(prefix.len())),
+                    }
+                } else {
+                    Line {
+                        text: format!("{continuation}{chunk}"),
+                        accent: None,
+                    }
+                });
+            }
+        } else {
+            for (index, text) in wrap(&format!("{prefix}{value}"), info_columns)
+                .into_iter()
+                .enumerate()
+            {
+                // A row that starts with the whole label column still gets it
+                // accented; one too narrow to hold the column starts mid-label
+                // and stays plain, as before.
+                let accent = (index == 0
+                    && text.len() >= prefix.len()
+                    && text.is_char_boundary(prefix.len()))
+                .then_some(Accent::Prefix(prefix.len()));
+                lines.push(Line { text, accent });
+            }
+        }
+    }
+    lines.push(Line {
+        text: divider,
+        accent: None,
+    });
+    let dot = if options.unicode { "●" } else { "o" };
+    let palette = [
+        AnsiColor::Black,
+        AnsiColor::Red,
+        AnsiColor::Green,
+        AnsiColor::Yellow,
+        AnsiColor::Blue,
+        AnsiColor::Magenta,
+        AnsiColor::Cyan,
+        AnsiColor::White,
+    ];
+    let swatches = palette
+        .into_iter()
+        .take(info_columns.div_ceil(2).min(8))
+        .map(|color| theme::accent(dot, color, options.color))
+        .collect::<Vec<_>>()
+        .join(" ");
+    // ANSI is added only after all plain widths and wrapping have been computed.
+    let mut output = String::new();
+    let row_count = lines
+        .len()
+        .max(if show_logo { logo_lines.len() } else { 0 });
+    for index in 0..row_count {
+        if show_logo {
+            let line = logo_lines.get(index).copied().unwrap_or("");
+            output.push_str(&theme::accent(line, logo.color, options.color));
+            output.push_str(&" ".repeat(logo_width - width(line) + 3));
+        }
+        if let Some(line) = lines.get(index) {
+            match line.accent {
+                Some(Accent::Whole) => {
+                    output.push_str(&theme::accent(&line.text, logo.color, options.color));
+                }
+                Some(Accent::Prefix(length)) => {
+                    output.push_str(&theme::accent(
+                        &line.text[..length],
+                        logo.color,
+                        options.color,
+                    ));
+                    output.push_str(&line.text[length..]);
+                }
+                None => output.push_str(&line.text),
+            }
+        }
+        // Avoid trailing padding when the logo extends below the information.
+        while output.ends_with(' ') {
+            output.pop();
+        }
+        output.push('\n');
+    }
+    if show_logo {
+        output.push_str(&" ".repeat(logo_width + 3));
+    }
+    output.push_str(&swatches);
+    output.push('\n');
+    output
+}
+
+/// One information row before layout. This list is the display order, and it is
+/// the single place that has to change to select, reorder or relabel fields.
+struct Row {
+    label: &'static str,
+    value: String,
+}
+
+/// A composed line plus which part of it is accented. The styling pass reads
+/// this instead of slicing rows and matching label strings.
+struct Line {
+    text: String,
+    accent: Option<Accent>,
+}
+
+enum Accent {
+    /// The whole line, used for the title.
+    Whole,
+    /// The leading label column, measured in bytes of this line.
+    Prefix(usize),
+}
+
+fn field_rows(snapshot: &SystemSnapshot) -> Vec<Row> {
     let os = display(&snapshot.os, |os| match &os.version {
         Some(version) if !os.name.contains(version) => format!("{} {version}", os.name),
         _ => os.name.clone(),
@@ -145,9 +288,12 @@ pub fn render_with_logo(snapshot: &SystemSnapshot, options: Options, logo: &logo
         ShellKind::CurrentParent => shell.name.clone(),
         ShellKind::ConfiguredDefault => format!("{} (default)", shell.name),
     });
-    let terminal = display(&snapshot.terminal, |terminal| match &terminal.version {
-        Some(version) => format!("{} {version}", terminal.name),
-        None => terminal.name.clone(),
+    let terminal = display(&snapshot.terminal, |terminal| match terminal.kind {
+        TerminalKind::Application => match &terminal.version {
+            Some(version) => format!("{} {version}", terminal.name),
+            None => terminal.name.clone(),
+        },
+        TerminalKind::CapabilityType => format!("{} (TERM type)", terminal.name),
     });
     let local_ip = display(&snapshot.local_ip, |local_ip| {
         local_ip
@@ -160,117 +306,52 @@ pub fn render_with_logo(snapshot: &SystemSnapshot, options: Options, logo: &logo
             .collect::<Vec<_>>()
             .join(", ")
     });
-    let values = [
-        format!("{os}{environment}"),
-        host,
-        kernel,
-        uptime,
-        cpu,
-        memory,
-        swap,
-        disk,
-        shell,
-        terminal,
-        local_ip,
-    ];
-    for (key, value) in FIELD_KEYS.into_iter().zip(values) {
-        let value = plain(&value, options.unicode);
-        let prefix = field_prefix(key);
-        // Keep a readable continuation indent whenever enough width exists.
-        if info_columns > 10 {
-            let chunks = wrap(&value, info_columns - KEY_PREFIX_LEN);
-            for (index, chunk) in chunks.into_iter().enumerate() {
-                rows.push(format!(
-                    "{}{chunk}",
-                    if index == 0 {
-                        prefix.as_str()
-                    } else {
-                        CONTINUATION
-                    }
-                ));
-            }
-        } else {
-            rows.extend(wrap(&format!("{prefix}{value}"), info_columns));
-        }
-    }
-    rows.push(divider);
-    let dot = if options.unicode { "●" } else { "o" };
-    let palette = [
-        AnsiColor::Black,
-        AnsiColor::Red,
-        AnsiColor::Green,
-        AnsiColor::Yellow,
-        AnsiColor::Blue,
-        AnsiColor::Magenta,
-        AnsiColor::Cyan,
-        AnsiColor::White,
-    ];
-    let swatches = palette
-        .into_iter()
-        .take(info_columns.div_ceil(2).min(8))
-        .map(|color| theme::accent(dot, color, options.color))
-        .collect::<Vec<_>>()
-        .join(" ");
-    // ANSI is added only after all plain widths and wrapping have been computed.
-    let mut output = String::new();
-    let row_count = rows.len().max(if show_logo { logo_lines.len() } else { 0 });
-    for index in 0..row_count {
-        if show_logo {
-            let line = logo_lines.get(index).copied().unwrap_or("");
-            output.push_str(&theme::accent(line, logo.color, options.color));
-            output.push_str(&" ".repeat(logo_width - width(line) + 3));
-        }
-        if let Some(line) = rows.get(index) {
-            if index == 0 {
-                output.push_str(&theme::accent(line, logo.color, options.color));
-            } else if index > 1
-                && line.len() >= KEY_PREFIX_LEN
-                && line.is_char_boundary(KEY_PREFIX_LEN)
-                && fields_key(&line[..KEY_PREFIX_LEN])
-            {
-                output.push_str(&theme::accent(
-                    &line[..KEY_PREFIX_LEN],
-                    logo.color,
-                    options.color,
-                ));
-                output.push_str(&line[KEY_PREFIX_LEN..]);
-            } else {
-                output.push_str(line);
-            }
-        }
-        // Avoid trailing padding when the logo extends below the information.
-        while output.ends_with(' ') {
-            output.pop();
-        }
-        output.push('\n');
-    }
-    if show_logo {
-        output.push_str(&" ".repeat(logo_width + 3));
-    }
-    output.push_str(&swatches);
-    output.push('\n');
-    output
-}
-
-/// Field keys in display order. The styling pass reads the same list, so the
-/// rows and the keys they are styled by cannot disagree.
-const FIELD_KEYS: [&str; 11] = [
-    "OS", "Host", "Kernel", "Uptime", "CPU", "Memory", "Swap", "Disk", "Shell", "Term", "IP",
-];
-
-/// A field row opens with the key column, so this is how many bytes of a
-/// composed row the styling pass replaces with a styled prefix.
-const KEY_PREFIX_LEN: usize = 8;
-
-/// Wrapped continuation rows indent by exactly the key column.
-const CONTINUATION: &str = "        ";
-
-fn field_prefix(key: &str) -> String {
-    format!("{key:<6}  ")
-}
-
-fn fields_key(prefix: &str) -> bool {
-    FIELD_KEYS.contains(&prefix.trim())
+    vec![
+        Row {
+            label: "OS",
+            value: format!("{os}{environment}"),
+        },
+        Row {
+            label: "Host",
+            value: host,
+        },
+        Row {
+            label: "Kernel",
+            value: kernel,
+        },
+        Row {
+            label: "Uptime",
+            value: uptime,
+        },
+        Row {
+            label: "CPU",
+            value: cpu,
+        },
+        Row {
+            label: "Memory",
+            value: memory,
+        },
+        Row {
+            label: "Swap",
+            value: swap,
+        },
+        Row {
+            label: "Disk",
+            value: disk,
+        },
+        Row {
+            label: "Shell",
+            value: shell,
+        },
+        Row {
+            label: "Term",
+            value: terminal,
+        },
+        Row {
+            label: "IP",
+            value: local_ip,
+        },
+    ]
 }
 
 #[cfg(test)]
@@ -296,16 +377,9 @@ mod tests {
             Some("xterm")
         ));
     }
-    /// The styling pass slices composed rows by `KEY_PREFIX_LEN`, so the
-    /// constant has to keep matching what `field_prefix` actually produces.
-    #[test]
-    fn key_column_width_matches_the_styled_slice() {
-        assert_eq!(CONTINUATION.len(), KEY_PREFIX_LEN);
-        for key in FIELD_KEYS {
-            assert_eq!(field_prefix(key).len(), KEY_PREFIX_LEN, "{key}");
-        }
-    }
-
+    /// The label column is derived from the labels themselves, so the width the
+    /// styling pass slices and the width the rows are padded to are the same
+    /// value by construction. `fixed_plain_render_is_aligned` pins the result.
     #[test]
     fn uptime_units() {
         assert_eq!(format_uptime(59), "59s");

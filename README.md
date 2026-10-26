@@ -9,7 +9,8 @@ A compact Rust CLI that displays real local system information, with a responsiv
 ## Features
 
 - OS, device model or labeled hostname, kernel, uptime, CPU, physical memory and swap, the filesystem holding your home directory, shell, terminal and local IPv4 addresses.
-- Explicit available/unavailable/unsupported/error states, source and confidence in JSON.
+- Explicit available/unavailable/unsupported/redacted/error states, source and confidence in JSON.
+- `--privacy` withholds the user name, the host name, the local addresses and the home path, identically in text and JSON.
 - Original ASCII logos for macOS, Windows, Linux, Arch, Debian, Ubuntu, Fedora, Gentoo, openSUSE, NixOS and unknown systems.
 - Unicode display-cell alignment and grapheme-aware wrapping; narrow terminals hide the logo.
 - Conservative ANSI colors, NO_COLOR, TERM=dumb and redirected-output support; no terminal state changes.
@@ -60,9 +61,12 @@ justfetch --help
 justfetch --version
 justfetch --no-color
 justfetch --logo none
+justfetch --privacy
 justfetch --format text
 justfetch --format json
 ```
+
+`--privacy` is for output that leaves the machine. It replaces the user name and host name with `redacted`, drops the local addresses, and shortens the disk path to `~`; the numbers either field reports are unchanged and still exact. The values are withheld, not fabricated, so JSON marks those fields `"status": "redacted"` rather than inventing a string. A device-model Host row and everything else are left alone. Shell detection and the terminal row are not redacted, because neither names a person.
 
 `--logo auto` is the default. Other explicit logo choices and configurable themes/modules are planned, not implemented in v0.1. Non-TTY output is plain text; nonempty NO_COLOR or TERM=dumb disables ANSI even in a TTY. Long fields wrap within the detected terminal width. Legacy non-UTF-8 locales use ASCII presentation; JSON retains the original strings.
 

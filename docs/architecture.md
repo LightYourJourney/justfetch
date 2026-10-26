@@ -4,13 +4,13 @@ justfetch is a single Rust crate with a small library for deterministic tests an
 
 ## Data flow
 
-`CLI → Config → detect::collect → platform adapter → SystemSnapshot → renderer → stdout`
+`CLI → Config → detect::collect → platform adapter → SystemSnapshot → privacy::redact (only with --privacy) → renderer → stdout`
 
-The collector owns all system access. Renderers receive an immutable snapshot and explicit terminal capabilities; they never inspect the environment or call system APIs. CLI derives only effective output options. v0.2 will extend configuration here without changing detection.
+The collector owns all system access. Renderers receive an immutable snapshot and explicit terminal capabilities; they never inspect the environment or call system APIs. Privacy is a separate pass over the finished snapshot, so the text and JSON renderers cannot disagree about what was withheld. CLI derives only effective output options. v0.2 will extend configuration here without changing detection.
 
 ## Model
 
-Each `Detection<T>` is tagged `available`, `unavailable`, `unsupported`, or `error`. Available results carry `source`, `confidence` (`confirmed` or `estimated`), and optional explanatory notes. Errors carry a stable code and source; the enclosing field identifies the module. Missing is distinct from an API failure. JSON has `schema_version: 1`, original seconds/bytes, and structured host/shell/memory semantics. Additive fields may appear; consumers should ignore unknown fields. Breaking schema changes increment the schema version.
+Each `Detection<T>` is tagged `available`, `unavailable`, `unsupported`, `redacted`, or `error`. `redacted` only appears when `--privacy` was passed, and means the value was collected and is deliberately withheld — not that it was missing. Available results carry `source`, `confidence` (`confirmed` or `estimated`), and optional explanatory notes. Errors carry a stable code and source; the enclosing field identifies the module. Missing is distinct from an API failure. JSON has `schema_version: 1`, original seconds/bytes, and structured host/shell/memory semantics. Additive fields may appear; consumers should ignore unknown fields. Breaking schema changes increment the schema version.
 
 Host is a device model or a hostname with explicit `kind`; identity is separately collected as username and hostname. Environment identity is best effort and marked estimated. Shell is a recognized immediate parent executable, or the explicitly labeled configured default from SHELL/ComSpec. It is never claimed to identify arbitrary ancestor shells. Linux distro and WSL environment are separate from Windows host hardware.
 
@@ -22,7 +22,7 @@ Linux memory: total minus MemAvailable; old-kernel fallback explicitly estimated
 
 ## Rendering
 
-Original built-in ASCII assets; no copied third-party logos. Colors are basic ANSI, only when stdout is a suitable terminal, NO_COLOR is absent/empty, TERM is not dumb, and no-color is false. Plain text uses no escape sequences. Width is measured before styling with unicode-width; wrapping operates on grapheme boundaries. OS strings are stripped of terminal controls and bidi overrides before terminal output; JSON preserves raw strings through JSON escaping. Narrow terminals drop the logo. Tall/short logo layouts use the maximum row count. Output writes handle broken pipes cleanly.
+Original built-in ASCII assets; no copied third-party logos. Colors are basic ANSI, only when stdout is a suitable terminal, NO_COLOR is absent/empty, TERM is not dumb, and no-color is false. Plain text uses no escape sequences. Width is measured before styling with unicode-width; wrapping operates on grapheme boundaries. OS strings are stripped of terminal controls and bidi overrides before terminal output; JSON preserves raw strings through JSON escaping. Narrow terminals drop the logo. Tall/short logo layouts use the maximum row count. Output writes handle broken pipes cleanly. Field rows come from one ordered list of label/value pairs, and the label column width is derived from the labels themselves rather than a constant, so selecting, reordering or relabelling fields is a change to that list and nothing else.
 
 ## Implementation plan
 

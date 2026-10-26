@@ -22,16 +22,23 @@ jobs:
         include:
           - os: macos-latest
             target: aarch64-apple-darwin
+            native: true
           # Cross-compiled: the Intel macOS runners are the paid -intel/-large
           # images, and this is verified to produce a working x86_64 binary.
+          # `native: false` skips the run step below, because running it would
+          # need Rosetta on the runner; the archive is built, not executed.
           - os: macos-latest
             target: x86_64-apple-darwin
+            native: false
           - os: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
+            native: true
           - os: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
+            native: true
           - os: windows-2025
             target: x86_64-pc-windows-msvc
+            native: true
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -41,6 +48,19 @@ jobs:
         run: rustup target add --toolchain stable ${{ matrix.target }}
       - name: Build
         run: cargo +stable build --release --locked --target ${{ matrix.target }}
+      # A successful cross-compile says nothing about whether the archive runs.
+      # This executes the binary on the runner that built it, for every target
+      # except the one that cannot run here.
+      - name: Run the built binary
+        if: matrix.native
+        shell: bash
+        run: |
+          set -eu
+          binary="target/${{ matrix.target }}/release/justfetch"
+          [ -f "$binary.exe" ] && binary="$binary.exe"
+          "$binary" --format json > run.json
+          grep -q '"schema_version": 1' run.json
+          grep -q '"status": "available"' run.json
       - name: Stage the archive contents
         shell: bash
         run: |

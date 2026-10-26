@@ -270,11 +270,18 @@ fn ipv4_of(
     if address.lpSockaddr.is_null() {
         return None;
     }
+    // The family selects the layout, but only the declared length says the
+    // buffer is actually that large; a short one would make the cast below read
+    // past it.
+    if address.iSockaddrLength < std::mem::size_of::<SOCKADDR_IN>() as i32 {
+        return None;
+    }
     // SAFETY: lpSockaddr points at a sockaddr whose family selects its layout.
     if unsafe { (*address.lpSockaddr).sa_family } != AF_INET {
         return None;
     }
-    // SAFETY: the family check above established a sockaddr_in.
+    // SAFETY: the family check and the length check above established a
+    // sockaddr_in of at least its full size.
     let v4 = unsafe { &*address.lpSockaddr.cast::<SOCKADDR_IN>() };
     // SAFETY: S_addr is the active member of the address union on AF_INET and
     // holds the address in network byte order.

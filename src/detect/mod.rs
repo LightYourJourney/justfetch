@@ -5,9 +5,10 @@ pub mod shell;
 use crate::{model::*, platform};
 use sysinfo::{CpuRefreshKind, System};
 
-/// The terminal application, which is not the shell: TERM_PROGRAM names the
-/// emulator and TERM names the capability set it negotiated. Neither requires a
-/// TTY, so redirected output still reports the same terminal.
+/// The terminal application, which is not the shell. `TERM_PROGRAM` and
+/// `WT_SESSION` identify the program; `TERM` does not, and the two are reported
+/// as different kinds rather than merged. None of them requires a TTY, so
+/// redirected output reports the same environment.
 fn terminal() -> Detection<TerminalInfo> {
     let text = |name: &str| {
         std::env::var(name)
@@ -20,28 +21,39 @@ fn terminal() -> Detection<TerminalInfo> {
             TerminalInfo {
                 name,
                 version: text("TERM_PROGRAM_VERSION"),
+                kind: TerminalKind::Application,
             },
             "TERM_PROGRAM",
         );
     }
-    if std::env::var_os("WT_SESSION").is_some() {
+    // An empty value is not evidence of Windows Terminal, so it goes through
+    // the same non-empty filter as the others.
+    if text("WT_SESSION").is_some() {
         return Detection::available(
             TerminalInfo {
                 name: "Windows Terminal".to_owned(),
                 version: None,
+                kind: TerminalKind::Application,
             },
             "WT_SESSION",
         );
     }
+    // TERM names a capability set, not a program. Reporting it as the terminal
+    // would answer a question it does not answer, so it is labelled as what it
+    // is and marked as an environment hint rather than a confirmed fact.
     match text("TERM") {
-        Some(name) => Detection::available(
+        Some(name) => Detection::estimated(
             TerminalInfo {
                 name,
                 version: None,
+                kind: TerminalKind::CapabilityType,
             },
             "TERM",
+            "TERM names a capability type, not the terminal application",
         ),
-        None => Detection::unavailable("No terminal environment variable is set"),
+        None => Detection::unavailable(
+            "Neither TERM_PROGRAM, WT_SESSION nor TERM is set, so the terminal is unknown",
+        ),
     }
 }
 

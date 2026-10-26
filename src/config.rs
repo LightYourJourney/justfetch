@@ -5,6 +5,7 @@ pub struct Config {
     pub format: Format,
     pub logo: bool,
     pub no_color: bool,
+    pub privacy: bool,
 }
 
 impl From<Cli> for Config {
@@ -13,6 +14,7 @@ impl From<Cli> for Config {
             format: cli.format,
             logo: cli.logo == Logo::Auto,
             no_color: cli.no_color,
+            privacy: cli.privacy,
         }
     }
 }

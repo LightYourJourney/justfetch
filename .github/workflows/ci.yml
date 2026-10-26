@@ -28,8 +28,18 @@ jobs:
         run: cargo +stable test --locked
       - name: Release build
         run: cargo +stable build --release --locked
-      - name: Native smoke check
-        run: cargo +stable run --release --locked -- --format json
+      # The semantic assertions live in tests/detection.rs and run in the Test
+      # step above. This proves the release-profile binary itself runs and still
+      # emits the documented document, which `cargo run` would not distinguish.
+      - name: Release binary emits a valid document
+        shell: bash
+        run: |
+          set -eu
+          binary="target/release/justfetch"
+          [ -f "$binary.exe" ] && binary="$binary.exe"
+          "$binary" --format json > smoke.json
+          grep -q '"schema_version": 1' smoke.json
+          grep -q '"status": "available"' smoke.json
 
   msrv:
     name: MSRV / 1.95.0

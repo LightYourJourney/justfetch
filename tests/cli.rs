@@ -18,11 +18,20 @@ fn help_and_version() {
     assert!(help.stderr.is_empty());
     let version = run(&["--version"]);
     assert!(version.status.success());
+    // Taken from the manifest so a version bump cannot leave this asserting an
+    // old string.
     assert_eq!(
         String::from_utf8(version.stdout).unwrap(),
-        "justfetch 0.1.0\n"
+        format!("justfetch {}\n", env!("CARGO_PKG_VERSION"))
     );
 }
+
+/// Every field the snapshot promises, so adding one cannot silently ship
+/// without a status.
+const FIELDS: [&str; 11] = [
+    "os", "host", "kernel", "uptime", "cpu", "memory", "swap", "disk", "shell", "terminal",
+    "local_ip",
+];
 
 #[test]
 fn invalid_arguments_are_stderr_only() {
@@ -47,11 +56,32 @@ fn json_is_one_structured_document() {
     assert!(!out.stdout.contains(&27));
     let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(json["schema_version"], 1);
-    for field in ["os", "host", "kernel", "uptime", "cpu", "memory", "shell"] {
+    const KNOWN: [&str; 5] = [
+        "available",
+        "unavailable",
+        "unsupported",
+        "redacted",
+        "error",
+    ];
+    for field in FIELDS {
+        let status = json[field]["status"]
+            .as_str()
+            .unwrap_or_else(|| panic!("missing status for {field}"));
         assert!(
-            json[field]["status"].is_string(),
-            "missing status for {field}"
+            KNOWN.contains(&status),
+            "{field} has unknown status {status}"
         );
+        if status == "available" {
+            assert!(
+                json[field]["source"].is_string(),
+                "{field} is available without a source"
+            );
+            let confidence = json[field]["confidence"].as_str().unwrap();
+            assert!(
+                confidence == "confirmed" || confidence == "estimated",
+                "{field} has unknown confidence {confidence}"
+            );
+        }
     }
     if json["memory"]["status"] == "available" {
         let memory = &json["memory"]["value"];
@@ -67,10 +97,38 @@ fn plain_text_and_no_logo() {
     assert!(out.stderr.is_empty());
     assert!(!out.stdout.contains(&27));
     let text = String::from_utf8(out.stdout).unwrap();
-    for field in ["OS", "Host", "Kernel", "Uptime", "CPU", "Memory", "Shell"] {
+    for label in [
+        "OS", "Host", "Kernel", "Uptime", "CPU", "Memory", "Swap", "Disk", "Shell", "Term", "IP",
+    ] {
         assert!(
-            text.lines().any(|l| l.starts_with(field)),
-            "{field}: {text}"
+            text.lines().any(|l| l.starts_with(label)),
+            "{label}: {text}"
+        );
+    }
+}
+
+#[test]
+fn privacy_withholds_identity_and_addresses() {
+    let out = run(&["--privacy", "--format", "json"]);
+    assert!(out.status.success());
+    assert!(out.stderr.is_empty());
+    let value: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(value["identity"]["username"]["status"], "redacted");
+    assert_eq!(value["identity"]["hostname"]["status"], "redacted");
+    assert_eq!(value["local_ip"]["status"], "redacted");
+    // Redaction withholds values; it does not change the schema.
+    assert!(value["identity"]["username"].get("value").is_none());
+    assert_eq!(value["schema_version"], 1);
+
+    let text = run(&["--privacy", "--logo", "none", "--no-color"]);
+    assert!(text.status.success());
+    let text = String::from_utf8(text.stdout).unwrap();
+    assert_eq!(text.lines().next(), Some("redacted@redacted"), "{text}");
+    assert!(text.contains("IP      redacted"), "{text}");
+    if let Ok(user) = std::env::var("USER").or_else(|_| std::env::var("USERNAME")) {
+        assert!(
+            !text.contains(&format!("{user}@")),
+            "user name leaked: {text}"
         );
     }
 }

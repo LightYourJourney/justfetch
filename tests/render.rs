@@ -2,6 +2,7 @@ use anstyle::AnsiColor;
 use justfetch::{
     detect::shell::recognized_name,
     model::*,
+    privacy,
     render::{
         json, layout, logo,
         terminal::{self, Options},
@@ -84,6 +85,7 @@ fn fixture() -> SystemSnapshot {
             TerminalInfo {
                 name: "Test Terminal".into(),
                 version: Some("1.2".into()),
+                kind: TerminalKind::Application,
             },
             "fixture",
         ),
@@ -231,6 +233,106 @@ fn an_unnamed_interface_does_not_render_empty_parentheses() {
         named["local_ip"]["value"]["addresses"][0]["interface"],
         "eth0"
     );
+}
+
+#[test]
+fn privacy_withholds_identity_but_keeps_the_counters() {
+    let mut snapshot = fixture();
+    privacy::redact(&mut snapshot);
+    assert!(matches!(snapshot.identity.username, Detection::Redacted));
+    assert!(matches!(snapshot.identity.hostname, Detection::Redacted));
+    assert!(matches!(snapshot.local_ip, Detection::Redacted));
+    // The fixture's Host is a device model, not the hostname, so it survives.
+    assert!(snapshot.host.value().is_some());
+    let disk = snapshot.disk.value().unwrap();
+    assert_eq!(disk.path, "~");
+    assert_eq!(disk.total_bytes, 500 * 1_073_741_824);
+
+    let text = terminal::render(
+        &snapshot,
+        Options {
+            logo: false,
+            unicode: false,
+            ..options(80)
+        },
+    );
+    assert_eq!(text.lines().next(), Some("redacted@redacted"), "{text}");
+    assert!(
+        text.contains("Disk    100.00 / 500.00 GiB (20%) on ~"),
+        "{text}"
+    );
+    assert!(!text.contains("tester"), "{text}");
+    assert!(!text.contains("192.0.2.10"), "{text}");
+}
+
+#[test]
+fn privacy_also_withholds_a_host_row_that_is_the_hostname() {
+    let mut snapshot = fixture();
+    snapshot.host = Detection::available(
+        HostInfo {
+            name: "host".into(),
+            kind: HostKind::Hostname,
+        },
+        "fixture",
+    );
+    privacy::redact(&mut snapshot);
+    assert!(matches!(snapshot.host, Detection::Redacted));
+
+    let text = terminal::render(
+        &snapshot,
+        Options {
+            logo: false,
+            unicode: false,
+            ..options(80)
+        },
+    );
+    assert!(!text.contains("host (hostname)"), "{text}");
+    assert!(text.contains("Host    redacted"), "{text}");
+}
+
+#[test]
+fn a_narrow_colored_row_still_accents_its_label() {
+    fn visible(line: &str) -> String {
+        let mut out = String::new();
+        let mut escape = false;
+        for ch in line.chars() {
+            if escape {
+                if ch.is_ascii_alphabetic() {
+                    escape = false;
+                }
+            } else if ch == '\u{1b}' {
+                escape = true;
+            } else {
+                out.push(ch);
+            }
+        }
+        out
+    }
+    // The label column is eight bytes. At or above that width a row starts with
+    // the whole column and is accented; below it the row starts mid-label and
+    // stays plain. The narrow branch used to lose the accent on both sides.
+    for columns in 6..=12 {
+        let text = terminal::render(
+            &fixture(),
+            Options {
+                columns,
+                color: true,
+                unicode: true,
+                logo: false,
+            },
+        );
+        let row = text
+            .lines()
+            .find(|line| visible(line).starts_with("OS"))
+            .unwrap_or_else(|| panic!("no OS row at {columns} columns: {text:?}"));
+        let accented = row.starts_with('\u{1b}');
+        assert_eq!(
+            accented,
+            columns >= 8,
+            "accent at {columns} columns should be {}, row: {row:?}",
+            columns >= 8
+        );
+    }
 }
 
 #[test]

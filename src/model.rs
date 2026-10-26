@@ -23,6 +23,9 @@ pub enum Detection<T> {
     Unsupported {
         reason: String,
     },
+    /// Withheld because `--privacy` was passed. Different from unavailable: the
+    /// value exists and was collected, and this output deliberately omits it.
+    Redacted,
     Error {
         source: String,
         code: ErrorCode,
@@ -87,6 +90,10 @@ impl<T> Detection<T> {
         }
     }
 
+    pub fn redacted() -> Self {
+        Self::Redacted
+    }
+
     pub fn error(source: impl Into<String>, code: ErrorCode, message: impl ToString) -> Self {
         Self::Error {
             source: source.into(),
@@ -117,6 +124,7 @@ impl<T> Detection<T> {
             },
             Self::Unavailable { reason } => Detection::Unavailable { reason },
             Self::Unsupported { reason } => Detection::Unsupported { reason },
+            Self::Redacted => Detection::Redacted,
             Self::Error {
                 source,
                 code,
@@ -253,6 +261,17 @@ pub struct DiskInfo {
 pub struct TerminalInfo {
     pub name: String,
     pub version: Option<String>,
+    pub kind: TerminalKind,
+}
+
+/// What the reported value names. `TERM_PROGRAM` and `WT_SESSION` identify the
+/// application; `TERM` holds a capability type such as `xterm-256color`, which
+/// says what the terminal can do and not which program it is.
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TerminalKind {
+    Application,
+    CapabilityType,
 }
 
 /// Every routable IPv4 address on an interface that is up. Listing all of them
