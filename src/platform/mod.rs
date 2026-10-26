@@ -103,6 +103,16 @@ fn reportable(address: std::net::Ipv4Addr) -> bool {
     !address.is_loopback() && !address.is_link_local() && !address.is_unspecified()
 }
 
+/// The path label is the only part of a disk reading that can be lossy; the
+/// counters are exact. Shared so both adapters report that the same way.
+fn disk_detection(info: DiskInfo, source: &str, exact_path: bool) -> Detection<DiskInfo> {
+    if exact_path {
+        Detection::available(info, source)
+    } else {
+        Detection::available_with_note(info, source, "Path is not representable as UTF-8")
+    }
+}
+
 #[cfg(unix)]
 pub fn disk() -> Detection<DiskInfo> {
     use std::os::unix::ffi::OsStrExt;
@@ -171,11 +181,7 @@ pub fn disk() -> Detection<DiskInfo> {
         used_bytes,
         available_bytes,
     };
-    if exact_path {
-        Detection::available(info, "statvfs")
-    } else {
-        Detection::estimated(info, "statvfs", "Home path is not UTF-8")
-    }
+    disk_detection(info, "statvfs", exact_path)
 }
 
 /// Every routable IPv4 address on an interface that is up, in the order the
@@ -255,6 +261,31 @@ mod tests {
             }
         }
         data
+    }
+
+    #[test]
+    fn a_lossy_path_keeps_the_counters_confirmed() {
+        let info = DiskInfo {
+            path: "/replaced".into(),
+            total_bytes: 200,
+            used_bytes: 100,
+            available_bytes: 90,
+        };
+        match disk_detection(info.clone(), "fixture", true) {
+            Detection::Available { note, .. } => assert_eq!(note, None),
+            other => panic!("unexpected {other:?}"),
+        }
+        // The label is lossy; the counters are not. Saying "estimated" here
+        // would tell a consumer the numbers are approximate.
+        match disk_detection(info, "fixture", false) {
+            Detection::Available {
+                confidence, note, ..
+            } => {
+                assert_eq!(confidence, Confidence::Confirmed);
+                assert!(note.is_some());
+            }
+            other => panic!("unexpected {other:?}"),
+        }
     }
 
     #[test]

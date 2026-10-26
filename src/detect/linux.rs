@@ -71,17 +71,19 @@ pub fn os_release(text: &str) -> Result<OsInfo, String> {
 
 /// One `Value kB` field from /proc/meminfo, converted to bytes. The kernel
 /// labels these kB but the unit is 1024 bytes.
-fn meminfo_bytes(value: &str) -> Result<u64, String> {
+fn meminfo_bytes(key: &str, value: &str) -> Result<u64, String> {
     let mut parts = value.split_whitespace();
     let number: u64 = parts
         .next()
-        .ok_or("Missing proc value")?
+        .ok_or_else(|| format!("Missing {key}"))?
         .parse()
-        .map_err(|_| "Invalid proc value")?;
+        .map_err(|_| format!("Invalid {key}"))?;
     if parts.next() != Some("kB") || parts.next().is_some() {
-        return Err("Expected a proc value in kB (KiB)".into());
+        return Err(format!("Expected {key} in kB (KiB)"));
     }
-    number.checked_mul(1024).ok_or("Proc value overflow".into())
+    number
+        .checked_mul(1024)
+        .ok_or_else(|| format!("{key} overflows bytes"))
 }
 
 pub fn memory(text: &str, scope: Scope) -> Result<(MemoryInfo, bool), String> {
@@ -102,7 +104,7 @@ pub fn memory(text: &str, scope: Scope) -> Result<(MemoryInfo, bool), String> {
         ) {
             continue;
         }
-        fields.insert(key, meminfo_bytes(value)?);
+        fields.insert(key, meminfo_bytes(key, value)?);
     }
     let total = *fields
         .get("MemTotal")
@@ -160,7 +162,7 @@ pub fn swap(text: &str) -> Result<SwapInfo, String> {
             "SwapFree" => &mut free,
             _ => continue,
         };
-        *slot = Some(meminfo_bytes(value)?);
+        *slot = Some(meminfo_bytes(key, value)?);
     }
     let total_bytes = total.ok_or("Missing SwapTotal")?;
     let free_bytes = free.ok_or("Missing SwapFree")?;

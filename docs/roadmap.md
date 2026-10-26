@@ -17,7 +17,7 @@ Release gate still external: exercise WSL, Intel macOS, ARM64 Linux and distribu
 
 ## v0.3 — Advanced Detection
 
-Add reliable GPU/battery/display/DE/WM/packages/locale collectors individually, each with documented sources, status semantics, fixtures and platform coverage. Disk and terminal are already collected; see docs/validation.md for why the rest are deferred. Add doctor and measured per-module timing. Avoid shell-based package scans as a default shortcut.
+Add reliable GPU/battery/display/DE/WM/packages/locale collectors individually, each with documented sources, status semantics, fixtures and platform coverage. Disk and terminal are already collected; docs/validation.md records why GPU, display resolution, battery, packages and desktop/window manager were not added with them. Add doctor and measured per-module timing. Avoid shell-based package scans as a default shortcut.
 
 ## v0.4 — Polish
 

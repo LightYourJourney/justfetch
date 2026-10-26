@@ -48,6 +48,22 @@ impl<T> Detection<T> {
         }
     }
 
+    /// A measured value with a caveat that is not about its accuracy. Marking
+    /// such a value estimated would tell a consumer the numbers themselves are
+    /// approximate, which is a different claim.
+    pub fn available_with_note(
+        value: T,
+        source: impl Into<String>,
+        note: impl Into<String>,
+    ) -> Self {
+        Self::Available {
+            value,
+            source: source.into(),
+            confidence: Confidence::Confirmed,
+            note: Some(note.into()),
+        }
+    }
+
     pub fn estimated(value: T, source: impl Into<String>, note: impl Into<String>) -> Self {
         Self::Available {
             value,
@@ -63,8 +79,8 @@ impl<T> Detection<T> {
         }
     }
 
-    /// The platform does not expose this at all, which is different from a
-    /// value that happens to be unavailable right now.
+    /// No route this project is willing to take reaches this value on that
+    /// platform, which is different from a value that is unavailable right now.
     pub fn unsupported(reason: impl Into<String>) -> Self {
         Self::Unsupported {
             reason: reason.into(),
@@ -221,10 +237,10 @@ pub struct SwapInfo {
 }
 
 /// The filesystem containing `path`, named by the path that was queried rather
-/// than by a mount point the platform may not expose. `used_bytes +
-/// available_bytes` is deliberately not `total_bytes`: filesystems reserve
-/// blocks that no user can allocate, and folding that difference into either
-/// figure would hide it.
+/// than by a mount point the platform may not expose. `used_bytes` is
+/// `total - free` and `available_bytes` is what the calling user may still
+/// allocate: the two coincide on a filesystem with no reserved blocks and
+/// differ by the reserve on one with them.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct DiskInfo {
     pub path: String,

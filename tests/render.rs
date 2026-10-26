@@ -217,6 +217,20 @@ fn an_unnamed_interface_does_not_render_empty_parentheses() {
     );
     assert!(output.contains("IP      203.0.113.7\n"), "{output}");
     assert!(!output.contains("()"), "{output}");
+
+    // The interface is omitted from JSON rather than sent as an empty string,
+    // and the address stays a plain string rather than an Ipv4Addr debug form.
+    let value: serde_json::Value = serde_json::from_str(&json::render(&snapshot).unwrap()).unwrap();
+    let unnamed = &value["local_ip"]["value"]["addresses"][0];
+    assert_eq!(unnamed["address"], "203.0.113.7");
+    assert!(unnamed.get("interface").is_none(), "{unnamed}");
+
+    let named: serde_json::Value =
+        serde_json::from_str(&json::render(&fixture()).unwrap()).unwrap();
+    assert_eq!(
+        named["local_ip"]["value"]["addresses"][0]["interface"],
+        "eth0"
+    );
 }
 
 #[test]

@@ -1,4 +1,4 @@
-use super::{PlatformData, reportable};
+use super::{PlatformData, disk_detection, reportable};
 use crate::model::*;
 use std::io;
 use sysinfo::System;
@@ -148,15 +148,7 @@ fn disk() -> Detection<DiskInfo> {
         used_bytes,
         available_bytes: available,
     };
-    if exact_path {
-        Detection::available(info, "GetDiskFreeSpaceExW")
-    } else {
-        Detection::estimated(
-            info,
-            "GetDiskFreeSpaceExW",
-            "Home path is not representable as UTF-8",
-        )
-    }
+    disk_detection(info, "GetDiskFreeSpaceExW", exact_path)
 }
 
 /// Windows exposes a commit limit rather than a page-file usage figure, and the
