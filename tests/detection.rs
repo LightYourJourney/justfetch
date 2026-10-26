@@ -89,8 +89,10 @@ fn memory_agrees_with_an_independent_reader() {
     // A four-fold undercount from pairing Mach counters with the wrong page
     // size satisfies every `used <= total` check, which is exactly how that
     // defect survived four green CI jobs. Comparing against a second reader is
-    // what catches it. The bound is loose on purpose: the two use different
-    // definitions of "used".
+    // what catches it. The bound is loose because the two are read a moment
+    // apart, not because their definitions differ: sysinfo uses the same
+    // formula on every platform, so this catches a wrong quantity such as the
+    // page-size pairing, not a shared conceptual error.
     let json = snapshot();
     let used = json["memory"]["value"]["used_bytes"]
         .as_u64()

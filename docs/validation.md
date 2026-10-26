@@ -150,7 +150,7 @@ This closes two items the previous rounds had to record as unverified.
 
 Two things this settles. The Linux parent-shell path (`getppid` plus `/proc/<pid>/exe`) resolves correctly on a real kernel, and the Windows native paths (registry product name, `GlobalMemoryStatusEx`, ToolHelp parent snapshot) work on a real Windows system. The Windows shell line is not a defect: `cargo run` replaces itself with `exec` on Unix, so the parent there is `bash`, but on Windows it must spawn a child, so the parent is `cargo.exe`, which is not a shell — and the field correctly fell back to the labelled `ComSpec` default instead of guessing. That is the documented immediate-parent-only semantics working as designed.
 
-**What the run does not establish.** A GitHub runner is one configuration per platform, not a distribution matrix. Arch, Debian, Fedora, Gentoo, openSUSE and NixOS detection, Intel Macs, ARM64 Linux, WSL1/WSL2, containers and any hardware-sensitive path remain unexercised, and no runner exercises a real interactive terminal or the `--logo none`/color combinations against a TTY. The compile-only rows in the compatibility matrix that are still compile-only are marked as such. The benchmark gap is unchanged by a CI run, since CI measures nothing about startup time.
+**What the run does not establish.** A GitHub runner is one configuration per platform, not a distribution matrix. Arch, Debian, Fedora, Gentoo, openSUSE and NixOS detection, Intel Macs, ARM64 Linux, WSL1/WSL2, containers and any hardware-sensitive path remain unexercised by that run (later rounds record the narrow ARM64 exception), and no runner exercises a real interactive terminal or the `--logo none`/color combinations against a TTY. The compile-only rows in the compatibility matrix that are still compile-only are marked as such. The benchmark gap is unchanged by a CI run, since CI measures nothing about startup time.
 
 ## Benchmark round (2026-10-16)
 
@@ -253,4 +253,15 @@ Two regression tests came out of it: a stdout with no reader must exit successfu
 
 Two of its findings were stale rather than real: it reported the release workflow's execution step as never having run, and no CI result for the commit under review. Both exist — the release workflow was dispatched at that commit (run 40304542365: five builds, four packaged-binary runs, the cross-compiled Intel macOS correctly skipped) and CI passed at the same commit (run 40304508178).
 
-**Test count:** 53, up from 41.
+**Fourth review round.** A two-axis review of the fix commit found that several of its own fixes were incomplete, and all are now closed:
+
+- The new logo test compared logos against each other, which catches two distributions sharing a picture but not two pictures being swapped. It now names the expected asset file per id. Verified by swapping the artwork for `arch` and `debian`: the test fails with "arch is not showing its own artwork", and passes again after reverting.
+- A doc comment was left attached to the wrong test by an edit that inserted a function between the comment and its own.
+- The README fixed `--privacy` in `--help` and in the usage paragraph but not in the feature list, and its Features section and example carried no marker that they describe unreleased code. Both now say the published archive is older.
+- The memory cross-check's comment claimed the two readers use different definitions; they use the same formula, so the bound is loose only because the reads are a moment apart, and the test catches a wrong quantity rather than a shared conceptual error.
+- `compatibility.md` claimed every fallback step is labelled. Disk's is not — it reports the path it read — so the sentence now says so.
+- ARM64 Linux was recorded as executed in its matrix row while two other paragraphs still listed it as unexercised, and the roadmap still treated it as a gate.
+- The CHANGELOG repeated the "withholds the home path" wording, and `AGENTS.md` listed Swap without the Windows exception.
+- The disk counter arithmetic moved into a pure function so the cases that must error — zero block size, zero total, more free than total — are covered by tests rather than being unreachable branches.
+
+**Test count:** 54, up from 41. That figure is local: the most recent CI run (40304508178) covered an earlier commit's 51, and this one has not been pushed.

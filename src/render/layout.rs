@@ -21,8 +21,11 @@ pub fn sanitize(text: &str) -> String {
                 '\u{9d}' => State::String(true),
                 '\u{90}' | '\u{98}' | '\u{9e}' | '\u{9f}' => State::String(false),
                 // The two Unicode line separators are not control characters,
-                // but some renderers break a line on them, so they are treated
-                // like the ASCII ones rather than left to split a row.
+                // but some renderers break a line on them, so they become a
+                // space like the ASCII line breaks. Other line-ish characters
+                // that *are* control characters (NEL, VT, FF) are dropped by
+                // the control check below; both outcomes keep them from
+                // splitting a row, but this is not one uniform rule.
                 '\n' | '\r' | '\t' | '\u{2028}' | '\u{2029}' => {
                     output.push(' ');
                     State::Text

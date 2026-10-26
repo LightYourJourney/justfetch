@@ -8,9 +8,11 @@ A compact Rust CLI that displays real local system information, with a responsiv
 
 ## Features
 
+This list describes the current source. The published v0.1.0 archive is older and does not contain the eleven fields or `--privacy`; see Status above.
+
 - OS, device model or labeled hostname, kernel, uptime, CPU, physical memory and swap, the filesystem holding your home directory, shell, terminal and local IPv4 addresses. Swap is reported as unsupported on Windows, which exposes no page-file figure to the APIs this project uses.
 - Explicit available/unavailable/unsupported/redacted/error states, source and confidence in JSON.
-- `--privacy` withholds the user name, the host name, the local addresses and the home path, identically in text and JSON.
+- `--privacy` withholds the user name, the host name and the local addresses, and shortens the home path to `~`, identically in text and JSON.
 - Original ASCII logos for macOS, Windows, Linux, Arch, Debian, Ubuntu, Fedora, Gentoo, openSUSE, NixOS and unknown systems.
 - Unicode display-cell alignment and grapheme-aware wrapping; narrow terminals hide the logo.
 - Conservative ANSI colors, NO_COLOR, TERM=dumb and redirected-output support; no terminal state changes.
@@ -19,7 +21,7 @@ A compact Rust CLI that displays real local system information, with a responsiv
 
 ## Example
 
-Captured from a real `--no-color` invocation on Apple M3 / macOS 26.6.2. The user and host identity and the home path are replaced by shorter placeholders; the divider tracks the title's width, so it is shorter here than in the original. Memory, swap, disk and uptime naturally change. This is plain output; a compatible TTY adds colors automatically.
+Captured from a real `--no-color` invocation of the current source on Apple M3 / macOS 26.6.2; the v0.1.0 archive renders seven rows, not eleven. The user and host identity and the home path are replaced by shorter placeholders; the divider tracks the title's width, so it is shorter here than in the original. Memory, swap, disk and uptime naturally change. This is plain output; a compatible TTY adds colors automatically.
 
 ```text
          .'       ~ [user]@[host]

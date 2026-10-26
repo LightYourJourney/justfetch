@@ -113,6 +113,47 @@ fn disk_detection(info: DiskInfo, source: &str, exact_path: bool) -> Detection<D
     }
 }
 
+/// Convert `statvfs` counters into bytes. Pure, so the arithmetic — including
+/// the cases that must be errors rather than plausible zeroes — can be tested
+/// on any host.
+#[cfg(unix)]
+fn disk_counters(
+    blocks: libc::fsblkcnt_t,
+    free_blocks: libc::fsblkcnt_t,
+    available_blocks: libc::fsblkcnt_t,
+    fragment_size: libc::c_ulong,
+    block_size: libc::c_ulong,
+) -> Result<(u64, u64, u64), &'static str> {
+    // f_frsize is the allocation unit and is zero on some filesystems, where
+    // f_bsize is the documented substitute.
+    let unit = if fragment_size > 0 {
+        fragment_size
+    } else {
+        block_size
+    };
+    if unit == 0 {
+        return Err("Filesystem reports a zero block size");
+    }
+    let total = widen_blocks(blocks)
+        .checked_mul(unit)
+        .ok_or("Filesystem total overflows bytes")?;
+    let free = widen_blocks(free_blocks)
+        .checked_mul(unit)
+        .ok_or("Filesystem free overflows bytes")?;
+    let available = widen_blocks(available_blocks)
+        .checked_mul(unit)
+        .ok_or("Filesystem available overflows bytes")?;
+    let used = total
+        .checked_sub(free)
+        .ok_or("Filesystem free exceeds total")?;
+    // A filesystem with no blocks would render as 0.00 / 0.00 GiB and read as
+    // a real measurement; the Windows adapter already rejects this.
+    if total == 0 {
+        return Err("Filesystem reports zero total bytes");
+    }
+    Ok((total, used, available))
+}
+
 #[cfg(unix)]
 pub fn disk() -> Detection<DiskInfo> {
     use std::os::unix::ffi::OsStrExt;
@@ -145,45 +186,16 @@ pub fn disk() -> Detection<DiskInfo> {
     }
     // SAFETY: the successful call above initialized the structure.
     let stats = unsafe { raw.assume_init() };
-    // f_frsize is the allocation unit and is zero on some filesystems, where
-    // f_bsize is the documented substitute.
-    let unit = if stats.f_frsize > 0 {
-        stats.f_frsize
-    } else {
-        stats.f_bsize
+    let (total_bytes, used_bytes, available_bytes) = match disk_counters(
+        stats.f_blocks,
+        stats.f_bfree,
+        stats.f_bavail,
+        stats.f_frsize,
+        stats.f_bsize,
+    ) {
+        Ok(counters) => counters,
+        Err(message) => return Detection::error("statvfs", ErrorCode::InvalidData, message),
     };
-    // A zero unit would make every filesystem look empty while still passing
-    // the consistency check below.
-    if unit == 0 {
-        return Detection::error(
-            "statvfs",
-            ErrorCode::InvalidData,
-            "Filesystem reports a zero block size",
-        );
-    }
-    let total = widen_blocks(stats.f_blocks).checked_mul(unit);
-    let free = widen_blocks(stats.f_bfree).checked_mul(unit);
-    let available = widen_blocks(stats.f_bavail).checked_mul(unit);
-    let used = total
-        .zip(free)
-        .and_then(|(total, free)| total.checked_sub(free));
-    let (Some(total_bytes), Some(used_bytes), Some(available_bytes)) = (total, used, available)
-    else {
-        return Detection::error(
-            "statvfs",
-            ErrorCode::InvalidData,
-            "Inconsistent filesystem counters",
-        );
-    };
-    // The Windows adapter already rejects this; a filesystem with no blocks at
-    // all would render as 0.00 / 0.00 GiB and read as a real measurement.
-    if total_bytes == 0 {
-        return Detection::error(
-            "statvfs",
-            ErrorCode::InvalidData,
-            "Filesystem reports zero total bytes",
-        );
-    }
     let info = DiskInfo {
         path: reported,
         total_bytes,
@@ -270,6 +282,21 @@ mod tests {
             }
         }
         data
+    }
+
+    #[test]
+    fn disk_counters_convert_and_reject_impossible_filesystems() {
+        // 1000 blocks of 4096, 400 free, 300 available to the user.
+        assert_eq!(
+            disk_counters(1000, 400, 300, 4096, 4096),
+            Ok((4_096_000, 2_457_600, 1_228_800))
+        );
+        // f_frsize is zero on some filesystems; f_bsize is the substitute.
+        assert_eq!(disk_counters(10, 5, 5, 0, 1024), Ok((10_240, 5_120, 5_120)));
+        // These must be errors, not plausible zeroes.
+        assert!(disk_counters(0, 0, 0, 4096, 4096).is_err());
+        assert!(disk_counters(100, 200, 50, 4096, 4096).is_err());
+        assert!(disk_counters(100, 50, 50, 0, 0).is_err());
     }
 
     #[test]

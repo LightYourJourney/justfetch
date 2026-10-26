@@ -598,12 +598,15 @@ fn mapping_does_not_erase_errors_or_estimation() {
     ));
 }
 
+/// Every distribution id that has artwork of its own.
+const BUILT_IN_LOGO_IDS: [&str; 10] = [
+    "macos", "windows", "linux", "arch", "debian", "ubuntu", "fedora", "gentoo", "opensuse",
+    "nixos",
+];
+
 #[test]
 fn logo_mapping_and_builtin_assets() {
-    for id in [
-        "macos", "windows", "linux", "arch", "debian", "ubuntu", "fedora", "gentoo", "opensuse",
-        "nixos",
-    ] {
+    for id in BUILT_IN_LOGO_IDS {
         let logo = logo::select(Some(id), None);
         assert_eq!(logo.name, id);
         assert!(logo.art.is_ascii());
@@ -627,35 +630,33 @@ fn logo_mapping_and_builtin_assets() {
     );
 }
 
-/// A Linux distribution without its own artwork must render the generic Linux
-/// logo, not the unidentified-system emblem.
 #[test]
 fn each_built_in_logo_is_its_own_artwork() {
     // Asserting a logo's name, ASCII-ness and width would still pass if two
     // distributions were shipped the same picture; comparing the art does not.
-    let cases = [
-        ("macos", OsFamily::Macos),
-        ("windows", OsFamily::Windows),
-        ("arch", OsFamily::Linux),
-        ("debian", OsFamily::Linux),
-        ("ubuntu", OsFamily::Linux),
-        ("fedora", OsFamily::Linux),
-        ("gentoo", OsFamily::Linux),
-        ("opensuse", OsFamily::Linux),
-        ("nixos", OsFamily::Linux),
-        ("linux", OsFamily::Linux),
+    // Naming the expected file per id is what catches two pictures being
+    // swapped; comparing each logo only against the others would not.
+    let expected = [
+        ("macos", include_str!("../assets/logos/macos.txt")),
+        ("windows", include_str!("../assets/logos/windows.txt")),
+        ("linux", include_str!("../assets/logos/linux.txt")),
+        ("arch", include_str!("../assets/logos/arch.txt")),
+        ("debian", include_str!("../assets/logos/debian.txt")),
+        ("ubuntu", include_str!("../assets/logos/ubuntu.txt")),
+        ("fedora", include_str!("../assets/logos/fedora.txt")),
+        ("gentoo", include_str!("../assets/logos/gentoo.txt")),
+        ("opensuse", include_str!("../assets/logos/opensuse.txt")),
+        ("nixos", include_str!("../assets/logos/nixos.txt")),
     ];
-    let mut seen: Vec<(&str, &str)> = Vec::new();
-    for (id, family) in cases {
-        let selected = logo::select(Some(id), Some(&family));
-        assert!(!selected.art.trim().is_empty(), "{id} has no artwork");
-        for (other, art) in &seen {
-            assert_ne!(*art, selected.art, "{id} and {other} share artwork");
-        }
-        seen.push((id, selected.art));
+    assert_eq!(expected.len(), BUILT_IN_LOGO_IDS.len());
+    for (id, art) in expected {
+        let selected = logo::select(Some(id), None);
+        assert_eq!(selected.art, art, "{id} is not showing its own artwork");
     }
 }
 
+/// A Linux distribution without its own artwork must render the generic Linux
+/// logo, not the unidentified-system emblem.
 #[test]
 fn unknown_linux_distribution_renders_the_generic_linux_logo() {
     let mut snapshot = fixture();
