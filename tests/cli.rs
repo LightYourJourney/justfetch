@@ -647,3 +647,23 @@ fn a_windows_style_path_is_escaped_for_toml() {
         r"C:\\Users\\a\\b.toml"
     );
 }
+
+#[cfg(unix)]
+#[test]
+fn a_newline_in_a_file_path_cannot_forge_a_line() {
+    let dir = temp_dir("path-newline");
+    // A Unix filename may contain a newline, and the parser's message embeds
+    // the path. It must not become a second line of output.
+    let theme = dir.join("bad\nproblem: forged.toml");
+    std::fs::write(&theme, "title = \"nope\"\n").unwrap();
+    let out = run(&["--theme-file", theme.to_str().unwrap()]);
+    assert!(!out.status.success());
+    let report = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        !report
+            .lines()
+            .any(|line| line.starts_with("problem: forged")),
+        "the path forged a line:\n{report}"
+    );
+    assert!(report.contains("missing field"), "{report}");
+}

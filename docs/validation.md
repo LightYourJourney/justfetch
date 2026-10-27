@@ -335,6 +335,16 @@ Phase 11 added a theme model, four layouts and custom artwork. `docs/themes.md` 
 - `Colour::Indexed` was unreachable, and several aliases were accepted without being documented; the variant is gone and the aliases are documented.
 - An assertion that compared themes filtered any line containing the letter `o`, which silently dropped rows such as `Host`. It now identifies a swatch row by its shape, and still passes — the information really is identical across themes.
 
+**Second two-axis review.** The same two axes re-examined the committed work. Findings closed:
+
+- Artwork chosen explicitly was still dropped between the width where it fits and the width where four spare columns exist: a 22-column emblem vanished from a 22-column terminal. The stacking fallback now needs only that the artwork fits, so the margin is gone and a matching test pins both sides of the boundary.
+- A row narrower than its label column lost styling: the value's first fragment was coloured, later fragments were not, and the separator sat inside the value span. Continutations are now styled as the value they continue, and the separator is never part of it.
+- The `classic` arrangement could not be kept once a named logo forced stacking. It is now documented that `--logo none` keeps the two-column layout and `--layout vertical` asks for stacking deliberately.
+- `themes` previewed the title, label, value, rule and swatches but not the emphasis or artwork colours. The sample now shows all of them.
+- The configuration was resolved twice in `main` with the same error handling; both paths call one helper. The automatic logo was chosen in two places; both call `auto_logo`. The fallback artwork was written twice; it is one constant. The width policy's magic numbers became named constants.
+- Documents overstated three things: that explicitly chosen artwork is never dropped (true only while it fits), that adding a theme or a layout is free of shotgun surgery, and that a role set to `default` means the same as leaving it unset. All three now say what the code does.
+- `docs/research.md` gained the visual comparison the specification asked for, since the existing table covers architecture and dependencies rather than design.
+
 **Rejected finding.** Both reviewers noted that `--format json` still reads and validates `[theme] file` and `layout.logo_file`, so a missing presentation file fails a JSON run. That is deliberate and now documented: the configuration is validated once, the same way for every output format, and only the document's contents ignore presentation. Making validation conditional on the format would give the same file two different meanings, and a user whose configuration names a missing file has a broken configuration whether or not that run draws it.
 
 **CI caught a test defect, not a product one.** The first run of this round failed on Windows only: a test wrote an absolute path into a TOML basic string, where `C:\Users\...` starts a Unicode escape. The test now escapes the path through a helper with its own unit test, and the configuration reference tells users to double backslashes or use a single-quoted string. The product was never wrong here; the test could not have failed on macOS, which is why it reached CI.
@@ -345,7 +355,7 @@ Phase 11 added a theme model, four layouts and custom artwork. `docs/themes.md` 
 
 - `[color] accent` did not override a theme that names its title or labels; it only filled a gap. The documentation called it an override, so the code was wrong. Verified in a terminal: `--theme nord` and `--theme nord` with `accent = "red"` now emit different title bytes, where before they were identical.
 - `justfetch themes` showed only the palette, so a theme could not actually be previewed. The name is now drawn in the theme's title colour and a label/value/rule sample follows the palette.
-- Explicitly chosen artwork was silently dropped on a narrow terminal. A named logo now moves above the information instead of disappearing; automatic artwork still gives way, as before.
+- Explicitly chosen artwork was silently dropped on a narrow terminal. A named logo now moves above the information instead of disappearing, unless the artwork itself is wider than the terminal, where it cannot be drawn; automatic artwork still gives way, as before.
 - Five `expect()` calls sat on production paths, one of them in `Config::default`, which runs on every invocation. All are gone; the two colour lookups that were "impossible to fail" are computed without assuming it.
 - The distribution table was written twice — once for detection, once for explicit selection — so a new distribution meant editing both. It is now one table with the two alias sets layered on top.
 - Theme and logo file loading was duplicated between the configuration path and the command line; both now call one loader.
@@ -358,4 +368,4 @@ Phase 11 added a theme model, four layouts and custom artwork. `docs/themes.md` 
 
 **CI.** Run [40479860007](https://github.com/LightYourJourney/justfetch/actions/runs/40479860007) on `99327a7` passed all four jobs — MSRV 1.95.0, Ubuntu, Windows and macOS. The preceding run on `f8233b7` failed the Windows job alone, for the test defect recorded above: the first execution of the theme code on that platform is also the first time a Windows path met the TOML parser.
 
-**Test count:** 133, up from 87.
+**Test count:** 136, up from 87.

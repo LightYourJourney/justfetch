@@ -46,8 +46,11 @@ Two rules follow from those:
 fall below 36 cells of information beside it (`classic`) or when the artwork
 leaves fewer than four spare columns (`vertical`). Artwork the user named
 explicitly — `--logo NAME`, `--logo-file` or the matching configuration keys —
-is not dropped: `classic` moves it above the information instead, the same
-arrangement `vertical` uses. Both drop the rules and swatches below 24
+is not dropped while it fits the terminal: `classic` moves it above the
+information instead, the same arrangement `vertical` uses. Artwork wider than
+the terminal itself cannot be drawn and is omitted. To keep the `classic`
+two-column arrangement without artwork, say `--logo none`; to put it above
+deliberately, say `--layout vertical`. Both drop the rules and swatches below 24
 columns. `compact` deliberately narrows the label column to the rows on screen,
 so a three-module selection does not pay for `Kernel`'s width.
 
@@ -93,8 +96,9 @@ lines take the primary and the last take the secondary.
 | `monochrome` | greys only, for terminals with one accent |
 
 `justfetch themes` lists them with a colour preview: the theme's name is drawn
-in its title colour, followed by its palette and a small label/value/rule
-sample, with a one-line description wrapped to the terminal width.
+in its title colour, followed by its palette and a sample of the label, value,
+rule, emphasis and artwork colours (`Aa Aa ── ~ ██`), with a one-line
+description wrapped to the terminal width.
 `justfetch --format json themes` returns the same list as JSON.
 `--theme NAME` selects one; `[theme] name` does the same in a file. `catppuccin`
 is accepted for `catppuccin-mocha`, and `tokyonight` for `tokyo-night`.

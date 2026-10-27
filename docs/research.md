@@ -26,6 +26,25 @@ Current stable registry metadata and downloaded manifests checked 2026-10-10. Co
 
 All selected crates are MIT or MIT/Apache-2.0 compatible with the repository's existing GPLv3. Cargo.lock records exact transitive versions; [third-party.md](third-party.md) includes their declared licenses and Unicode notices. sysinfo default disk/network/user/component features and multithread support are disabled. TOML 1.1.8 was evaluated, omitted from v0.1 for want of a configuration file, and adopted in v0.2 when one was added; it declares Rust 1.85, so it does not move the MSRV floor. thiserror 2.0.21, anyhow 1.0.104, assert_cmd 2.2.2 and insta 1.49.0 remain omitted: small structured errors suffice and standard-library process tests avoid extra test dependencies. terminal_size 0.4.4/crossterm were unnecessary for one read-only size query. The pinned macOS/Windows process adapter enumerates all PIDs even for selected updates; justfetch uses direct Unix parent queries and one Windows ToolHelp snapshot instead. Windows CPU count uses all processor groups rather than the dependency list length. See architecture.md for alternatives and compatibility.md for precise memory semantics.
 
+## Visual design references
+
+The reference table above records what was taken from each project
+architecturally. The visual system was compared separately, because a layout is
+a design decision rather than a dependency:
+
+| Project | Visual model | Taken | Deliberately not copied |
+| --- | --- | --- | --- |
+| Neofetch | artwork beside a block of fields, one accent colour, per-distribution art | the classic arrangement and distribution-based artwork | a configuration that is executable shell |
+| Fastfetch | modular layout with configurable structure and logo position | width-aware placement, detection separated from presentation | image/font-icon logos and a large preset registry |
+| HyFetch | the Neofetch layout with swappable palettes | palettes as data rather than code | the backend and flag-colour layers |
+| Macchina | themes chosen separately from behaviour | a theme that describes style only | its TUI widget layer |
+| Onefetch | a library of renderers over fixed fixtures | snapshot-driven rendering tests | git analysis and multi-renderer scope |
+
+What justfetch adds, which none of them states as a rule: the plain text is
+measured before any style is attached, so a themed run and a plain run differ by
+escape sequences and nothing else. The rules that follow from the comparison are
+in [themes.md](themes.md).
+
 ## Licensing and names
 
 The existing GPLv3 LICENSE is retained (GPL-3.0-only in Cargo metadata), rather than silently relicensing to MIT. Reference repository licenses do not prove provenance of every bundled ASCII resource. Every included justfetch logo is newly authored ASCII; names identify detected platforms and do not imply vendor endorsement. No third-party implementation/assets are vendored.

@@ -378,7 +378,10 @@ fn read_limited(path: &Path, limit: usize) -> Result<String, ConfigError> {
 
 fn load_theme(path: &Path) -> Result<Theme, ConfigError> {
     let text = read_limited(path, MAX_THEME_BYTES)?;
-    theme::parse(&text, &path.display().to_string()).map_err(ConfigError::parser)
+    // Parser messages keep their line structure, so the origin embedded in one
+    // must not carry a newline of its own.
+    let origin = crate::render::layout::sanitize(&path.display().to_string());
+    theme::parse(&text, &origin).map_err(ConfigError::parser)
 }
 
 fn load_logo(path: &Path) -> Result<logo::Logo, ConfigError> {
@@ -387,7 +390,8 @@ fn load_logo(path: &Path) -> Result<logo::Logo, ConfigError> {
         .file_stem()
         .map(|stem| stem.to_string_lossy().into_owned())
         .unwrap_or_else(|| "custom".to_owned());
-    logo::parse_custom(&text, &stem, &path.display().to_string()).map_err(ConfigError::plain)
+    let origin = crate::render::layout::sanitize(&path.display().to_string());
+    logo::parse_custom(&text, &stem, &origin).map_err(ConfigError::plain)
 }
 
 /// `auto`, `none`, or the identifier of a built-in logo.
@@ -550,10 +554,7 @@ impl Config {
             LogoChoice::Named(name) => {
                 logo::built_in(name).unwrap_or_else(|| logo::select(None, None))
             }
-            _ => {
-                let os = snapshot.os.value();
-                logo::select(os.and_then(|os| os.id.as_deref()), os.map(|os| &os.family))
-            }
+            _ => crate::render::terminal::auto_logo(snapshot),
         }
     }
 }

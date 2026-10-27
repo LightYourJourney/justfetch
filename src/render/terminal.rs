@@ -45,6 +45,11 @@ pub fn color_allowed(
 
 const GIBIBYTE: f64 = 1_073_741_824.0;
 
+/// Columns kept between artwork and the information beside it.
+const LOGO_GAP: usize = 3;
+/// Columns of information required before artwork is given room beside it.
+const MIN_INFO_BESIDE_LOGO: usize = 36;
+
 /// The `used / total GiB (n%)` shape that memory, swap and disk all share.
 fn capacity(used: u64, total: u64) -> String {
     format!(
@@ -105,10 +110,15 @@ fn plain(text: &str, unicode: bool) -> String {
     }
 }
 
-pub fn render(snapshot: &SystemSnapshot, options: Options<'_>) -> String {
+/// The artwork the detected system calls for. One place decides it, so the
+/// library entry point and the CLI cannot disagree.
+pub fn auto_logo(snapshot: &SystemSnapshot) -> logo::Logo {
     let os = snapshot.os.value();
-    let logo = logo::select(os.and_then(|os| os.id.as_deref()), os.map(|os| &os.family));
-    render_with_logo(snapshot, options, &logo)
+    logo::select(os.and_then(|os| os.id.as_deref()), os.map(|os| &os.family))
+}
+
+pub fn render(snapshot: &SystemSnapshot, options: Options<'_>) -> String {
+    render_with_logo(snapshot, options, &auto_logo(snapshot))
 }
 
 /// Explicit logo input also exercises shorter and taller custom fixtures.
@@ -170,17 +180,17 @@ pub fn render_with_logo(
         && options.logo
         && options.logo_explicit
         && columns < logo_width + 3 + 36
-        && columns >= logo_width + 4
+        && columns >= logo_width
     {
         layout = Layout::Vertical;
     }
 
     match layout {
         Layout::Classic => {
-            let show_logo = options.logo && columns >= logo_width + 3 + 36;
+            let show_logo = options.logo && columns >= logo_width + LOGO_GAP + MIN_INFO_BESIDE_LOGO;
             let logo_colours = theme.logo_colours(logo.color, logo_lines.len());
             let info_columns = if show_logo {
-                columns - logo_width - 3
+                columns - logo_width - LOGO_GAP
             } else {
                 columns
             };
@@ -214,7 +224,7 @@ pub fn render_with_logo(
             out
         }
         Layout::Vertical => {
-            let show_logo = options.logo && columns >= logo_width + 4;
+            let show_logo = options.logo && columns >= logo_width;
             let logo_colours = theme.logo_colours(logo.color, logo_lines.len());
             let lines = column_lines(
                 &title,
@@ -265,7 +275,6 @@ fn decor_fits(columns: usize) -> bool {
     columns >= 24
 }
 
-/// The parts of a theme every line needs, resolved once per render.
 /// The resolved styling a render needs: which theme, at which depth, with the
 /// user's accent on top and the artwork colour underneath.
 struct Palette<'a> {
@@ -456,19 +465,29 @@ fn row_lines(
             lines.push(line);
         }
     } else {
-        // Too narrow to hold the column: wrap the whole row and keep the label
-        // styled only where the chunk still starts with it.
+        // Too narrow to hold the column: wrap the whole row. The label is
+        // styled only where the chunk still starts with it, the separator is
+        // never part of the value span, and once the label is behind us a
+        // continuation is styled as the value it continues.
         let text = format!("{prefix}{separator}{}", row.value);
+        let mut past_label = false;
         for chunk in wrap(&text, columns) {
             let mut line = Line::new();
-            if chunk.starts_with(&prefix) {
+            if !past_label && chunk.starts_with(&prefix) {
                 line.push(prefix.clone(), styles.label);
-                push_value(
-                    &mut line,
-                    &chunk[prefix.len()..],
-                    styles.value,
-                    styles.emphasis,
-                );
+                let rest = &chunk[prefix.len()..];
+                match rest.strip_prefix(separator) {
+                    Some(rest) => {
+                        line.push(separator, Style::new());
+                        push_value(&mut line, rest, styles.value, styles.emphasis);
+                        past_label = true;
+                    }
+                    // The separator itself was split across lines; the rest is
+                    // still value text, and the fragment stays plain.
+                    None => line.push(rest, styles.value),
+                }
+            } else if past_label {
+                push_value(&mut line, &chunk, styles.value, styles.emphasis);
             } else {
                 line.push(chunk, Style::new());
             }

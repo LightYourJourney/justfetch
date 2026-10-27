@@ -1082,3 +1082,48 @@ fn an_explicitly_chosen_logo_is_stacked_rather_than_dropped() {
         "{beside}"
     );
 }
+
+#[test]
+fn artwork_exactly_as_wide_as_the_terminal_is_drawn_when_chosen() {
+    let art = logo::parse_custom("#".repeat(10).as_str(), "mine", "art.txt").unwrap();
+    let at = |columns| {
+        terminal::render_with_logo(
+            &fixture(),
+            Options {
+                logo_explicit: true,
+                ..options(columns)
+            },
+            &art,
+        )
+    };
+    // Ten columns of artwork in a ten-column terminal fits; it must be drawn.
+    assert!(at(10).contains("##########"), "{}", at(10));
+    // One column short cannot be drawn at all.
+    assert!(!at(9).contains("##########"));
+}
+
+#[test]
+fn a_row_too_narrow_for_the_column_still_styles_what_it_can() {
+    let nord = theme::built_in("nord").expect("built in");
+    let output = terminal::render(
+        &fixture(),
+        Options {
+            depth: Depth::TrueColor,
+            logo: false,
+            theme: &nord,
+            ..options(10)
+        },
+    );
+    let row = output
+        .lines()
+        .find(|line| layout::sanitize(line).starts_with("OS "))
+        .unwrap_or_else(|| panic!("no OS row:\n{output}"));
+    // Label styled, separator plain, then a styled value fragment.
+    let label_end = row.find("\u{1b}[0m").expect("the label is styled");
+    assert!(row[..label_end].contains("OS"));
+    assert!(row[label_end..].starts_with("\u{1b}[0m  "), "{row:?}");
+    assert!(
+        row[label_end + 3..].contains('\u{1b}'),
+        "value lost its colour"
+    );
+}

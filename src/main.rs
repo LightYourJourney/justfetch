@@ -8,6 +8,18 @@ use std::{
     process::ExitCode,
 };
 
+/// Resolve the configuration once, reporting a failure the same way every
+/// subcommand does.
+fn resolved(cli: &Cli) -> Option<config::Config> {
+    match config::resolve(cli) {
+        Ok(config) => Some(config),
+        Err(error) => {
+            eprintln!("justfetch: {error}");
+            None
+        }
+    }
+}
+
 fn run(cli: &Cli) -> io::Result<ExitCode> {
     match &cli.command {
         Some(Command::Init) => match commands::init(cli) {
@@ -43,12 +55,8 @@ fn run(cli: &Cli) -> io::Result<ExitCode> {
             })
         }
         Some(Command::Themes) => {
-            let config = match config::resolve(cli) {
-                Ok(config) => config,
-                Err(error) => {
-                    eprintln!("justfetch: {error}");
-                    return Ok(ExitCode::FAILURE);
-                }
+            let Some(config) = resolved(cli) else {
+                return Ok(ExitCode::FAILURE);
             };
             let listing = match cli.format {
                 Format::Json => commands::themes_json(),
@@ -61,12 +69,8 @@ fn run(cli: &Cli) -> io::Result<ExitCode> {
             Ok(ExitCode::SUCCESS)
         }
         None => {
-            let config = match config::resolve(cli) {
-                Ok(config) => config,
-                Err(error) => {
-                    eprintln!("justfetch: {error}");
-                    return Ok(ExitCode::FAILURE);
-                }
+            let Some(config) = resolved(cli) else {
+                return Ok(ExitCode::FAILURE);
             };
             // Only the selected modules are collected.
             let mut snapshot = detect::collect(&config.modules);

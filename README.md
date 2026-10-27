@@ -17,7 +17,7 @@ This list describes the current source. The published v0.1.0 archive is older an
 - Six colour themes, four layouts and `justfetch themes` for discovery. A theme is a table of colours, so it cannot change what is measured or how it is arranged. True colour is reduced to 256 or 16 colours when the terminal cannot show it, and to plain text when colour is off.
 - Built-in artwork follows the detected distribution, can be pinned by name, or replaced with a custom ASCII/Unicode file. Custom files are size-limited and stripped of escape sequences.
 - Original ASCII logos for macOS, Windows, Linux, Arch, Debian, Ubuntu, Fedora, Gentoo, openSUSE, NixOS and unknown systems.
-- Unicode display-cell alignment and grapheme-aware wrapping; narrow terminals hide the logo.
+- Unicode display-cell alignment and grapheme-aware wrapping. Narrow terminals hide automatic artwork and keep the information; artwork you named yourself is stacked above it instead, unless the artwork is wider than the terminal.
 - Conservative ANSI colors, NO_COLOR, TERM=dumb and redirected-output support; no terminal state changes.
 - Control-sequence sanitization for displayed system/environment strings.
 - No runtime network requests, telemetry, subprocesses or arbitrary configuration scripts.
@@ -88,7 +88,7 @@ themes with a colour preview. `--logo auto` is the default; `--logo NAME` pins a
 built-in emblem and `--logo-file PATH` draws your own. See [themes and
 layouts](docs/themes.md).
 
-`--logo auto` is the default. `--modules` picks the rows and their order, and a module that is not selected is never collected — not merely hidden. Non-TTY output is plain text; nonempty NO_COLOR or TERM=dumb disables ANSI even in a TTY. Long fields wrap within the detected terminal width. Legacy non-UTF-8 locales use ASCII presentation; JSON retains the original strings.
+`--modules` picks the rows and their order, and a module that is not selected is never collected — not merely hidden. Non-TTY output is plain text; nonempty NO_COLOR or TERM=dumb disables ANSI even in a TTY. Long fields wrap within the detected terminal width. Legacy non-UTF-8 locales use ASCII presentation; JSON retains the original strings.
 
 JSON stdout is exactly one document, with raw seconds/bytes and no logo, ANSI or diagnostic logs. Field failures remain structured data; successful output returns zero even when a field is unavailable. Invalid options return a nonzero code with diagnostics on stderr. Output-write failures also return nonzero; closed pipes exit quietly.
 

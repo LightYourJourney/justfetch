@@ -42,12 +42,12 @@
 - Ship six themes: `default` (the terminal's own sixteen colours, artwork in its distribution colour), `catppuccin-mocha`, `nord`, `tokyo-night`, `gruvbox` and `monochrome`. `justfetch themes` previews each one — its name in the theme's own title colour, its palette, and a label/value/rule sample — and with `--format json` it emits the same list as a JSON document.
 - Reduce colour to what the terminal can show: exact RGB when `COLORTERM` advertises true colour, the nearest xterm-256 index for a 256-colour terminal, the nearest of the sixteen basic colours otherwise, and no escapes at all when colour is off. The default theme asks only for named colours, so it never depends on an approximation.
 - Add four layouts: `classic` (artwork beside the information), `compact` (aligned rows without artwork or decoration), `minimal` (`Label: value`, unaligned, for narrow output) and `vertical` (artwork centred above). Narrow terminals lose the rules and swatches first, then the artwork, and never the information.
-- Add `--theme`, `--theme-file PATH`, `--layout`, `--logo NAME` (a built-in emblem) and `--logo-file PATH` (your own ASCII or Unicode artwork), each with the same precedence as the existing settings: command line, `--config` file, user file, defaults. A tighter layer's logo choice replaces inherited artwork rather than being silently overridden by it. Artwork chosen explicitly is never dropped for width: `classic` moves it above the information instead.
+- Add `--theme`, `--theme-file PATH`, `--layout`, `--logo NAME` (a built-in emblem) and `--logo-file PATH` (your own ASCII or Unicode artwork), each with the same precedence as the existing settings: command line, `--config` file, user file, defaults. A tighter layer's logo choice replaces inherited artwork rather than being silently overridden by it. Artwork chosen explicitly is not dropped for width while it fits the terminal: `classic` moves it above the information instead. Artwork wider than the terminal cannot be drawn at all.
 - Add `[theme] name`/`[theme] file` and `[layout] name`/`logo_file` to the configuration file. A file named there is resolved relative to the configuration file that names it.
 - Bound and clean user artwork: 32 KiB, 40 lines and 160 columns per line, escape sequences stripped, trailing spaces removed, empty refused. Custom theme files are limited to 16 KiB and validated key by key.
 - The artwork is shaded between the theme's two logo colours when both are set and the terminal can express the intermediate shades; named colours are not blended into invented ones.
 - JSON output is untouched by any of these settings. `schema_version` stays 1.
-- 133 tests, up from 87.
+- 136 tests, up from 87.
 
 ## 0.1.0 — pre-release
 

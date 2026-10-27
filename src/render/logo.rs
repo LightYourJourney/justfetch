@@ -31,6 +31,11 @@ impl Logo {
     }
 }
 
+/// The last resort, also a row in `ART`; `of` needs a value even if the table
+/// were somehow empty, and one definition keeps the two from drifting.
+const FALLBACK_ART: &str = include_str!("../../assets/logos/fallback.txt");
+const FALLBACK_COLOUR: AnsiColor = AnsiColor::BrightCyan;
+
 /// The built-in artwork, in the order `--help` and errors list it. One table:
 /// detection, explicit selection and the help text all read it, so adding a
 /// distribution is one row.
@@ -119,10 +124,7 @@ fn artwork(name: &str) -> Option<(&'static str, AnsiColor)> {
 /// The artwork for one canonical id. Only an empty table could make this fail,
 /// and then the caller gets a readable fallback rather than a panic.
 fn of(name: &str) -> Logo {
-    let (art, colour) = artwork(name).unwrap_or((
-        include_str!("../../assets/logos/fallback.txt"),
-        AnsiColor::BrightCyan,
-    ));
+    let (art, colour) = artwork(name).unwrap_or((FALLBACK_ART, FALLBACK_COLOUR));
     Logo {
         name: name.to_owned(),
         art: art.to_owned(),

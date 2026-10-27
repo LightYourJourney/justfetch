@@ -43,8 +43,8 @@ sixteen, or nothing — from a depth the caller detected, so the conversion is a
 pure function. `src/render/layout.rs` owns the four arrangements. The renderer
 composes a line out of styled spans; measuring happens on plain text before any
 style is attached, which is why a themed run is byte-identical to a plain one
-after the escapes are removed. Adding a theme is data; adding a layout is one
-arm. Neither reads the environment or touches the filesystem: configuration
+after the escapes are removed. Adding a theme is a row in one table plus its constructor; adding a layout
+is a variant, and the compiler then demands the arms it needs. Neither reads the environment or touches the filesystem: configuration
 reads a theme or logo file and hands the text over already bounded.
 
 ## Implementation plan

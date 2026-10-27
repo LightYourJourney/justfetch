@@ -1,6 +1,6 @@
-//! The `init` and `doctor` subcommands, and the text they print.
+//! The `init`, `doctor` and `themes` subcommands, and the text they print.
 //!
-//! They live apart from `config` because the two change for different reasons:
+//! They live apart from `config` because they change for different reasons:
 //! `config` follows the file format and the precedence rules, this module
 //! follows what the commands say.
 
@@ -234,17 +234,30 @@ pub fn themes(depth: Depth, unicode: bool, columns: usize) -> String {
             .map(|colour| styled(dot, colour_style(Some(*colour), depth)))
             .collect();
         // The preview has to preview: the name carries the theme's title
-        // colour, and the label, value and rule follow the palette.
+        // colour, and a sample follows the label, value, rule, emphasis and
+        // artwork colours.
         let title_style = theme.style(Role::Title, None, theme.logo, depth);
-        let sample =
+        let styled_with =
             |role: Role, text: &str| styled(text, theme.style(role, None, theme.logo, depth));
-        let sample = if inline && columns >= name_width + 2 + chips.len() * 2 + 10 {
-            format!(
-                "  {} {} {}",
-                sample(Role::Label, "Aa"),
-                sample(Role::Value, "Aa"),
-                sample(Role::Divider, if unicode { "──" } else { "--" })
-            )
+        let block = if unicode { "██" } else { "##" };
+        let rule = if unicode { "──" } else { "--" };
+        let mut sample_parts = vec![
+            styled_with(Role::Label, "Aa"),
+            styled_with(Role::Value, "Aa"),
+            styled_with(Role::Divider, rule),
+            styled_with(Role::Emphasis, "~"),
+            styled(block, colour_style(theme.logo, depth)),
+        ];
+        let plain_width = if theme.logo_secondary.is_some() {
+            18
+        } else {
+            15
+        };
+        if theme.logo_secondary.is_some() {
+            sample_parts.push(styled(block, colour_style(theme.logo_secondary, depth)));
+        }
+        let sample = if inline && columns >= name_width + 2 + chips.len() * 2 + 2 + plain_width {
+            format!("  {}", sample_parts.join(" "))
         } else {
             String::new()
         };

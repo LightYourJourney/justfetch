@@ -5,9 +5,10 @@
 //! a data change rather than a second rendering path.
 //!
 //! A role left unset means "keep what the layout would do anyway": the title
-//! and labels fall back to the logo's accent, everything else to the terminal's
-//! own foreground. A role set to `default` explicitly means the same thing for
-//! a theme that wants a coloured logo but plain labels.
+//! and labels fall back to the accent, everything else to the terminal's own
+//! foreground. A role set to `default` asks for the terminal's own colour
+//! explicitly, which for the title and labels is not the same thing: unset
+//! follows the accent, `default` refuses it.
 
 use super::colour::Colour;
 use anstyle::{AnsiColor, Style};
