@@ -337,6 +337,8 @@ Phase 11 added a theme model, four layouts and custom artwork. `docs/themes.md` 
 
 **Rejected finding.** Both reviewers noted that `--format json` still reads and validates `[theme] file` and `layout.logo_file`, so a missing presentation file fails a JSON run. That is deliberate and now documented: the configuration is validated once, the same way for every output format, and only the document's contents ignore presentation. Making validation conditional on the format would give the same file two different meanings, and a user whose configuration names a missing file has a broken configuration whether or not that run draws it.
 
+**CI caught a test defect, not a product one.** The first run of this round failed on Windows only: a test wrote an absolute path into a TOML basic string, where `C:\Users\...` starts a Unicode escape. The test now escapes the path through a helper with its own unit test, and the configuration reference tells users to double backslashes or use a single-quoted string. The product was never wrong here; the test could not have failed on macOS, which is why it reached CI.
+
 **Not verified.** No Windows or Linux terminal was available interactively. The colour-depth checks above ran on macOS only; the platform-specific ANSI policy is exercised by CI and by cross-target compilation, which is not the same thing. Font-dependent rendering of `●` and of bold is not asserted anywhere, and no screenshot comparison was performed.
 
 **Two-axis review of this round.** A Standards review and a Spec review ran independently against the same working tree. Both axes reported; the findings are closed:
@@ -354,4 +356,4 @@ Phase 11 added a theme model, four layouts and custom artwork. `docs/themes.md` 
 
 **Accepted deviation.** `--theme-file`, `--logo-file` and `--format json themes` go beyond the specification's suggested CLI list. The file flags are how a custom theme or logo is selected without a configuration file, which the spec requires; the JSON listing exists so that asking for JSON yields JSON.
 
-**Test count:** 132, up from 87.
+**Test count:** 133, up from 87.

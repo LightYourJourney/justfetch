@@ -17,6 +17,13 @@ fn run(args: &[&str]) -> Output {
         .expect("run justfetch")
 }
 
+/// A path as a TOML basic string. A backslash starts an escape there, and a
+/// Windows path is full of them; this is the same rule the documentation gives
+/// users.
+fn toml_path(path: &std::path::Path) -> String {
+    path.display().to_string().replace('\\', "\\\\")
+}
+
 fn temp_dir(tag: &str) -> std::path::PathBuf {
     let dir = std::env::temp_dir().join(format!("jf-cli-test-{tag}"));
     let _ = std::fs::remove_dir_all(&dir);
@@ -477,7 +484,7 @@ fn a_custom_theme_file_is_used_and_a_bad_colour_is_refused() {
     let config = dir.join("config.toml");
     std::fs::write(
         &config,
-        format!("[theme]\nfile = \"{}\"\n", theme.display()),
+        format!("[theme]\nfile = \"{}\"\n", toml_path(&theme)),
     )
     .unwrap();
     let out = run(&["--config", config.to_str().unwrap(), "doctor"]);
@@ -631,4 +638,12 @@ fn asking_for_json_from_themes_returns_json() {
         assert!(entry["description"].is_string());
         assert!(entry["swatches"].is_array());
     }
+}
+
+#[test]
+fn a_windows_style_path_is_escaped_for_toml() {
+    assert_eq!(
+        toml_path(std::path::Path::new(r"C:\Users\a\b.toml")),
+        r"C:\\Users\\a\\b.toml"
+    );
 }

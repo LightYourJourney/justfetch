@@ -90,7 +90,10 @@ The user and host name are collected even when no module asks for them, because 
 A copyable full configuration is in [examples/config.toml](examples/config.toml),
 with a custom theme beside it. `[theme] file` and `[layout] logo_file` are read relative to the configuration
 file that names them, so a theme kept beside the configuration travels with it.
-An absolute path is used as given. Both are bounded — 16 KiB for a theme, 32 KiB
+An absolute path is used as given. On Windows, a path inside a TOML basic
+string needs its backslashes doubled (`"C:\\Users\\you\\theme.toml"`), or the
+string can be written in single quotes (`'C:\Users\you\theme.toml'`); forward
+slashes work too. Each file is bounded — 16 KiB for a theme, 32 KiB
 for a logo — and checked by the same code that checks a `--config` file, so
 `doctor` reports a broken one with the file it came from.
 
