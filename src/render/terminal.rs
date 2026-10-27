@@ -1,26 +1,36 @@
 use super::{
-    layout::{sanitize, width, wrap},
-    logo, theme,
+    colour::{Colour, Depth},
+    layout::{Layout, sanitize, width, wrap},
+    logo,
+    theme::{self, Role, Theme},
 };
 use crate::model::*;
 use crate::module::ModuleId;
-use anstyle::AnsiColor;
+use anstyle::Style;
 use std::ffi::OsStr;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug)]
 pub struct Options<'a> {
     pub columns: usize,
-    pub color: bool,
+    /// What the terminal can be told about colour. `None` renders plain text.
+    pub depth: Depth,
     pub unicode: bool,
+    /// Whether artwork may be drawn at all. The layout still decides whether
+    /// there is room for it.
     pub logo: bool,
+    /// The user named this artwork explicitly, so a narrow terminal stacks it
+    /// above the information instead of dropping it.
+    pub logo_explicit: bool,
+    pub layout: Layout,
     /// Which rows to draw, in this order.
     pub modules: &'a [ModuleId],
     /// Custom labels, by module. Anything absent keeps its default label.
     pub labels: &'a [(ModuleId, String)],
     /// Text between the label column and the value.
     pub separator: &'a str,
-    /// Accent for the title and labels. `None` uses the logo's own colour.
-    pub accent: Option<AnsiColor>,
+    pub theme: &'a Theme,
+    /// Overrides the accent the theme would otherwise take from its logo.
+    pub accent: Option<Colour>,
 }
 
 /// Pure policy: NO_COLOR has effect only when nonempty, per no-color.org.
@@ -108,152 +118,414 @@ pub fn render_with_logo(
     logo: &logo::Logo,
 ) -> String {
     let columns = options.columns.clamp(1, 4096);
-    let logo_lines: Vec<&str> = logo.art.lines().collect();
-    let logo_width = logo_lines.iter().map(|l| width(l)).max().unwrap_or(0);
-    let show_logo = options.logo && columns >= logo_width + 3 + 36;
-    let info_columns = if show_logo {
-        columns - logo_width - 3
-    } else {
-        columns
-    };
-    // A configured accent colours the text; the artwork keeps its own colour.
-    let accent = options.accent.unwrap_or(logo.color);
-    let username = display(&snapshot.identity.username, Clone::clone);
-    let hostname = display(&snapshot.identity.hostname, Clone::clone);
-    let title = plain(&format!("{username}@{hostname}"), options.unicode);
-    let divider = if options.unicode { "─" } else { "-" }
-        .repeat(width(&title).clamp(12, 40).min(info_columns));
-    let mut lines: Vec<Line> = wrap(&title, info_columns)
-        .into_iter()
-        .enumerate()
-        .map(|(index, text)| Line {
-            text,
-            accent: (index == 0).then_some(Accent::Whole),
-        })
-        .collect();
-    lines.push(Line {
-        text: divider.clone(),
-        accent: None,
-    });
-
-    let rows = field_rows(snapshot, options.modules, options.labels);
-    // Custom labels and separators are user input, so they are sanitised and
-    // measured exactly like values: no escape reaches the terminal unstripped,
-    // and a wide character cannot shift the column.
-    let labels: Vec<String> = rows
-        .iter()
-        .map(|row| plain(&row.label, options.unicode))
-        .collect();
+    let theme = options.theme;
+    // The user's accent overrides the theme; the theme's logo colour is the
+    // fallback for roles neither the user nor the theme names.
+    let accent = options.accent;
+    let fallback = theme.logo.or(logo.color);
+    let title = plain(
+        &format!(
+            "{}@{}",
+            display(&snapshot.identity.username, Clone::clone),
+            display(&snapshot.identity.hostname, Clone::clone)
+        ),
+        options.unicode,
+    );
+    let rows = field_rows(snapshot, options.modules, options.labels, options.unicode);
     let separator = plain(options.separator, options.unicode);
-    // The column is as wide as the built-in labels need, or as wide as a custom
-    // label on a visible row makes it. It deliberately does not shrink to fit a
-    // subset: the same row should align the same way whatever else is shown.
-    let mut label_width = ModuleId::ALL
+    // The classic column is as wide as the built-in labels need, or as wide as
+    // a custom label on a visible row makes it. It deliberately does not shrink
+    // to fit a subset: the same row should align the same way whatever else is
+    // shown. Compact and minimal lay themselves out from the rows they show.
+    let full_label_width = ModuleId::ALL
         .iter()
         .map(|module| width(module.label()))
+        .chain(rows.iter().map(|row| width(&row.label)))
         .max()
         .unwrap_or(0);
-    for label in &labels {
-        label_width = label_width.max(width(label));
-    }
-    let prefix_width = label_width + width(&separator);
-    let continuation = " ".repeat(prefix_width);
-    for (row, label) in rows.iter().zip(&labels) {
-        let value = plain(&row.value, options.unicode);
-        // Padded by display width, not character count, so a wide-character
-        // label would still line up.
-        let prefix = format!(
-            "{label}{}{separator}",
-            " ".repeat(label_width - width(label))
-        );
-        // Keep a readable continuation indent whenever enough width exists.
-        if info_columns > prefix_width + 2 {
-            let chunks = wrap(&value, info_columns - prefix_width);
-            for (index, chunk) in chunks.into_iter().enumerate() {
-                lines.push(if index == 0 {
-                    Line {
-                        text: format!("{prefix}{chunk}"),
-                        accent: Some(Accent::Prefix(prefix.len())),
-                    }
-                } else {
-                    Line {
-                        text: format!("{continuation}{chunk}"),
-                        accent: None,
-                    }
-                });
-            }
-        } else {
-            for (index, text) in wrap(&format!("{prefix}{value}"), info_columns)
-                .into_iter()
-                .enumerate()
-            {
-                // A row that starts with the whole label column still gets it
-                // accented; one too narrow to hold the column starts mid-label
-                // and stays plain, as before.
-                let accent = (index == 0
-                    && text.len() >= prefix.len()
-                    && text.is_char_boundary(prefix.len()))
-                .then_some(Accent::Prefix(prefix.len()));
-                lines.push(Line { text, accent });
-            }
-        }
-    }
-    lines.push(Line {
-        text: divider,
-        accent: None,
-    });
-    let dot = if options.unicode { "●" } else { "o" };
-    let palette = [
-        AnsiColor::Black,
-        AnsiColor::Red,
-        AnsiColor::Green,
-        AnsiColor::Yellow,
-        AnsiColor::Blue,
-        AnsiColor::Magenta,
-        AnsiColor::Cyan,
-        AnsiColor::White,
-    ];
-    let swatches = palette
+    let shown_label_width = rows.iter().map(|row| width(&row.label)).max().unwrap_or(0);
+
+    let palette = Palette {
+        theme,
+        depth: options.depth,
+        accent,
+        fallback,
+        unicode: options.unicode,
+    };
+    // Artwork is user input too: in a non-UTF-8 locale it is downgraded exactly
+    // like the labels and values, so a custom CJK logo cannot arrive as mojibake
+    // while every other string is ASCII.
+    let logo_lines: Vec<String> = logo
+        .lines()
         .into_iter()
-        .take(info_columns.div_ceil(2).min(8))
-        .map(|color| theme::accent(dot, color, options.color))
-        .collect::<Vec<_>>()
-        .join(" ");
-    // ANSI is added only after all plain widths and wrapping have been computed.
-    let mut output = String::new();
-    let row_count = lines
-        .len()
-        .max(if show_logo { logo_lines.len() } else { 0 });
-    for index in 0..row_count {
-        if show_logo {
-            let line = logo_lines.get(index).copied().unwrap_or("");
-            output.push_str(&theme::accent(line, logo.color, options.color));
-            output.push_str(&" ".repeat(logo_width - width(line) + 3));
-        }
-        if let Some(line) = lines.get(index) {
-            match line.accent {
-                Some(Accent::Whole) => {
-                    output.push_str(&theme::accent(&line.text, accent, options.color));
+        .map(|line| plain(line, options.unicode))
+        .collect();
+    let logo_width = logo_lines.iter().map(|line| width(line)).max().unwrap_or(0);
+
+    // An explicitly chosen logo is never silently discarded. When classic has
+    // no room beside the information, the artwork moves above it — the same
+    // arrangement as `vertical` — rather than disappearing.
+    let mut layout = options.layout;
+    if layout == Layout::Classic
+        && options.logo
+        && options.logo_explicit
+        && columns < logo_width + 3 + 36
+        && columns >= logo_width + 4
+    {
+        layout = Layout::Vertical;
+    }
+
+    match layout {
+        Layout::Classic => {
+            let show_logo = options.logo && columns >= logo_width + 3 + 36;
+            let logo_colours = theme.logo_colours(logo.color, logo_lines.len());
+            let info_columns = if show_logo {
+                columns - logo_width - 3
+            } else {
+                columns
+            };
+            let lines = column_lines(
+                &title,
+                &rows,
+                full_label_width,
+                &separator,
+                info_columns,
+                decor_fits(columns),
+                &palette,
+            );
+            let mut out = String::new();
+            let height = lines
+                .len()
+                .max(if show_logo { logo_lines.len() } else { 0 });
+            for index in 0..height {
+                if show_logo {
+                    let art = logo_lines.get(index).map(String::as_str).unwrap_or("");
+                    out.push_str(&logo_line(&palette, &logo_colours, index, art));
+                    out.push_str(&" ".repeat(logo_width - width(art) + 3));
                 }
-                Some(Accent::Prefix(length)) => {
-                    output.push_str(&theme::accent(&line.text[..length], accent, options.color));
-                    output.push_str(&line.text[length..]);
+                match lines.get(index) {
+                    Some(line) => out.push_str(&emit(line)),
+                    // Drop the padding left by artwork that runs longer than
+                    // the information.
+                    None => trim_end(&mut out),
                 }
-                None => output.push_str(&line.text),
+                out.push('\n');
             }
+            out
         }
-        // Avoid trailing padding when the logo extends below the information.
-        while output.ends_with(' ') {
-            output.pop();
+        Layout::Vertical => {
+            let show_logo = options.logo && columns >= logo_width + 4;
+            let logo_colours = theme.logo_colours(logo.color, logo_lines.len());
+            let lines = column_lines(
+                &title,
+                &rows,
+                full_label_width,
+                &separator,
+                columns,
+                decor_fits(columns),
+                &palette,
+            );
+            let mut out = String::new();
+            if show_logo {
+                // Centre the block, not each line: centring a line by its own
+                // width compresses an asymmetric drawing — the arch's
+                // staircase loses its slope.
+                for (index, art) in logo_lines.iter().enumerate() {
+                    out.push_str(&" ".repeat((columns - logo_width) / 2));
+                    out.push_str(&logo_line(&palette, &logo_colours, index, art));
+                    out.push('\n');
+                }
+                out.push('\n');
+            }
+            for line in &lines {
+                out.push_str(&emit(line));
+                out.push('\n');
+            }
+            out
         }
-        output.push('\n');
+        Layout::Compact => {
+            let lines = column_lines(
+                &title,
+                &rows,
+                shown_label_width,
+                &separator,
+                columns,
+                false,
+                &palette,
+            );
+            joined(&lines)
+        }
+        Layout::Minimal => joined(&minimal_lines(&title, &rows, columns, &palette)),
     }
-    if show_logo {
-        output.push_str(&" ".repeat(logo_width + 3));
+}
+
+/// Whether the rules and swatches fit. Below this width they would crowd out
+/// the information they are meant to frame.
+fn decor_fits(columns: usize) -> bool {
+    columns >= 24
+}
+
+/// The parts of a theme every line needs, resolved once per render.
+/// The resolved styling a render needs: which theme, at which depth, with the
+/// user's accent on top and the artwork colour underneath.
+struct Palette<'a> {
+    theme: &'a Theme,
+    depth: Depth,
+    accent: Option<Colour>,
+    fallback: Option<Colour>,
+    unicode: bool,
+}
+
+impl Palette<'_> {
+    fn role(&self, role: Role) -> Style {
+        self.theme
+            .style(role, self.accent, self.fallback, self.depth)
     }
-    output.push_str(&swatches);
-    output.push('\n');
+}
+
+pub(crate) fn colour_style(colour: Option<Colour>, depth: Depth) -> Style {
+    match colour.and_then(|colour| colour.resolve(depth)) {
+        Some(color) => Style::new().fg_color(Some(color)).bold(),
+        None => Style::new(),
+    }
+}
+
+/// One coloured run of text. Styling is attached after all widths are known, so
+/// an escape can never shift a column.
+struct Span {
+    text: String,
+    style: Style,
+}
+
+struct Line {
+    spans: Vec<Span>,
+}
+
+impl Line {
+    fn new() -> Self {
+        Self { spans: Vec::new() }
+    }
+
+    fn push(&mut self, text: impl Into<String>, style: Style) {
+        let text = text.into();
+        if !text.is_empty() {
+            self.spans.push(Span { text, style });
+        }
+    }
+}
+
+fn emit(line: &Line) -> String {
+    // Trim trailing whitespace span by span, so a styled run of spaces cannot
+    // leave escape codes stranded at the end of a line.
+    let mut end = line.spans.len();
+    while end > 0 && line.spans[end - 1].text.trim_end_matches(' ').is_empty() {
+        end -= 1;
+    }
+    let mut output = String::new();
+    for (index, span) in line.spans[..end].iter().enumerate() {
+        let text = if index + 1 == end {
+            span.text.trim_end_matches(' ')
+        } else {
+            span.text.as_str()
+        };
+        output.push_str(&theme::styled(text, span.style));
+    }
     output
+}
+
+fn joined(lines: &[Line]) -> String {
+    let mut out = String::new();
+    for line in lines {
+        out.push_str(&emit(line));
+        out.push('\n');
+    }
+    out
+}
+
+/// Title, rule, rows and swatches — the arrangement classic and vertical share.
+fn column_lines(
+    title: &str,
+    rows: &[Row],
+    label_width: usize,
+    separator: &str,
+    columns: usize,
+    decor: bool,
+    palette: &Palette<'_>,
+) -> Vec<Line> {
+    let title_style = palette.role(Role::Title);
+    let label_style = palette.role(Role::Label);
+    let value_style = palette.role(Role::Value);
+    let divider_style = palette.role(Role::Divider);
+    let emphasis_style = palette.role(Role::Emphasis);
+
+    let mut lines = title_lines(title, columns, title_style);
+    if decor {
+        let mut line = Line::new();
+        line.push(divider_rule(title, columns, palette.unicode), divider_style);
+        lines.push(line);
+    }
+
+    for row in rows {
+        row_lines(
+            &mut lines,
+            row,
+            label_width,
+            separator,
+            columns,
+            RowStyles {
+                label: label_style,
+                value: value_style,
+                emphasis: emphasis_style,
+            },
+        );
+    }
+
+    if decor {
+        let mut line = Line::new();
+        line.push(divider_rule(title, columns, palette.unicode), divider_style);
+        lines.push(line);
+        if !palette.theme.swatches.is_empty() {
+            lines.push(swatch_line(palette, columns));
+        }
+    }
+    lines
+}
+
+/// `Label: value`, unaligned, for the width a column cannot fit in.
+fn minimal_lines(title: &str, rows: &[Row], columns: usize, palette: &Palette<'_>) -> Vec<Line> {
+    let title_style = palette.role(Role::Title);
+    let label_style = palette.role(Role::Label);
+    let value_style = palette.role(Role::Value);
+    let emphasis_style = palette.role(Role::Emphasis);
+
+    let mut lines = title_lines(title, columns, title_style);
+    for row in rows {
+        // Minimal owns its own punctuation and does not pad the label, so the
+        // shared composer produces `Label: value`.
+        row_lines(
+            &mut lines,
+            row,
+            width(&row.label),
+            ": ",
+            columns,
+            RowStyles {
+                label: label_style,
+                value: value_style,
+                emphasis: emphasis_style,
+            },
+        );
+    }
+    lines
+}
+
+struct RowStyles {
+    label: Style,
+    value: Style,
+    emphasis: Style,
+}
+
+/// Lay one row out into `lines`. Both arrangements with a label column use
+/// this: `column_lines` pads the label to the column and takes the configured
+/// separator, `minimal_lines` passes the label's own width and `": "`.
+fn row_lines(
+    lines: &mut Vec<Line>,
+    row: &Row,
+    label_width: usize,
+    separator: &str,
+    columns: usize,
+    styles: RowStyles,
+) {
+    let padding = " ".repeat(label_width.saturating_sub(width(&row.label)));
+    let prefix = format!("{}{padding}", row.label);
+    let prefix_width = label_width + width(separator);
+    let continuation = " ".repeat(prefix_width);
+    // Keep a readable continuation indent whenever enough width exists.
+    if columns > prefix_width + 2 {
+        for (index, chunk) in wrap(&row.value, columns - prefix_width)
+            .into_iter()
+            .enumerate()
+        {
+            let mut line = Line::new();
+            if index == 0 {
+                line.push(prefix.clone(), styles.label);
+                line.push(separator, Style::new());
+            } else {
+                line.push(continuation.clone(), Style::new());
+            }
+            push_value(&mut line, &chunk, styles.value, styles.emphasis);
+            lines.push(line);
+        }
+    } else {
+        // Too narrow to hold the column: wrap the whole row and keep the label
+        // styled only where the chunk still starts with it.
+        let text = format!("{prefix}{separator}{}", row.value);
+        for chunk in wrap(&text, columns) {
+            let mut line = Line::new();
+            if chunk.starts_with(&prefix) {
+                line.push(prefix.clone(), styles.label);
+                push_value(
+                    &mut line,
+                    &chunk[prefix.len()..],
+                    styles.value,
+                    styles.emphasis,
+                );
+            } else {
+                line.push(chunk, Style::new());
+            }
+            lines.push(line);
+        }
+    }
+}
+
+/// A value run, with the `~` that marks an estimate given the emphasis role.
+fn push_value(line: &mut Line, text: &str, value_style: Style, emphasis_style: Style) {
+    match text.strip_prefix("~ ") {
+        Some(rest) => {
+            line.push("~ ", emphasis_style);
+            line.push(rest, value_style);
+        }
+        None => line.push(text, value_style),
+    }
+}
+
+fn title_lines(title: &str, columns: usize, style: Style) -> Vec<Line> {
+    wrap(title, columns)
+        .into_iter()
+        .map(|chunk| {
+            let mut line = Line::new();
+            line.push(chunk, style);
+            line
+        })
+        .collect()
+}
+
+fn divider_rule(title: &str, columns: usize, unicode: bool) -> String {
+    let glyph = if unicode { "─" } else { "-" };
+    glyph.repeat(width(title).clamp(12, 40).min(columns))
+}
+
+fn swatch_line(palette: &Palette<'_>, columns: usize) -> Line {
+    let dot = if palette.unicode { "●" } else { "o" };
+    let count = columns.div_ceil(2).min(8).min(palette.theme.swatches.len());
+    let mut line = Line::new();
+    for (index, colour) in palette.theme.swatches.iter().take(count).enumerate() {
+        if index > 0 {
+            line.push(" ", Style::new());
+        }
+        line.push(dot, colour_style(Some(*colour), palette.depth));
+    }
+    line
+}
+
+fn logo_line(palette: &Palette<'_>, colours: &[Option<Colour>], index: usize, art: &str) -> String {
+    let style = colour_style(colours.get(index).copied().flatten(), palette.depth);
+    theme::styled(art, style)
+}
+
+fn trim_end(out: &mut String) {
+    while out.ends_with(' ') {
+        out.pop();
+    }
 }
 
 /// One information row before layout: the label to show and the composed value.
@@ -262,36 +534,28 @@ struct Row {
     value: String,
 }
 
-/// A composed line plus which part of it is accented. The styling pass reads
-/// this instead of slicing rows and matching label strings.
-struct Line {
-    text: String,
-    accent: Option<Accent>,
-}
-
-enum Accent {
-    /// The whole line, used for the title.
-    Whole,
-    /// The leading label column, measured in bytes of this line.
-    Prefix(usize),
-}
-
 /// The rows to draw, in the order the user asked for. A module that is not in
-/// the selection produces no row at all.
+/// the selection produces no row at all. Labels are custom user input, so they
+/// are sanitised exactly like values.
 fn field_rows(
     snapshot: &SystemSnapshot,
     modules: &[ModuleId],
     labels: &[(ModuleId, String)],
+    unicode: bool,
 ) -> Vec<Row> {
     modules
         .iter()
         .map(|&module| Row {
-            label: labels
-                .iter()
-                .find(|(id, _)| *id == module)
-                .map(|(_, label)| label.clone())
-                .unwrap_or_else(|| module.label().to_owned()),
-            value: value_for(snapshot, module),
+            label: plain(
+                labels
+                    .iter()
+                    .find(|(id, _)| *id == module)
+                    .map(|(_, label)| label.clone())
+                    .unwrap_or_else(|| module.label().to_owned())
+                    .as_str(),
+                unicode,
+            ),
+            value: plain(&value_for(snapshot, module), unicode),
         })
         .collect()
 }
@@ -386,9 +650,6 @@ mod tests {
             Some("xterm")
         ));
     }
-    /// The label column is derived from the labels themselves, so the width the
-    /// styling pass slices and the width the rows are padded to are the same
-    /// value by construction. `fixed_plain_render_is_aligned` pins the result.
     #[test]
     fn uptime_units() {
         assert_eq!(format_uptime(59), "59s");

@@ -4,8 +4,14 @@
 //! file, the user configuration file, built-in defaults. Nothing is ever
 //! written to the user's directory unless `init` is asked for.
 
-use crate::cli::{Cli, Format, Logo};
+use crate::cli::{Cli, Format};
 use crate::module::ModuleId;
+use crate::render::{
+    colour::Colour,
+    layout::Layout,
+    logo,
+    theme::{self, Theme},
+};
 use serde::Deserialize;
 use std::{
     collections::BTreeMap,
@@ -15,18 +21,26 @@ use std::{
 
 pub const DEFAULT_SEPARATOR: &str = "  ";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LogoMode {
+/// A theme file is user input; it is bounded before it can be parsed.
+pub const MAX_THEME_BYTES: usize = 16 * 1024;
+
+/// Which artwork to draw. `Auto` follows the detected distribution; `Named`
+/// pins a built-in one; a custom file is carried separately because its art
+/// has already been read and validated.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LogoChoice {
     Auto,
     None,
+    Named(String),
 }
 
-impl fmt::Display for LogoMode {
+impl fmt::Display for LogoChoice {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            LogoMode::Auto => "auto",
-            LogoMode::None => "none",
-        })
+        match self {
+            LogoChoice::Auto => f.write_str("auto"),
+            LogoChoice::None => f.write_str("none"),
+            LogoChoice::Named(name) => f.write_str(name),
+        }
     }
 }
 
@@ -36,11 +50,15 @@ pub struct Config {
     pub format: Format,
     pub privacy: bool,
     pub modules: Vec<ModuleId>,
-    pub logo: LogoMode,
+    pub logo: LogoChoice,
+    /// Custom artwork read from `layout.logo_file`, already validated.
+    pub logo_art: Option<logo::Logo>,
+    pub layout: Layout,
+    pub theme: Theme,
     pub color: bool,
     /// Overrides the accent colour used for the title and labels. `None` keeps
-    /// whatever the selected logo carries.
-    pub accent: Option<anstyle::AnsiColor>,
+    /// whatever the theme and the selected logo carry.
+    pub accent: Option<Colour>,
     pub separator: String,
     pub labels: Vec<(ModuleId, String)>,
 }
@@ -51,7 +69,10 @@ impl Default for Config {
             format: Format::Text,
             privacy: false,
             modules: ModuleId::ALL.to_vec(),
-            logo: LogoMode::Auto,
+            logo: LogoChoice::Auto,
+            logo_art: None,
+            layout: Layout::Classic,
+            theme: Theme::default(),
             color: true,
             accent: None,
             separator: DEFAULT_SEPARATOR.to_owned(),
@@ -67,25 +88,53 @@ pub struct ConfigError {
 }
 
 impl ConfigError {
+    /// A message this program composed. Values inside it are user input, and a
+    /// message is one line, so it is sanitised onto one line: a newline in a
+    /// configuration value must not be able to forge a second diagnostic.
     pub(crate) fn at(path: &Path, message: impl Into<String>) -> Self {
         Self {
             path: Some(path.to_path_buf()),
-            message: message.into(),
+            message: crate::render::layout::sanitize(&message.into()),
         }
     }
 
     pub(crate) fn plain(message: impl Into<String>) -> Self {
         Self {
             path: None,
-            message: message.into(),
+            message: crate::render::layout::sanitize(&message.into()),
+        }
+    }
+
+    /// A message from the TOML parser, whose own multi-line layout (the source
+    /// line and its caret) is part of the diagnostic. Each line is sanitised so
+    /// the echoed source cannot carry an escape, but the shape is kept.
+    pub(crate) fn parser_at(path: &Path, message: impl Into<String>) -> Self {
+        Self {
+            path: Some(path.to_path_buf()),
+            message: crate::render::layout::sanitize_display(&message.into()),
+        }
+    }
+
+    pub(crate) fn parser(message: impl Into<String>) -> Self {
+        Self {
+            path: None,
+            message: crate::render::layout::sanitize_display(&message.into()),
         }
     }
 }
 
 impl fmt::Display for ConfigError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Both the path and the message can carry user input (a configuration
+        // value, or the source line a TOML error echoes), so neither reaches
+        // the terminal unexamined.
         match &self.path {
-            Some(path) => write!(f, "{}: {}", path.display(), self.message),
+            Some(path) => write!(
+                f,
+                "{}: {}",
+                crate::render::layout::sanitize(&path.display().to_string()),
+                self.message
+            ),
             None => f.write_str(&self.message),
         }
     }
@@ -98,6 +147,7 @@ impl fmt::Display for ConfigError {
 struct FileConfig {
     modules: Option<Vec<String>>,
     layout: Option<LayoutSection>,
+    theme: Option<ThemeSection>,
     color: Option<ColorSection>,
     labels: Option<BTreeMap<String, String>>,
 }
@@ -105,8 +155,17 @@ struct FileConfig {
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct LayoutSection {
+    name: Option<String>,
     logo: Option<String>,
+    logo_file: Option<String>,
     separator: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ThemeSection {
+    name: Option<String>,
+    file: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -153,36 +212,7 @@ pub fn user_config_path() -> Option<PathBuf> {
 fn read_file(path: &Path) -> Result<FileConfig, ConfigError> {
     let text = std::fs::read_to_string(path)
         .map_err(|error| ConfigError::at(path, format!("cannot be read: {error}")))?;
-    toml::from_str(&text).map_err(|error| ConfigError::at(path, error.to_string()))
-}
-
-/// The eight basic ANSI colours, plus their bright forms as `bright-<name>`.
-fn parse_colour(text: &str) -> Option<anstyle::AnsiColor> {
-    use anstyle::AnsiColor;
-    let text = text.trim().to_ascii_lowercase();
-    let (bright, name) = match text.strip_prefix("bright-") {
-        Some(rest) => (true, rest),
-        None => (false, text.as_str()),
-    };
-    Some(match (name, bright) {
-        ("black", false) => AnsiColor::Black,
-        ("red", false) => AnsiColor::Red,
-        ("green", false) => AnsiColor::Green,
-        ("yellow", false) => AnsiColor::Yellow,
-        ("blue", false) => AnsiColor::Blue,
-        ("magenta", false) => AnsiColor::Magenta,
-        ("cyan", false) => AnsiColor::Cyan,
-        ("white", false) => AnsiColor::White,
-        ("black", true) => AnsiColor::BrightBlack,
-        ("red", true) => AnsiColor::BrightRed,
-        ("green", true) => AnsiColor::BrightGreen,
-        ("yellow", true) => AnsiColor::BrightYellow,
-        ("blue", true) => AnsiColor::BrightBlue,
-        ("magenta", true) => AnsiColor::BrightMagenta,
-        ("cyan", true) => AnsiColor::BrightCyan,
-        ("white", true) => AnsiColor::BrightWhite,
-        _ => return None,
-    })
+    toml::from_str(&text).map_err(|error| ConfigError::parser_at(path, error.to_string()))
 }
 
 fn parse_modules(list: &[String], origin: &str) -> Result<Vec<ModuleId>, ConfigError> {
@@ -215,17 +245,36 @@ impl FileConfig {
             config.modules = parse_modules(&list, &format!("{}: modules", path.display()))?;
         }
         if let Some(layout) = self.layout {
+            if layout.logo.is_some() && layout.logo_file.is_some() {
+                return Err(ConfigError::at(
+                    path,
+                    "layout.names both `logo` and `logo_file`; use one or the other",
+                ));
+            }
+            if let Some(name) = layout.name {
+                config.layout = Layout::parse(&name).ok_or_else(|| {
+                    ConfigError::at(
+                        path,
+                        format!(
+                            "layout.name is `{name}`; expected one of {}",
+                            Layout::ALL.map(|layout| layout.id()).join(", ")
+                        ),
+                    )
+                })?;
+            }
             if let Some(logo) = layout.logo {
-                config.logo = match logo.trim().to_ascii_lowercase().as_str() {
-                    "auto" => LogoMode::Auto,
-                    "none" => LogoMode::None,
-                    other => {
-                        return Err(ConfigError::at(
-                            path,
-                            format!("layout.logo is `{other}`; expected `auto` or `none`"),
-                        ));
-                    }
-                };
+                config.logo =
+                    parse_logo_choice(&logo, &format!("{}: layout.logo", path.display()))?;
+                // A tighter layer's choice replaces artwork inherited from a
+                // looser one; otherwise `logo = "none"` here would still draw
+                // the file named by the user configuration.
+                config.logo_art = None;
+            }
+            if let Some(file) = layout.logo_file {
+                config.logo_art = Some(load_logo(&beside(path, &file))?);
+                // The file is what will be drawn, so the choice records that
+                // rather than whatever an earlier layer said.
+                config.logo = LogoChoice::Auto;
             }
             if let Some(separator) = layout.separator {
                 if separator.is_empty() {
@@ -237,16 +286,41 @@ impl FileConfig {
                 config.separator = separator;
             }
         }
+        if let Some(section) = self.theme {
+            match (section.name, section.file) {
+                (Some(_), Some(_)) => {
+                    return Err(ConfigError::at(
+                        path,
+                        "theme.names both `name` and `file`; use one or the other",
+                    ));
+                }
+                (Some(name), None) => {
+                    config.theme = theme::built_in(&name).ok_or_else(|| {
+                        ConfigError::at(
+                            path,
+                            format!(
+                                "theme.name is `{name}`; expected one of {}",
+                                theme::names().join(", ")
+                            ),
+                        )
+                    })?;
+                }
+                (None, Some(file)) => {
+                    config.theme = load_theme(&beside(path, &file))?;
+                }
+                (None, None) => {}
+            }
+        }
         if let Some(color) = self.color {
             if let Some(enabled) = color.enabled {
                 config.color = enabled;
             }
             if let Some(accent) = color.accent {
-                config.accent = Some(parse_colour(&accent).ok_or_else(|| {
+                config.accent = Some(Colour::parse(&accent).ok_or_else(|| {
                     ConfigError::at(
                         path,
                         format!(
-                            "color.accent is `{accent}`; expected a basic colour name, optionally prefixed with `bright-`"
+                            "color.accent is `{accent}`; expected `#rrggbb`, a basic colour name, `bright-` plus one, or `default`"
                         ),
                     )
                 })?);
@@ -277,6 +351,56 @@ impl FileConfig {
             config.labels = parsed;
         }
         Ok(())
+    }
+}
+
+/// A file named in a configuration file is relative to that file, so a theme
+/// or logo kept beside the configuration travels with it.
+fn beside(config: &Path, name: &str) -> PathBuf {
+    let path = Path::new(name);
+    match path.is_absolute() {
+        true => path.to_path_buf(),
+        false => config.parent().unwrap_or(Path::new(".")).join(path),
+    }
+}
+
+fn read_limited(path: &Path, limit: usize) -> Result<String, ConfigError> {
+    let bytes = std::fs::read(path)
+        .map_err(|error| ConfigError::at(path, format!("cannot read: {error}")))?;
+    if bytes.len() > limit {
+        return Err(ConfigError::at(
+            path,
+            format!("file is {} bytes; the limit is {limit}", bytes.len()),
+        ));
+    }
+    String::from_utf8(bytes).map_err(|_| ConfigError::at(path, "file is not UTF-8".to_owned()))
+}
+
+fn load_theme(path: &Path) -> Result<Theme, ConfigError> {
+    let text = read_limited(path, MAX_THEME_BYTES)?;
+    theme::parse(&text, &path.display().to_string()).map_err(ConfigError::parser)
+}
+
+fn load_logo(path: &Path) -> Result<logo::Logo, ConfigError> {
+    let text = read_limited(path, logo::MAX_BYTES)?;
+    let stem = path
+        .file_stem()
+        .map(|stem| stem.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "custom".to_owned());
+    logo::parse_custom(&text, &stem, &path.display().to_string()).map_err(ConfigError::plain)
+}
+
+/// `auto`, `none`, or the identifier of a built-in logo.
+fn parse_logo_choice(text: &str, origin: &str) -> Result<LogoChoice, ConfigError> {
+    let name = text.trim().to_ascii_lowercase();
+    match name.as_str() {
+        "auto" => Ok(LogoChoice::Auto),
+        "none" => Ok(LogoChoice::None),
+        other if logo::built_in(other).is_some() => Ok(LogoChoice::Named(other.to_owned())),
+        other => Err(ConfigError::plain(format!(
+            "{origin} is `{other}`; expected `auto`, `none`, or one of {}",
+            logo::built_in_names().join(", ")
+        ))),
     }
 }
 
@@ -317,11 +441,43 @@ pub fn resolve_with(cli: &Cli, user_config: Option<&Path>) -> Result<Config, Con
             .collect();
         config.modules = parse_modules(&parts, "the --modules argument")?;
     }
-    if let Some(logo) = cli.logo {
-        config.logo = match logo {
-            Logo::Auto => LogoMode::Auto,
-            Logo::None => LogoMode::None,
-        };
+    if let Some(theme) = &cli.theme {
+        config.theme = theme::built_in(theme).ok_or_else(|| {
+            ConfigError::plain(format!(
+                "the --theme argument is `{theme}`; expected one of {}",
+                theme::names().join(", ")
+            ))
+        })?;
+    }
+    if let Some(layout) = &cli.layout {
+        config.layout = Layout::parse(layout).ok_or_else(|| {
+            ConfigError::plain(format!(
+                "the --layout argument is `{layout}`; expected one of {}",
+                Layout::ALL.map(|layout| layout.id()).join(", ")
+            ))
+        })?;
+    }
+    if let Some(logo) = &cli.logo {
+        config.logo = parse_logo_choice(logo, "the --logo argument")?;
+        config.logo_art = None;
+    }
+    if let Some(path) = &cli.theme_file {
+        if cli.theme.is_some() {
+            return Err(ConfigError::plain(
+                "--theme and --theme-file ask for different things; use one or the other",
+            ));
+        }
+        config.theme = load_theme(path)?;
+    }
+    if let Some(path) = &cli.logo_file {
+        if cli.logo.is_some() {
+            return Err(ConfigError::plain(
+                "--logo and --logo-file ask for different things; use one or the other",
+            ));
+        }
+        config.logo_art = Some(load_logo(path)?);
+        // The file overrides whatever an earlier layer chose, including `none`.
+        config.logo = LogoChoice::Auto;
     }
     if cli.no_color {
         config.color = false;
@@ -348,22 +504,56 @@ impl Config {
                 let locale = locale.to_ascii_lowercase();
                 locale.contains("utf-8") || locale.contains("utf8")
             });
+        let colorterm = std::env::var("COLORTERM").ok();
+        let allowed = self.color
+            && crate::render::terminal::color_allowed(
+                tty,
+                false,
+                no_color.as_deref(),
+                term.as_deref(),
+            )
+            && crate::platform::supports_ansi();
         crate::render::terminal::Options {
             columns: crate::platform::terminal_columns().unwrap_or(80),
-            color: self.color
-                && crate::render::terminal::color_allowed(
-                    tty,
-                    false,
-                    no_color.as_deref(),
-                    term.as_deref(),
-                )
-                && crate::platform::supports_ansi(),
+            depth: crate::render::colour::Depth::detect(
+                allowed,
+                colorterm.as_deref(),
+                term.as_deref(),
+            ),
             unicode,
-            logo: self.logo == LogoMode::Auto,
+            logo: self.shows_logo(),
+            logo_explicit: self.logo_art.is_some() || matches!(self.logo, LogoChoice::Named(_)),
+            layout: self.layout,
             modules: &self.modules,
             labels: &self.labels,
             separator: &self.separator,
+            theme: &self.theme,
             accent: self.accent,
+        }
+    }
+
+    /// Whether artwork may be drawn at all. A file always arrives with a
+    /// non-`none` choice, because naming one replaces whatever an earlier layer
+    /// said; this is the single place that decides.
+    pub fn shows_logo(&self) -> bool {
+        self.logo != LogoChoice::None
+    }
+
+    /// The artwork this configuration asks for. `None` is never returned: an
+    /// explicit `--logo none` is carried by `Options::logo` instead, so the
+    /// renderer has one switch rather than two.
+    pub fn effective_logo(&self, snapshot: &crate::model::SystemSnapshot) -> logo::Logo {
+        if let Some(art) = &self.logo_art {
+            return art.clone();
+        }
+        match &self.logo {
+            LogoChoice::Named(name) => {
+                logo::built_in(name).unwrap_or_else(|| logo::select(None, None))
+            }
+            _ => {
+                let os = snapshot.os.value();
+                logo::select(os.and_then(|os| os.id.as_deref()), os.map(|os| &os.family))
+            }
         }
     }
 }
@@ -381,7 +571,11 @@ mod tests {
             format: Format::Text,
             modules: None,
             config: None,
+            theme: None,
+            theme_file: None,
+            layout: None,
             logo: None,
+            logo_file: None,
             privacy: false,
         }
     }
@@ -403,7 +597,7 @@ mod tests {
     fn defaults_are_every_module_in_canonical_order() {
         let config = resolve_with(&cli(), None).unwrap();
         assert_eq!(config.modules, ModuleId::ALL.to_vec());
-        assert_eq!(config.logo, LogoMode::Auto);
+        assert_eq!(config.logo, LogoChoice::Auto);
         assert!(config.color);
         assert_eq!(config.separator, DEFAULT_SEPARATOR);
         assert!(config.labels.is_empty());
@@ -429,14 +623,14 @@ mod tests {
         )
         .unwrap();
         assert_eq!(from_file.modules, vec![ModuleId::Cpu]);
-        assert_eq!(from_file.logo, LogoMode::None);
+        assert_eq!(from_file.logo, LogoChoice::None);
         assert!(!from_file.color);
         // Command line over the file.
         let from_cli = resolve_with(
             &Cli {
                 config: Some(path),
                 modules: Some("memory,os".to_owned()),
-                logo: Some(Logo::Auto),
+                logo: Some("auto".to_owned()),
                 color: true,
                 ..cli()
             },
@@ -444,7 +638,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(from_cli.modules, vec![ModuleId::Memory, ModuleId::Os]);
-        assert_eq!(from_cli.logo, LogoMode::Auto);
+        assert_eq!(from_cli.logo, LogoChoice::Auto);
         assert!(from_cli.color);
     }
 
@@ -507,7 +701,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(config.modules, vec![ModuleId::Cpu, ModuleId::Memory]);
-        assert_eq!(config.logo, LogoMode::None);
+        assert_eq!(config.logo, LogoChoice::None);
         assert_eq!(config.labels, vec![(ModuleId::Cpu, "Processor".to_owned())]);
         // And the command line still wins over both.
         let config = resolve_with(
@@ -548,7 +742,7 @@ mod tests {
             (
                 "bad-logo.toml",
                 "[layout]\nlogo = \"big\"\n",
-                "expected `auto` or `none`",
+                "expected `auto`, `none`, or one of",
             ),
             (
                 "empty-separator.toml",
@@ -581,6 +775,126 @@ mod tests {
                 "{name}: {shown}"
             );
         }
+    }
+
+    #[test]
+    fn theme_and_logo_files_are_found_beside_the_configuration() {
+        let dir = tempdir("beside");
+        write(&dir, "mine.toml", "name = \"mine\"\nlabel = \"cyan\"\n");
+        write(&dir, "art.txt", "  /\\\n /  \\\n");
+        let path = write(
+            &dir,
+            "config.toml",
+            "[theme]\nfile = \"mine.toml\"\n[layout]\nlogo_file = \"art.txt\"\n",
+        );
+        let config = resolve_with(
+            &Cli {
+                config: Some(path),
+                ..cli()
+            },
+            None,
+        )
+        .unwrap();
+        assert_eq!(config.theme.name, "mine");
+        assert_eq!(config.theme.label, Some(Colour::parse("cyan").unwrap()));
+        assert!(config.logo_art.is_some());
+    }
+
+    #[test]
+    fn an_explicit_logo_choice_replaces_inherited_artwork() {
+        let dir = tempdir("logo-precedence");
+        write(&dir, "art.txt", " ART\n");
+        let user = write(&dir, "user.toml", "[layout]\nlogo_file = \"art.txt\"\n");
+
+        let none = resolve_with(
+            &Cli {
+                logo: Some("none".to_owned()),
+                ..cli()
+            },
+            Some(&user),
+        )
+        .unwrap();
+        assert!(none.logo_art.is_none(), "`--logo none` kept the file");
+        assert!(!none.shows_logo());
+
+        let named = resolve_with(
+            &Cli {
+                logo: Some("arch".to_owned()),
+                ..cli()
+            },
+            Some(&user),
+        )
+        .unwrap();
+        assert!(named.logo_art.is_none(), "`--logo arch` kept the file");
+        assert_eq!(named.logo, LogoChoice::Named("arch".to_owned()));
+
+        // The other direction: a file on the command line beats an inherited
+        // `none`, because the command line is the tighter layer.
+        let hidden = write(&dir, "hidden.toml", "[layout]\nlogo = \"none\"\n");
+        let file = resolve_with(
+            &Cli {
+                logo_file: Some(dir.join("art.txt")),
+                ..cli()
+            },
+            Some(&hidden),
+        )
+        .unwrap();
+        assert!(file.shows_logo(), "an explicit file must be drawn");
+    }
+
+    #[test]
+    fn contradictory_visual_settings_are_refused() {
+        let dir = tempdir("visual-conflicts");
+        let both = write(
+            &dir,
+            "both.toml",
+            "[theme]\nname = \"nord\"\nfile = \"nope.toml\"\n",
+        );
+        let error = resolve_with(
+            &Cli {
+                config: Some(both),
+                ..cli()
+            },
+            None,
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("one or the other"), "{error}");
+
+        // A tighter layer may replace an earlier `none` with a file, and the
+        // artwork is then drawn.
+        write(&dir, "art.txt", " /\\\n");
+        let user = write(&dir, "user.toml", "[layout]\nlogo = \"none\"\n");
+        let tight = write(&dir, "tight.toml", "[layout]\nlogo_file = \"art.txt\"\n");
+        let config = resolve_with(
+            &Cli {
+                config: Some(tight),
+                ..cli()
+            },
+            Some(&user),
+        )
+        .unwrap();
+        assert!(config.logo_art.is_some());
+        assert!(config.shows_logo(), "a loaded file must be drawn");
+
+        write(
+            &dir,
+            "huge-theme.toml",
+            &format!("name = \"{}\"\n", "x".repeat(MAX_THEME_BYTES)),
+        );
+        let pointed = write(
+            &dir,
+            "points-at-huge.toml",
+            "[theme]\nfile = \"huge-theme.toml\"\n",
+        );
+        let error = resolve_with(
+            &Cli {
+                config: Some(pointed),
+                ..cli()
+            },
+            None,
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("the limit is"), "{error}");
     }
 
     #[test]
@@ -658,7 +972,10 @@ mod tests {
             None,
         )
         .unwrap();
-        assert_eq!(config.accent, Some(anstyle::AnsiColor::BrightCyan));
+        assert_eq!(
+            config.accent,
+            Some(Colour::Ansi(anstyle::AnsiColor::BrightCyan))
+        );
 
         let path = write(&dir, "bad.toml", "[color]\naccent = \"chartreuse\"\n");
         let error = resolve_with(

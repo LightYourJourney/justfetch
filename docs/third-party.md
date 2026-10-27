@@ -53,4 +53,15 @@ unicode-ident includes Unicode-3.0 notices in addition to MIT/Apache licensing. 
 
 `assets/logos/` holds eleven ASCII logo files. They are first-party work by this project and carry the same GPL-3.0-only license as the code; none is vendored from another fetch tool or from an ASCII-art collection. One exception existed and was corrected during review: an earlier revision shipped the long-circulating Tux penguin ASCII art of unknown authorship as `assets/logos/linux.txt`, and the accompanying notice claimed every file was authored for justfetch. That file has been replaced with an original drawing and the claim corrected. See [assets/logos/README.md](../assets/logos/README.md).
 
+Four built-in themes reproduce published colour values from third-party design systems. Only numeric colour values are used — no code, configuration or asset file from those projects is copied — and colour values are not themselves the licensed work. Attribution is recorded here anyway because the palette names identify the designs:
+
+| Theme | Upstream | Stated licence |
+| --- | --- | --- |
+| Catppuccin Mocha | [catppuccin/catppuccin](https://github.com/catppuccin/catppuccin) | MIT |
+| Nord | [nordtheme/nord](https://github.com/nordtheme/nord) | MIT |
+| Tokyo Night | [tokyo-night/tokyo-night-vscode-theme](https://github.com/tokyo-night/tokyo-night-vscode-theme) | MIT (the Neovim port states Apache-2.0; these values follow the VS Code theme) |
+| Gruvbox | [morhetz/gruvbox](https://github.com/morhetz/gruvbox) | MIT/X11 declared in its README, without a standalone licence file |
+
+The `default` and `monochrome` themes are first-party work and use only the sixteen ANSI colour names. No affiliation with or endorsement by the projects above is claimed. As with the logos, this inventory is provenance information, not legal advice.
+
 Platform names and emblems appear only as simplified line renderings used to identify the detected system. No trademark search, clearance opinion, vendor permission or legal review is claimed for them, and packaging binaries for redistribution may require its own review. This inventory covers the copyright provenance of the files in this repository; it is not a legal opinion.

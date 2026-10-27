@@ -401,3 +401,234 @@ fn a_unicode_config_path_works() {
     );
     assert!(String::from_utf8_lossy(&out.stdout).contains("CPU"));
 }
+
+#[test]
+fn themes_lists_every_built_in_theme() {
+    let out = run(&["themes"]);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let text = String::from_utf8(out.stdout).unwrap();
+    for name in justfetch::render::theme::names() {
+        assert!(text.contains(name), "`themes` omitted {name}:\n{text}");
+    }
+    assert!(
+        !text.contains('\u{1b}'),
+        "a redirected listing must stay plain"
+    );
+}
+
+#[test]
+fn an_unknown_theme_layout_or_logo_names_the_choices() {
+    for (flag, value, expected) in [
+        ("--theme", "solarized", "expected one of"),
+        ("--layout", "columns", "expected one of"),
+        ("--logo", "penguin", "expected `auto`, `none`"),
+    ] {
+        let out = run(&[flag, value, "--no-color"]);
+        assert!(!out.status.success(), "{flag} {value} was accepted");
+        assert!(out.stdout.is_empty(), "{flag} {value} wrote to stdout");
+        let error = String::from_utf8_lossy(&out.stderr);
+        assert!(error.contains(expected), "{flag} {value}: {error}");
+        assert!(
+            error.contains(value),
+            "{flag} {value} was not named: {error}"
+        );
+    }
+}
+
+#[test]
+fn a_theme_from_the_file_is_overridden_by_the_command_line() {
+    let dir = temp_dir("theme-precedence");
+    let path = dir.join("config.toml");
+    std::fs::write(
+        &path,
+        "[theme]\nname = \"nord\"\n[layout]\nname = \"compact\"\n",
+    )
+    .unwrap();
+    let from_file = run(&["--config", path.to_str().unwrap(), "doctor"]);
+    assert!(from_file.status.success());
+    let report = String::from_utf8_lossy(&from_file.stdout);
+    assert!(report.contains("theme nord"), "{report}");
+    assert!(report.contains("compact layout"), "{report}");
+
+    let overridden = run(&[
+        "--config",
+        path.to_str().unwrap(),
+        "--theme",
+        "gruvbox",
+        "--layout",
+        "vertical",
+        "doctor",
+    ]);
+    assert!(overridden.status.success());
+    let report = String::from_utf8_lossy(&overridden.stdout);
+    assert!(report.contains("theme gruvbox"), "{report}");
+    assert!(report.contains("vertical layout"), "{report}");
+}
+
+#[test]
+fn a_custom_theme_file_is_used_and_a_bad_colour_is_refused() {
+    let dir = temp_dir("custom-theme");
+    let theme = dir.join("mine.toml");
+    std::fs::write(&theme, "name = \"mine\"\ntitle = \"#aabbcc\"\n").unwrap();
+    let config = dir.join("config.toml");
+    std::fs::write(
+        &config,
+        format!("[theme]\nfile = \"{}\"\n", theme.display()),
+    )
+    .unwrap();
+    let out = run(&["--config", config.to_str().unwrap(), "doctor"]);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    assert!(String::from_utf8_lossy(&out.stdout).contains("theme mine"));
+
+    std::fs::write(&theme, "name = \"mine\"\ntitle = \"chartreuse\"\n").unwrap();
+    let bad = run(&["--config", config.to_str().unwrap(), "doctor"]);
+    assert!(!bad.status.success());
+    let error = format!(
+        "{}{}",
+        String::from_utf8_lossy(&bad.stdout),
+        String::from_utf8_lossy(&bad.stderr)
+    );
+    assert!(error.contains("title"), "{error}");
+    assert!(error.contains("chartreuse"), "{error}");
+}
+
+#[test]
+fn a_custom_logo_file_is_drawn_and_a_malformed_one_is_refused() {
+    let dir = temp_dir("custom-logo");
+    let logo = dir.join("mine.txt");
+    std::fs::write(&logo, "  ____\n / AA \\\n \\____/\n").unwrap();
+    let out = run(&[
+        "--logo-file",
+        logo.to_str().unwrap(),
+        "--no-color",
+        "--modules",
+        "os",
+    ]);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let text = String::from_utf8(out.stdout).unwrap();
+    assert!(text.contains("AA"), "{text}");
+
+    let empty = dir.join("empty.txt");
+    std::fs::write(&empty, "\n\n").unwrap();
+    let bad = run(&["--logo-file", empty.to_str().unwrap(), "--no-color"]);
+    assert!(!bad.status.success());
+    assert!(String::from_utf8_lossy(&bad.stderr).contains("empty"));
+}
+
+#[test]
+fn json_is_unaffected_by_a_theme_or_layout() {
+    let out = run(&[
+        "--format", "json", "--theme", "nord", "--layout", "vertical",
+    ]);
+    assert!(out.status.success());
+    let value: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(value["schema_version"], 1);
+    assert!(!out.stdout.contains(&27));
+}
+
+#[test]
+fn the_help_lists_every_theme_layout_and_logo() {
+    let help = String::from_utf8(run(&["--help"]).stdout).unwrap();
+    for name in justfetch::render::theme::names() {
+        assert!(help.contains(name), "--help omits the theme {name}");
+    }
+    for layout in justfetch::render::layout::Layout::ALL {
+        assert!(
+            help.contains(layout.id()),
+            "--help omits the layout {layout}"
+        );
+    }
+    for logo in justfetch::render::logo::built_in_names() {
+        assert!(help.contains(logo), "--help omits the logo {logo}");
+    }
+}
+
+#[test]
+fn a_theme_file_can_be_chosen_from_the_command_line() {
+    let dir = temp_dir("theme-file-flag");
+    let theme = dir.join("mine.toml");
+    std::fs::write(&theme, "name = \"mine\"\ntitle = \"blue\"\n").unwrap();
+
+    let out = run(&["--theme-file", theme.to_str().unwrap(), "doctor"]);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(String::from_utf8_lossy(&out.stdout).contains("theme mine"));
+
+    let conflict = run(&[
+        "--theme",
+        "nord",
+        "--theme-file",
+        theme.to_str().unwrap(),
+        "doctor",
+    ]);
+    assert!(!conflict.status.success());
+    // `doctor` reports a configuration error on stdout, as a problem line.
+    assert!(
+        String::from_utf8_lossy(&conflict.stdout).contains("one or the other"),
+        "{}",
+        String::from_utf8_lossy(&conflict.stdout)
+    );
+}
+
+#[test]
+fn asking_for_two_logos_on_one_command_line_is_refused() {
+    let dir = temp_dir("logo-conflict");
+    let art = dir.join("art.txt");
+    std::fs::write(&art, " ART\n").unwrap();
+    for value in ["none", "arch"] {
+        let out = run(&["--logo", value, "--logo-file", art.to_str().unwrap()]);
+        assert!(
+            !out.status.success(),
+            "--logo {value} plus --logo-file was accepted"
+        );
+        assert!(String::from_utf8_lossy(&out.stderr).contains("one or the other"));
+    }
+}
+
+#[test]
+fn a_newline_in_a_configuration_value_cannot_forge_a_line() {
+    let dir = temp_dir("newline-injection");
+    let path = dir.join("config.toml");
+    std::fs::write(&path, "modules = [\"evil\\u000Aproblem: forged\"]\n").unwrap();
+    let out = run(&["--config", path.to_str().unwrap(), "doctor"]);
+    assert!(!out.status.success());
+    let report = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        !report.lines().any(|line| line.trim() == "problem: forged"),
+        "a value forged a diagnostic line:\n{report}"
+    );
+    assert!(report.contains("is not a module id"), "{report}");
+}
+
+#[test]
+fn asking_for_json_from_themes_returns_json() {
+    let out = run(&["--format", "json", "themes"]);
+    assert!(out.status.success());
+    let value: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let list = value.as_array().expect("an array of themes");
+    assert_eq!(list.len(), justfetch::render::theme::names().len());
+    for entry in list {
+        assert!(entry["name"].is_string());
+        assert!(entry["description"].is_string());
+        assert!(entry["swatches"].is_array());
+    }
+}

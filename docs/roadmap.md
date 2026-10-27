@@ -10,7 +10,9 @@ Release gate still external: exercise WSL, Intel macOS and distributions other t
 
 Implemented: a TOML behaviour config with documented per-platform paths; strict validation with unknown-key/module errors; the command line > `--config` > user file > defaults precedence; module selection, ordering, custom labels and a custom separator; `init` and `doctor`; and selection-driven collection rather than render-time hiding. See docs/configuration.md.
 
-Still open for this version: visual themes (point 4) and custom logo files (point 5), which are Phase 11; shareable sample configurations (point 6) can follow once the schema has been used.
+Also implemented: colour themes with a capability-aware reduction to 256 and 16 colours, four layouts, `justfetch themes`, custom theme files and custom logo files. See docs/themes.md.
+
+Still open for this version: shareable sample configurations (point 6), which can follow once the schema has been used.
 
 ## v0.3 — Advanced Detection
 

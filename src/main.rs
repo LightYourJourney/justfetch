@@ -12,7 +12,10 @@ fn run(cli: &Cli) -> io::Result<ExitCode> {
     match &cli.command {
         Some(Command::Init) => match commands::init(cli) {
             Ok(path) => {
-                println!("wrote {}", path.display());
+                println!(
+                    "wrote {}",
+                    render::layout::sanitize(&path.display().to_string())
+                );
                 Ok(ExitCode::SUCCESS)
             }
             Err(error) => {
@@ -39,6 +42,24 @@ fn run(cli: &Cli) -> io::Result<ExitCode> {
                 ExitCode::FAILURE
             })
         }
+        Some(Command::Themes) => {
+            let config = match config::resolve(cli) {
+                Ok(config) => config,
+                Err(error) => {
+                    eprintln!("justfetch: {error}");
+                    return Ok(ExitCode::FAILURE);
+                }
+            };
+            let listing = match cli.format {
+                Format::Json => commands::themes_json(),
+                Format::Text => {
+                    let options = config.terminal_options();
+                    commands::themes(options.depth, options.unicode, options.columns)
+                }
+            };
+            io::stdout().lock().write_all(listing.as_bytes())?;
+            Ok(ExitCode::SUCCESS)
+        }
         None => {
             let config = match config::resolve(cli) {
                 Ok(config) => config,
@@ -53,7 +74,10 @@ fn run(cli: &Cli) -> io::Result<ExitCode> {
                 privacy::redact(&mut snapshot);
             }
             let output = match config.format {
-                Format::Text => render::terminal::render(&snapshot, config.terminal_options()),
+                Format::Text => {
+                    let logo = config.effective_logo(&snapshot);
+                    render::terminal::render_with_logo(&snapshot, config.terminal_options(), &logo)
+                }
                 Format::Json => render::json::render(&snapshot).map_err(io::Error::other)?,
             };
             io::stdout().lock().write_all(output.as_bytes())?;

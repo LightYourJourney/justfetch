@@ -16,7 +16,7 @@ macOS deliberately uses the XDG location rather than `~/Library/Application Supp
 
 Tightest first:
 
-1. Command-line arguments (`--modules`, `--logo`, `--color`, `--no-color`).
+1. Command-line arguments (`--modules`, `--theme`, `--theme-file`, `--layout`, `--logo`, `--logo-file`, `--color`, `--no-color`).
 2. The file named by `--config`.
 3. The user configuration file at the path above.
 4. Built-in defaults.
@@ -31,8 +31,15 @@ Nothing is ever written to the user directory unless you run `justfetch init`.
 # Modules to show, in display order.
 modules = ["os", "kernel", "cpu", "memory", "disk"]
 
+[theme]
+# A built-in theme, or use `file = "path.toml"` for one of your own.
+name = "catppuccin-mocha"
+
 [layout]
-# "auto" shows a logo when the terminal is wide enough; "none" never does.
+# classic, compact, minimal or vertical.
+name = "classic"
+# "auto" follows the detected distribution; "none" hides the artwork; or name
+# a built-in logo.
 logo = "auto"
 # Text between the label column and the value.
 separator = "  "
@@ -52,10 +59,14 @@ Running `justfetch init` writes this shape with every key at its default, so you
 | Key | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `modules` | array of strings | all eleven, in display order | Which rows to show, in the order given. The same list decides what is collected. |
-| `layout.logo` | `"auto"` or `"none"` | `"auto"` | `auto` hides the logo when the terminal is too narrow; `none` never draws it. |
-| `layout.separator` | string, non-empty | `"  "` | Text between the label column and the value. |
+| `theme.name` | theme identifier | `"default"` | A built-in theme: `default`, `catppuccin-mocha`, `nord`, `tokyo-night`, `gruvbox`, `monochrome`. |
+| `theme.file` | path | none | A custom theme file, relative to the configuration file. Cannot be combined with `theme.name`; `--theme-file PATH` sets the same thing. |
+| `layout.name` | `"classic"`, `"compact"`, `"minimal"` or `"vertical"` | `"classic"` | Where the pieces go. See [themes and layouts](themes.md). |
+| `layout.logo` | `"auto"`, `"none"` or a built-in logo name | `"auto"` | `auto` follows the detected distribution and hides the artwork when the terminal is too narrow; `none` never draws it; a name pins one logo. |
+| `layout.logo_file` | path | none | Custom ASCII or Unicode artwork, relative to the configuration file. Cannot be combined with `layout.logo` in the same file. |
+| `layout.separator` | string, non-empty | `"  "` | Text between the label column and the value. `minimal` uses `": "` instead. |
 | `color.enabled` | boolean | `true` | ANSI colour, still subject to `NO_COLOR`, `TERM=dumb`, a non-terminal stdout and the platform's ANSI support. |
-| `color.accent` | string | the logo's own colour | Colour for the title and the labels: `black`, `red`, `green`, `yellow`, `blue`, `magenta`, `cyan`, `white`, or any of those prefixed `bright-`. Omitted, the accent follows the logo. |
+| `color.accent` | string | the theme's | Overrides the title and label colours: `#rrggbb`, `black`/`red`/…/`white`, any of those prefixed `bright-`, or `default`. Omitted, the theme's own colours apply, falling back to the artwork colour. |
 | `labels.<module>` | string, non-blank | the built-in label | Replaces the label shown for that module. |
 
 Unknown keys are an error rather than being ignored, so a misspelt key is reported instead of silently doing nothing.
@@ -73,6 +84,18 @@ The module list decides collection, not just drawing. A module that is not liste
 The logo is chosen from the OS module. If `os` is not selected there is no distribution to choose from, so the generic fallback emblem is used; selecting `os` brings the real one back.
 
 The user and host name are collected even when no module asks for them, because the title line shows both. They are cheap, and `--privacy` withholds them.
+
+## Theme and logo files
+
+A copyable full configuration is in [examples/config.toml](examples/config.toml),
+with a custom theme beside it. `[theme] file` and `[layout] logo_file` are read relative to the configuration
+file that names them, so a theme kept beside the configuration travels with it.
+An absolute path is used as given. Both are bounded — 16 KiB for a theme, 32 KiB
+for a logo — and checked by the same code that checks a `--config` file, so
+`doctor` reports a broken one with the file it came from.
+
+The theme format, the role names and the artwork rules are in
+[themes and layouts](themes.md).
 
 ## Diagnostics
 
@@ -93,6 +116,13 @@ Errors from a normal run go to stderr with a non-zero exit code, and nothing is 
 | Duplicate module | `` `os` is listed twice `` |
 | Empty list | `the module list is empty; name at least one module or omit the setting` |
 | `--config` missing | `--config PATH: file not found` |
+| Unknown theme | `` expected one of default, catppuccin-mocha, … `` |
+| Unknown layout | `` expected one of classic, compact, minimal, vertical `` |
+| Unknown logo | `` expected `auto`, `none`, or one of macos, windows, … `` |
+| `--logo` with `--logo-file` | `--logo and --logo-file ask for different things` |
+| Theme file too large | `file is N bytes; the limit is 16384` |
+| Logo file too large | `file is N bytes; the limit is 32768` |
+| Bad theme colour | `` title is `chartreuse`; expected `#rrggbb`, a basic colour name, … `` |
 | Malformed TOML | `TOML parse error at line N, column M` |
 | Wrong value type | `TOML parse error …` naming the field |
 | Unknown key | `unknown field` naming the key |
@@ -103,6 +133,6 @@ Errors from a normal run go to stderr with a non-zero exit code, and nothing is 
 
 Module selection does not change the document's shape. A module that was not selected reports `"status": "deselected"` and carries no `value`, which is distinct from a module that was attempted and failed (`error`), could not be answered (`unavailable`), or is not available on the platform (`unsupported`). `schema_version` stays `1`; the value only appears when a run selects a subset.
 
-Labels, separator, logo and colour are presentation only and never reach the JSON.
+Theme, layout, labels, separator, logo and colour are presentation only and never reach the JSON. The configuration is still validated in full for a JSON run, so a missing theme or logo file is an error there too — the file is checked, not applied.
 
 Control characters in a label or separator are stripped before rendering, and `doctor` reports them so the file is not silently altered from what it says.

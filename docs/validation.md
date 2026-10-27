@@ -305,3 +305,53 @@ Phase 10 added a module system and a TOML configuration file. `docs/configuratio
 **CI.** Run [40450257128](https://github.com/LightYourJourney/justfetch/actions/runs/40450257128) on commit `ac95ac2` passed all four jobs — MSRV 1.95.0, Ubuntu, Windows and macOS — including the format, lint, test, release-build and live-JSON steps. This is the round's first real execution of the Linux and Windows adapters: the `wanted` import breakage described above failed only the cross-target check locally, and those two jobs are where it would have surfaced had it reached the push.
 
 **Test count:** 87, up from 54 at the start of the round and 79 before the review.
+
+## Visual, theme and layout round (2026-10-27)
+
+Phase 11 added a theme model, four layouts and custom artwork. `docs/themes.md` is the design specification; this records what was exercised and by what machine.
+
+**Colour capability.** Each depth was exercised on a real pseudo-terminal, not asserted from the code: `COLORTERM=truecolor` produced `ESC[38;2;136;192;208m`, a `xterm-256color` terminal produced `ESC[38;5;110m`, a plain `xterm` produced `ESC[37m`/`ESC[97m`, and `NO_COLOR=1` produced no escape at all. The pty test suite pins the 256 and 16 cases; true colour was checked by hand because the test helper clears `COLORTERM` for determinism. The 16-colour reduction is an approximation against the xterm palette, which terminals may redefine, and is documented as such rather than presented as exact.
+
+**Layouts.** All four were rendered at every column count from 0 to 260 plus 1 000, 4 096 and 100 000, in colour and plain, with and without Unicode, against a fixture containing a 200-character CPU name, a 200-character hostname and a 200-character error. Every visible line stayed within the requested width. Rules and swatches disappear below 24 columns; artwork disappears in `classic` below `logo width + 39` and in `vertical` when it is wider than the terminal; no layout was observed to drop a row.
+
+**Text is identical under styling.** For every built-in theme, and for every layout at eight widths, the styled output with escapes removed is byte-identical to the plain output, apart from the swatch row, which is the theme's own palette and whose length differs between themes. This is the invariant the renderer is built around: widths are measured on plain text and styles are attached afterwards.
+
+**Logo files.** Oversized, over-long, over-wide, empty and escape-bearing inputs are covered by unit tests. Escape sequences are stripped rather than rejected; the size, line and column limits are errors. Trailing spaces are removed and leading spaces kept, so artwork alignment survives.
+
+**JSON.** `--theme nord --layout vertical` with `--format json` produces the same document shape as a default run, with no escapes; `schema_version` stays 1.
+
+**Default output.** At 24 columns and above, a default run's plain text is byte-identical to the previous commit's, because the default theme leaves every role unset and the accent falls back to the artwork colour. Compared field by field on stable modules (`os`, `kernel`, `cpu`, `shell`) against a build of `e4317a7` in a separate worktree: identical for classic, compact, minimal, vertical, `--logo arch` and `--logo none`. Two differences are deliberate: below 24 columns the rules and swatches are now dropped rather than squeezing out the information, and in colour mode the separator is no longer part of the styled span, so escape placement differs while the visible text does not.
+
+**Independent review.** Two reviewers that had taken no part in the design examined the working tree — one against the specification, one for terminal compatibility and maintainability — running the binary rather than reading it alone. They found ten issues; all are closed:
+
+- Diagnostics could carry escape sequences. A configuration value or a `HOME` containing one reached stderr and `doctor` verbatim — a config error printed an OSC-52 clipboard sequence. The first fix sanitised whole messages line by line, which stopped the escapes but kept newlines, and a second reviewer showed that this let a value forge a diagnostic: `modules = ["evil\u000Aproblem: forged"]` produced a line reading `problem: forged`. Values are now sanitised onto one line and only the TOML parser's own message keeps its line structure, because its echoed source and caret are part of the diagnostic. Reproduced with a hostile module id, a hostile `HOME` and a newline-bearing value before each fix.
+- Vertical artwork was centred line by line, which compressed an asymmetric drawing: the arch's staircase began at columns 43, 42, 40, 39, 37, 37, 35 instead of 41, 40, …, 35. The block is now offset once by the artwork's width.
+- `justfetch themes` guessed the terminal itself instead of using the resolved settings, so `--no-color` and `[color] enabled=false` were ignored, a non-UTF-8 locale still received `●`, and a 40-column terminal received 92-column lines. It now takes the same colour depth, Unicode decision and width a normal run uses. Descriptions wrap at word boundaries rather than mid-word, and below the width the name column and a description can share, each entry becomes a small block. Twenty columns is covered by a test.
+- Custom artwork bypassed the non-UTF-8 downgrade, so a CJK logo arrived as mojibake beside `?`-replaced text. Artwork now goes through the same conversion as every other string.
+- Logo precedence was wrong: `--logo none` and `--logo arch` could not displace artwork inherited from a configuration file, and `--logo arch --logo-file x` silently used the file. A tighter layer now replaces inherited artwork, and asking for two logos on one command line is an error.
+- A custom theme's `name` reached `doctor` unsanitised. It is now refused if it contains control characters, like a label would be.
+- The claim that a themed run is textually identical to a plain one was true of every line except the swatch row, which is the theme's own palette; the documentation said otherwise. So did the claim that the default output is unchanged, which stopped being true below 24 columns when decoration began to be dropped. Both corrected.
+- `--theme` could select only built-in themes, so a custom theme required a configuration file. `--theme-file PATH` closes that.
+- `Colour::Indexed` was unreachable, and several aliases were accepted without being documented; the variant is gone and the aliases are documented.
+- An assertion that compared themes filtered any line containing the letter `o`, which silently dropped rows such as `Host`. It now identifies a swatch row by its shape, and still passes — the information really is identical across themes.
+
+**Rejected finding.** Both reviewers noted that `--format json` still reads and validates `[theme] file` and `layout.logo_file`, so a missing presentation file fails a JSON run. That is deliberate and now documented: the configuration is validated once, the same way for every output format, and only the document's contents ignore presentation. Making validation conditional on the format would give the same file two different meanings, and a user whose configuration names a missing file has a broken configuration whether or not that run draws it.
+
+**Not verified.** No Windows or Linux terminal was available interactively. The colour-depth checks above ran on macOS only; the platform-specific ANSI policy is exercised by CI and by cross-target compilation, which is not the same thing. Font-dependent rendering of `●` and of bold is not asserted anywhere, and no screenshot comparison was performed.
+
+**Two-axis review of this round.** A Standards review and a Spec review ran independently against the same working tree. Both axes reported; the findings are closed:
+
+- `[color] accent` did not override a theme that names its title or labels; it only filled a gap. The documentation called it an override, so the code was wrong. Verified in a terminal: `--theme nord` and `--theme nord` with `accent = "red"` now emit different title bytes, where before they were identical.
+- `justfetch themes` showed only the palette, so a theme could not actually be previewed. The name is now drawn in the theme's title colour and a label/value/rule sample follows the palette.
+- Explicitly chosen artwork was silently dropped on a narrow terminal. A named logo now moves above the information instead of disappearing; automatic artwork still gives way, as before.
+- Five `expect()` calls sat on production paths, one of them in `Config::default`, which runs on every invocation. All are gone; the two colour lookups that were "impossible to fail" are computed without assuming it.
+- The distribution table was written twice — once for detection, once for explicit selection — so a new distribution meant editing both. It is now one table with the two alias sets layered on top.
+- Theme and logo file loading was duplicated between the configuration path and the command line; both now call one loader.
+- The theme listing styled its chips with a local copy of the renderer's colour helper, and panicked on a missing theme while the JSON listing silently skipped it. Both now share one helper and skip the same way.
+- Documents still described the previous state: `architecture.md` said the configuration file was the only file read and listed themes as roadmap, `AGENTS.md` and `CONTRIBUTING.md` repeated the scope error, `architecture.md` said there were two subcommands, and the configuration reference omitted `--theme`/`--layout` from the precedence list and described `color.accent` as ANSI names only.
+
+**Rejected finding.** A Standards finding claimed the default output was not byte-identical because the swatch row was new. It is not new: `e4317a7`'s pinned snapshot contains the same `o o o o o o o o` row, and the field-by-field comparison above shows the text is unchanged. The claim in this file was corrected only where it was genuinely inaccurate — colour escape placement, not the text.
+
+**Accepted deviation.** `--theme-file`, `--logo-file` and `--format json themes` go beyond the specification's suggested CLI list. The file flags are how a custom theme or logo is selected without a configuration file, which the spec requires; the JSON listing exists so that asking for JSON yields JSON.
+
+**Test count:** 132, up from 87.

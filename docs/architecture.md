@@ -1,6 +1,6 @@
 # Architecture — v0.1
 
-justfetch is a single Rust crate with a small library for deterministic tests and a thin CLI binary. Scope: eleven system fields, terminal and JSON output, automatic original ASCII logos, a TOML configuration file and module selection, and no runtime network or subprocesses. The only file read outside system paths is the configuration file, at the documented location or the path given to `--config`.
+justfetch is a single Rust crate with a small library for deterministic tests and a thin CLI binary. Scope: eleven system fields, terminal and JSON output, automatic original ASCII logos, a TOML configuration file and module selection, and no runtime network or subprocesses. The only files read outside system paths are the configuration file — at the documented location or the path given to `--config` — and the theme or logo files it names, or that `--theme-file` and `--logo-file` name. Nothing is written unless `init` runs.
 
 ## Data flow
 
@@ -32,7 +32,20 @@ Collection is selection-driven end to end. `detect::collect` receives the ordere
 
 `src/config.rs` owns the file format, the platform paths, the error messages and the precedence chain (command line, `--config`, user file, defaults). Precedence is applied in one function, `resolve_with`, so the CLI path and the tests exercise the same code. `docs/configuration.md` is the user-facing reference.
 
-`src/commands.rs` implements the two subcommands, `init` and `doctor`, with the text they print. They sit outside `config.rs` because they change for a different reason: the configuration module follows the file format and the precedence rules, while these follow what the commands say. `doctor` calls the same `resolve` a normal run does, so it reports what would actually happen rather than a second opinion.
+`src/commands.rs` implements the subcommands — `init`, `doctor` and `themes` — with the text they print. They sit outside `config.rs` because they change for a different reason: the configuration module follows the file format and the precedence rules, while these follow what the commands say. `doctor` calls the same `resolve` a normal run does, so it reports what would actually happen rather than a second opinion.
+
+## Themes and layouts
+
+`src/render/theme.rs` is a table of colours per role and nothing else: it never
+collects, formats or arranges. `src/render/colour.rs` decides what the terminal
+is actually told — the exact RGB, the nearest xterm-256 index, the nearest of
+sixteen, or nothing — from a depth the caller detected, so the conversion is a
+pure function. `src/render/layout.rs` owns the four arrangements. The renderer
+composes a line out of styled spans; measuring happens on plain text before any
+style is attached, which is why a themed run is byte-identical to a plain one
+after the escapes are removed. Adding a theme is data; adding a layout is one
+arm. Neither reads the environment or touches the filesystem: configuration
+reads a theme or logo file and hands the text over already bounded.
 
 ## Implementation plan
 
@@ -48,6 +61,6 @@ Parser and state tests use deterministic inputs. Render tests use a fixed snapsh
 
 ## Decisions and alternatives
 
-Native-only collection would minimize dependencies but duplicate platform maintenance and require more FFI. A full libmacchina frontend would delegate too much semantic control. Selective sysinfo plus narrow adapters balances correctness and maintenance. A single library + binary package makes fixtures easy without creating a multi-crate workspace. TOML configuration, module selection and `doctor` are implemented; visual themes, custom logo files, `init`-driven sample sharing and extra detection fields remain roadmap items.
+Native-only collection would minimize dependencies but duplicate platform maintenance and require more FFI. A full libmacchina frontend would delegate too much semantic control. Selective sysinfo plus narrow adapters balances correctness and maintenance. A single library + binary package makes fixtures easy without creating a multi-crate workspace. TOML configuration, module selection, colour themes, four layouts, custom logo files and the `init`/`doctor`/`themes` subcommands are implemented; shareable sample configurations and extra detection fields remain roadmap items.
 
 Existing GPLv3 LICENSE is preserved; package license is GPL-3.0-only. Upstream reference code/assets are not copied. See research.md for evidence and licenses.

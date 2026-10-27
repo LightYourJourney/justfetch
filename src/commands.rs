@@ -6,6 +6,12 @@
 
 use crate::cli::Cli;
 use crate::config::{ConfigError, resolve, user_config_path};
+use crate::render::{
+    colour::Depth,
+    layout::{width, wrap},
+    terminal::colour_style,
+    theme::{self, Role, styled},
+};
 use std::path::PathBuf;
 
 /// One line of `doctor` output plus whether it is a problem.
@@ -84,12 +90,18 @@ pub fn diagnose(cli: &Cli) -> Vec<Finding> {
             findings.push(Finding {
                 problem: false,
                 text: format!(
-                    "layout: logo {}, colour {}, accent {}, separator {:?}",
-                    config.logo,
+                    "layout: {} layout, logo {}, theme {}, colour {}, accent {}, separator {:?}",
+                    config.layout,
+                    if config.logo_art.is_some() {
+                        "custom file".to_owned()
+                    } else {
+                        config.logo.to_string()
+                    },
+                    config.theme.name,
                     config.color,
                     config
                         .accent
-                        .map_or_else(|| "logo".to_owned(), |accent| format!("{accent:?}")),
+                        .map_or_else(|| "logo".to_owned(), |accent| accent.to_string()),
                     config.separator
                 ),
             });
@@ -119,6 +131,11 @@ pub fn diagnose(cli: &Cli) -> Vec<Finding> {
         }
         Err(error) => problem(&mut findings, format!("configuration error: {error}")),
     }
+    // Paths and configuration values are user input, and each finding is one
+    // line, so a newline inside one must not become a second line of output.
+    for finding in &mut findings {
+        finding.text = crate::render::layout::sanitize(&finding.text);
+    }
     findings
 }
 
@@ -132,8 +149,17 @@ pub const INIT_TEMPLATE: &str = r#"# justfetch configuration
 # Modules to show, in display order. Identifiers come from `justfetch --help`.
 modules = ["os", "host", "kernel", "uptime", "cpu", "memory", "swap", "disk", "shell", "terminal", "local_ip"]
 
+[theme]
+# A built-in theme, or `file = "path.toml"` for one of your own.
+# Themes: default, catppuccin-mocha, nord, tokyo-night, gruvbox, monochrome.
+name = "default"
+
 [layout]
-# "auto" shows a logo when the terminal is wide enough; "none" never does.
+# Layout: classic, compact, minimal, vertical.
+name = "classic"
+# "auto" follows the detected distribution, "none" hides the artwork, or name
+# a built-in logo: macos, windows, linux, arch, debian, ubuntu, fedora, gentoo,
+# opensuse, nixos, fallback.
 logo = "auto"
 # Text between the label column and the value.
 separator = "  "
@@ -174,6 +200,145 @@ pub fn init(cli: &Cli) -> Result<PathBuf, ConfigError> {
     Ok(path)
 }
 
+/// The built-in themes with a colour preview. Colour follows the same policy as
+/// a normal run, so a redirected listing stays plain text.
+pub fn themes(depth: Depth, unicode: bool, columns: usize) -> String {
+    // Colour and width come from the same resolution a normal run uses, so
+    // `--no-color`, a non-TTY, a configuration and a non-UTF-8 locale apply
+    // here too.
+    let dot = if unicode { "\u{25cf}" } else { "o" };
+    let mut out = String::new();
+    for line in wrap("Themes (`--theme NAME`, `--theme-file PATH`):", columns) {
+        out.push_str(&line);
+        out.push('\n');
+    }
+    out.push('\n');
+    let name_width = theme::names()
+        .iter()
+        .map(|name| name.len())
+        .max()
+        .unwrap_or(0);
+    for name in theme::names() {
+        let Some(theme) = theme::built_in(name) else {
+            continue;
+        };
+        // Below this width the name column and a description cannot share a
+        // line without overflowing, so the entry becomes a small block.
+        let inline = columns >= name_width + 12;
+        let indent = if inline { name_width + 2 } else { 0 };
+        let body = columns.saturating_sub(indent).max(1);
+        let chips: Vec<String> = theme
+            .swatches
+            .iter()
+            .take(body.div_ceil(2))
+            .map(|colour| styled(dot, colour_style(Some(*colour), depth)))
+            .collect();
+        // The preview has to preview: the name carries the theme's title
+        // colour, and the label, value and rule follow the palette.
+        let title_style = theme.style(Role::Title, None, theme.logo, depth);
+        let sample =
+            |role: Role, text: &str| styled(text, theme.style(role, None, theme.logo, depth));
+        let sample = if inline && columns >= name_width + 2 + chips.len() * 2 + 10 {
+            format!(
+                "  {} {} {}",
+                sample(Role::Label, "Aa"),
+                sample(Role::Value, "Aa"),
+                sample(Role::Divider, if unicode { "──" } else { "--" })
+            )
+        } else {
+            String::new()
+        };
+        if inline {
+            let padding = " ".repeat(name_width.saturating_sub(width(name)));
+            out.push_str(&format!(
+                "{}{padding}  {}{sample}\n",
+                styled(name, title_style),
+                chips.join(" ")
+            ));
+        } else {
+            for part in wrap(name, columns) {
+                out.push_str(&part);
+                out.push('\n');
+            }
+            out.push_str(&chips.join(" "));
+            out.push('\n');
+        }
+        for (index, line) in wrap_words(&theme.description, body).into_iter().enumerate() {
+            if index == 0 && inline {
+                out.push_str(&format!("{:name_width$}  {line}\n", ""));
+            } else {
+                out.push_str(&format!("{}{line}\n", " ".repeat(indent)));
+            }
+        }
+        out.push('\n');
+    }
+
+    out
+}
+
+/// The same listing as a document, for `--format json`. A JSON request should
+/// return JSON; prose on stdout would break whatever asked for it.
+pub fn themes_json() -> String {
+    let themes: Vec<_> = theme::names()
+        .iter()
+        .filter_map(|name| theme::built_in(name))
+        .map(|theme| {
+            serde_json::json!({
+                "name": theme.name,
+                "description": theme.description,
+                "swatches": theme
+                    .swatches
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>(),
+            })
+        })
+        .collect();
+    // Serialising a `Value` of strings cannot fail; an empty list is the safe
+    // answer rather than a panic if it ever does.
+    let mut text = serde_json::to_string_pretty(&themes).unwrap_or_else(|_| "[]".to_owned());
+    text.push('\n');
+    text
+}
+
+/// Break prose at spaces. `wrap` works on graphemes and is right for values,
+/// which may have no spaces at all; a description is sentences, and splitting
+/// one mid-word reads as a defect. A word longer than the line still falls back
+/// to grapheme wrapping rather than overflowing.
+fn wrap_words(text: &str, columns: usize) -> Vec<String> {
+    let columns = columns.max(1);
+    let mut lines = Vec::new();
+    let mut current = String::new();
+    for word in text.split_whitespace() {
+        if width(word) > columns {
+            if !current.is_empty() {
+                lines.push(std::mem::take(&mut current));
+            }
+            let mut parts = wrap(word, columns);
+            let last = parts.pop().unwrap_or_default();
+            lines.extend(parts);
+            current = last;
+            continue;
+        }
+        if current.is_empty() {
+            current.push_str(word);
+        } else if width(&current) + 1 + width(word) <= columns {
+            current.push(' ');
+            current.push_str(word);
+        } else {
+            lines.push(std::mem::take(&mut current));
+            current.push_str(word);
+        }
+    }
+    if !current.is_empty() {
+        lines.push(current);
+    }
+    if lines.is_empty() {
+        lines.push(String::new());
+    }
+    lines
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -188,7 +353,11 @@ mod tests {
             format: Format::Text,
             modules: None,
             config: None,
+            theme: None,
+            theme_file: None,
+            layout: None,
             logo: None,
+            logo_file: None,
             privacy: false,
         }
     }
@@ -207,6 +376,16 @@ mod tests {
     }
 
     #[test]
+    fn prose_breaks_between_words_and_only_falls_back_inside_one() {
+        assert_eq!(wrap_words("one two three", 7), ["one two", "three"]);
+        assert_eq!(wrap_words("one two three", 40), ["one two three"]);
+        // A word that cannot fit is split, but only as a last resort.
+        let parts = wrap_words("abcdefghij k", 4);
+        assert_eq!(parts, ["abcd", "efgh", "ij k"]);
+        assert_eq!(wrap_words("", 10), [""]);
+    }
+
+    #[test]
     fn the_init_template_parses_to_the_defaults() {
         let dir = tempdir("template");
         let path = write(&dir, "config.toml", INIT_TEMPLATE);
@@ -219,7 +398,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(parsed.modules, crate::module::ModuleId::ALL.to_vec());
-        assert_eq!(parsed.logo, crate::config::LogoMode::Auto);
+        assert_eq!(parsed.logo, crate::config::LogoChoice::Auto);
         assert!(parsed.color);
         assert_eq!(parsed.separator, crate::config::DEFAULT_SEPARATOR);
         assert!(parsed.labels.is_empty());

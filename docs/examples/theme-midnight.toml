@@ -1,0 +1,20 @@
+# A custom theme. Only `name` is required; every colour is optional and an
+# omitted role keeps the layout's default.
+#
+# Point a configuration file at this with:
+#   [theme]
+#   file = "theme-midnight.toml"
+
+name = "midnight"
+description = "My terminal's own palette"
+
+title = "#c0caf5"
+label = "bright-blue"
+value = "default"
+divider = "bright-black"
+emphasis = "#e0af68"
+
+logo = "#7aa2f7"
+logo_secondary = "#bb9af7"
+
+swatches = ["#7aa2f7", "#bb9af7", "#9ece6a", "#e0af68", "#f7768e", "#7dcfff"]

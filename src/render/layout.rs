@@ -1,5 +1,55 @@
+use std::fmt;
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
+
+/// How the information is arranged. A theme says what colour a role is; the
+/// layout says where the pieces go. The two never consult each other.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Layout {
+    /// Artwork beside the information, with a titled rule above and below.
+    #[default]
+    Classic,
+    /// The same rows aligned, without artwork, rules or swatches.
+    Compact,
+    /// `Label: value` lines, unaligned, for narrow or piped output.
+    Minimal,
+    /// Artwork centred above the information.
+    Vertical,
+}
+
+impl Layout {
+    pub const ALL: [Layout; 4] = [
+        Layout::Classic,
+        Layout::Compact,
+        Layout::Minimal,
+        Layout::Vertical,
+    ];
+
+    pub fn parse(text: &str) -> Option<Self> {
+        match text.trim().to_ascii_lowercase().as_str() {
+            "classic" => Some(Layout::Classic),
+            "compact" => Some(Layout::Compact),
+            "minimal" => Some(Layout::Minimal),
+            "vertical" => Some(Layout::Vertical),
+            _ => None,
+        }
+    }
+
+    pub fn id(self) -> &'static str {
+        match self {
+            Layout::Classic => "classic",
+            Layout::Compact => "compact",
+            Layout::Minimal => "minimal",
+            Layout::Vertical => "vertical",
+        }
+    }
+}
+
+impl fmt::Display for Layout {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.id())
+    }
+}
 
 /// Remove terminal protocols before layout. Never pass untrusted escapes through.
 pub fn sanitize(text: &str) -> String {
@@ -91,6 +141,17 @@ pub fn sanitize(text: &str) -> String {
         };
     }
     output
+}
+
+/// Sanitise text that may span lines. Escape sequences, control characters
+/// and bidi overrides are removed line by line, while the line structure is
+/// kept: a multi-line diagnostic keeps its shape even though an untrusted value
+/// inside it is neutralised.
+pub fn sanitize_display(text: &str) -> String {
+    text.split('\n')
+        .map(sanitize)
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 pub fn width(text: &str) -> usize {

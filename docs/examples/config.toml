@@ -1,0 +1,30 @@
+# A complete configuration. Every key below is optional; delete a line to keep
+# the built-in behaviour it describes.
+#
+# Put this at $XDG_CONFIG_HOME/justfetch/config.toml (Unix) or
+# %APPDATA%\justfetch\config.toml (Windows), or pass it with --config.
+
+modules = ["os", "host", "kernel", "uptime", "cpu", "memory", "swap", "disk", "shell", "terminal", "local_ip"]
+
+[theme]
+# One of: default, catppuccin-mocha, nord, tokyo-night, gruvbox, monochrome.
+# For a custom theme, replace this with: file = "theme-midnight.toml"
+# (the path is relative to this file).
+name = "catppuccin-mocha"
+
+[layout]
+# classic, compact, minimal or vertical.
+name = "classic"
+# auto, none, or a built-in logo name.
+logo = "auto"
+# Text between the label column and the value. `minimal` uses ": " instead.
+separator = "  "
+
+[color]
+enabled = true
+# Overrides the theme's accent for the title and labels. Optional.
+#accent = "bright-cyan"
+
+[labels]
+# Rename a row without changing what it shows.
+cpu = "Processor"

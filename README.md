@@ -4,7 +4,7 @@
 
 A compact Rust CLI that displays real local system information, with a responsive ASCII layout and structured JSON. It runs offline, requires no configuration or administrator access, and does not call other fetch tools.
 
-**Status:** the published [v0.1.0 pre-release](https://github.com/LightYourJourney/justfetch/releases) carries the **seven-field** build described in its [release notes](docs/release-notes/v0.1.0.md). The eleven fields, `--privacy` and the wider test and CI work described below are in the repository and **not yet released**; nothing is on crates.io. Apple Silicon macOS was exercised locally, Linux x86-64 and Windows x64 in the CI test job, and ARM64 Linux in the release workflow, which also runs each packaged archive on its own runner except the cross-compiled Intel macOS one. Intel macOS is built but has never been run, so its archive is unverified; WSL and distributions other than Ubuntu remain untested. See the [compatibility matrix](docs/compatibility.md).
+**Status:** the published [v0.1.0 pre-release](https://github.com/LightYourJourney/justfetch/releases) carries the **seven-field** build described in its [release notes](docs/release-notes/v0.1.0.md). The eleven fields, `--privacy`, the module, theme and layout system, and the wider test and CI work described below are in the repository and **not yet released**; nothing is on crates.io. Apple Silicon macOS was exercised locally, Linux x86-64 and Windows x64 in the CI test job, and ARM64 Linux in the release workflow, which also runs each packaged archive on its own runner except the cross-compiled Intel macOS one. Intel macOS is built but has never been run, so its archive is unverified; WSL and distributions other than Ubuntu remain untested. See the [compatibility matrix](docs/compatibility.md).
 
 ## Features
 
@@ -14,6 +14,8 @@ This list describes the current source. The published v0.1.0 archive is older an
 - Explicit available/unavailable/unsupported/redacted/deselected/error states, source and confidence in JSON.
 - `--privacy` withholds the user name, the host name and the local addresses, and shortens the home path to `~`, identically in text and JSON.
 - Module selection and ordering, custom labels, a custom separator, and a TOML file to keep them in. Unselected modules are not collected at all. `justfetch init` writes a commented file; `justfetch doctor` explains what is wrong with a broken one.
+- Six colour themes, four layouts and `justfetch themes` for discovery. A theme is a table of colours, so it cannot change what is measured or how it is arranged. True colour is reduced to 256 or 16 colours when the terminal cannot show it, and to plain text when colour is off.
+- Built-in artwork follows the detected distribution, can be pinned by name, or replaced with a custom ASCII/Unicode file. Custom files are size-limited and stripped of escape sequences.
 - Original ASCII logos for macOS, Windows, Linux, Arch, Debian, Ubuntu, Fedora, Gentoo, openSUSE, NixOS and unknown systems.
 - Unicode display-cell alignment and grapheme-aware wrapping; narrow terminals hide the logo.
 - Conservative ANSI colors, NO_COLOR, TERM=dumb and redirected-output support; no terminal state changes.
@@ -64,6 +66,12 @@ justfetch --help
 justfetch --version
 justfetch --no-color
 justfetch --logo none
+justfetch --logo arch
+justfetch --logo-file ./art.txt
+justfetch --theme nord
+justfetch --theme-file ./theme.toml
+justfetch --layout compact
+justfetch themes
 justfetch --privacy
 justfetch --modules os,cpu,memory
 justfetch --config ./justfetch.toml
@@ -74,6 +82,11 @@ justfetch doctor
 ```
 
 `--privacy` is for output that leaves the machine. The user name, host name and local addresses are withheld: JSON marks those fields `"status": "redacted"` with no value, rather than inventing a placeholder string. The disk path is only shortened to `~` — that field stays `available`, because its counters are exact and `~` is a true shorthand for the directory that was read. A device-model Host row and everything else are left alone; shell and terminal are not redacted, because neither names a person.
+
+`--theme` and `--layout` choose the look; `justfetch themes` lists the built-in
+themes with a colour preview. `--logo auto` is the default; `--logo NAME` pins a
+built-in emblem and `--logo-file PATH` draws your own. See [themes and
+layouts](docs/themes.md).
 
 `--logo auto` is the default. `--modules` picks the rows and their order, and a module that is not selected is never collected — not merely hidden. Non-TTY output is plain text; nonempty NO_COLOR or TERM=dumb disables ANSI even in a TTY. Long fields wrap within the detected terminal width. Legacy non-UTF-8 locales use ASCII presentation; JSON retains the original strings.
 
@@ -123,6 +136,7 @@ The package has a small library for deterministic tests and a thin binary. Detec
 - [Validation record](docs/validation.md)
 - [Measured performance and reproducible commands](docs/performance.md)
 - [Configuration reference](docs/configuration.md)
+- [Themes, layouts and logos](docs/themes.md)
 - [Version roadmap](docs/roadmap.md)
 - [Changelog](CHANGELOG.md)
 

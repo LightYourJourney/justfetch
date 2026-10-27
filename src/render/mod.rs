@@ -1,3 +1,4 @@
+pub mod colour;
 pub mod json;
 pub mod layout;
 pub mod logo;

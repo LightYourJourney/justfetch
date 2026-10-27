@@ -2,17 +2,17 @@
 
 ## Goal and scope
 
-Build a fast, accurate, offline Rust system-information CLI. Current scope: OS, Host, Kernel, Uptime, CPU, Memory, Swap, Disk, Shell, Terminal, Local IP, terminal/JSON, original ASCII logos and graceful field failures. Swap is unsupported on Windows, which exposes no page-file usage through the APIs this project permits. Module selection and ordering (`--modules` or a TOML file), custom labels, a custom separator, `init` and `doctor` are implemented; see docs/configuration.md. Visual themes, custom logo files, arbitrary plugin modules and additional collectors belong to later releases; see docs/roadmap.md.
+Build a fast, accurate, offline Rust system-information CLI. Current scope: OS, Host, Kernel, Uptime, CPU, Memory, Swap, Disk, Shell, Terminal, Local IP, terminal/JSON, original ASCII logos and graceful field failures. Swap is unsupported on Windows, which exposes no page-file usage through the APIs this project permits. Module selection and ordering (`--modules` or a TOML file), custom labels, a custom separator, `init` and `doctor` are implemented; see docs/configuration.md. Colour themes, four layouts, custom logo files and the `themes` listing are implemented; see docs/themes.md. Arbitrary plugin modules and additional collectors belong to later releases; see docs/roadmap.md.
 
 ## Architecture
 
 - src/main.rs: CLI lifecycle, stdout/stderr and exit codes.
-- src/cli.rs, config.rs and commands.rs: arguments, the TOML file, precedence, read-only terminal capabilities, and the `init`/`doctor` subcommands.
+- src/cli.rs, config.rs and commands.rs: arguments, the TOML file, theme and logo files, precedence, read-only terminal capabilities, and the `init`/`doctor`/`themes` subcommands.
 - src/module.rs: the stable module identifiers that selection, ordering, labels and collection all key off.
 - src/model.rs: serde schema, raw numeric units, source/confidence and distinct states.
 - src/detect/: orchestration, pure Linux parsers and conservative shell recognition.
 - src/platform/: all native OS access; no formatting or printing.
-- src/render/: deterministic terminal/JSON rendering; no system calls or environment reads.
+- src/render/: deterministic terminal/JSON rendering; no system calls or environment reads. `colour.rs` holds the truecolour/256/16 capability reduction, `theme.rs` the colour roles and built-in themes, `logo.rs` the artwork registry and validation, `layout.rs` the arrangements plus width and sanitisation helpers.
 - assets/logos/: built-in ASCII, licensed with this project.
 - tests/: real CLI execution and fixed-snapshot rendering.
 
@@ -22,7 +22,7 @@ Keep one package with lib/bin. Avoid a plugin registry or TUI framework. Do not 
 
 Stable Rust, edition 2024, MSRV 1.95. Use explicit bytes/seconds in models; never use Unknown/N/A strings to erase states. Preserve field-level errors, distinguish hostname from model and default from current shell. Prefer safe Rust; any necessary FFI must have a narrow wrapper, checked results, correct ownership and SAFETY comments. No unsafe micro-optimizations. Avoid unwrap/expect/panic in production paths. Do not silently clamp invalid memory counters into plausible results.
 
-Do not add runtime network requests, telemetry, administrator requirements, external fetch backends, filesystem scans, private-file reads or subprocesses. Reading the user's own configuration file is the one file read outside system paths; it happens only at the resolved path or the one named by `--config`, and nothing is written unless `init` is run. Refresh only required CPU fields. Unix shell lookup is direct; Windows uses one documented parent-ID snapshot and one parent-image query. Never execute a shell string. Treat all system and environment strings as untrusted terminal input; sanitize before width calculation and add styling afterwards. Renderers receive all capabilities explicitly; never change terminal state. Keep JSON stdout to exactly one JSON document, even with visual options.
+Do not add runtime network requests, telemetry, administrator requirements, external fetch backends, filesystem scans, private-file reads or subprocesses. The only files read outside system paths are the user's own configuration file and the theme or logo files a configuration names or `--theme-file`/`--logo-file` point at. They are read at those resolved paths and nowhere else, and nothing is written unless `init` is run. Refresh only required CPU fields. Unix shell lookup is direct; Windows uses one documented parent-ID snapshot and one parent-image query. Never execute a shell string. Treat all system and environment strings as untrusted terminal input; sanitize before width calculation and add styling afterwards. Renderers receive all capabilities explicitly; never change terminal state. Keep JSON stdout to exactly one JSON document, even with visual options.
 
 ## Commands and evidence
 

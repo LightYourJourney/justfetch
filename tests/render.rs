@@ -1,15 +1,22 @@
-use anstyle::AnsiColor;
 use justfetch::{
     detect::shell::recognized_name,
     model::*,
     module::ModuleId,
     privacy,
     render::{
-        json, layout, logo,
+        colour::{Colour, Depth},
+        json,
+        layout::{self, Layout},
+        logo,
         terminal::{self, Options},
-        theme,
+        theme::{self, Theme},
     },
 };
+
+fn default_theme() -> &'static Theme {
+    static THEME: std::sync::OnceLock<Theme> = std::sync::OnceLock::new();
+    THEME.get_or_init(|| theme::built_in("default").expect("built in"))
+}
 
 fn fixture() -> SystemSnapshot {
     SystemSnapshot {
@@ -105,12 +112,15 @@ fn fixture() -> SystemSnapshot {
 fn options(columns: usize) -> Options<'static> {
     Options {
         columns,
-        color: false,
+        depth: Depth::None,
         unicode: true,
         logo: true,
+        logo_explicit: false,
+        layout: Layout::Classic,
         modules: &ModuleId::ALL,
         labels: &[],
         separator: "  ",
+        theme: default_theme(),
         accent: None,
     }
 }
@@ -316,14 +326,14 @@ fn a_narrow_colored_row_still_accents_its_label() {
         }
         out
     }
-    // The label column is eight bytes. At or above that width a row starts with
-    // the whole column and is accented; below it the row starts mid-label and
-    // stays plain. The narrow branch used to lose the accent on both sides.
-    for columns in 6..=12 {
+    // The label column is six cells ("Kernel"/"Memory"), and the separator is
+    // no longer part of the styled prefix. A row is accented when its first
+    // line still contains the whole column, and plain below that.
+    for columns in 3..=12 {
         let text = terminal::render(
             &fixture(),
             Options {
-                color: true,
+                depth: Depth::Ansi16,
                 logo: false,
                 ..options(columns)
             },
@@ -335,9 +345,9 @@ fn a_narrow_colored_row_still_accents_its_label() {
         let accented = row.starts_with('\u{1b}');
         assert_eq!(
             accented,
-            columns >= 8,
+            columns >= 6,
             "accent at {columns} columns should be {}, row: {row:?}",
-            columns >= 8
+            columns >= 6
         );
     }
 }
@@ -346,9 +356,9 @@ fn a_narrow_colored_row_still_accents_its_label() {
 fn logo_height_does_not_drop_information() {
     for art in ["x", "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n14\n15"] {
         let logo = logo::Logo {
-            name: "fixture",
-            art,
-            color: AnsiColor::Cyan,
+            name: "fixture".to_owned(),
+            art: art.to_owned(),
+            color: Some(Colour::Ansi(anstyle::AnsiColor::Cyan)),
         };
         let text = terminal::render_with_logo(&fixture(), options(80), &logo);
         assert!(text.contains("Shell   zsh"));
@@ -390,46 +400,51 @@ fn every_column_count_and_capability_combination_stays_in_bounds() {
     let mut snapshot = fixture();
     snapshot.cpu = Detection::available(
         CpuInfo {
-            name: "x".repeat(200),
+            // Wide characters and an emoji sequence, not only ASCII: display
+            // width, not byte length, is what the layout must respect.
+            name: format!("处理器🖥️{}", "x".repeat(200)),
             logical_cores: 256,
         },
         "fixture",
     );
-    snapshot.identity.hostname = Detection::available("h".repeat(200), "fixture");
+    snapshot.identity.hostname = Detection::available("中".repeat(100), "fixture");
     snapshot.memory = Detection::error("fixture", ErrorCode::Io, "y".repeat(200));
     for columns in (0..=260).chain([1_000, 4_096, 100_000]) {
-        for color in [false, true] {
-            for unicode in [false, true] {
-                let text = terminal::render(
-                    &snapshot,
-                    Options {
-                        color,
-                        unicode,
-                        logo: true,
-                        ..options(columns)
-                    },
-                );
-                // Generated escapes occupy no display cells, so visual width is
-                // measured after removing them.
-                for line in text.lines() {
-                    let visible = layout::sanitize(line);
-                    assert!(
-                        layout::width(&visible) <= columns.max(1),
-                        "columns={columns} color={color} unicode={unicode}: {line:?}"
+        for layout in Layout::ALL {
+            for (color, depth) in [(false, Depth::None), (true, Depth::Ansi16)] {
+                for unicode in [false, true] {
+                    let text = terminal::render(
+                        &snapshot,
+                        Options {
+                            depth,
+                            unicode,
+                            layout,
+                            logo: true,
+                            ..options(columns)
+                        },
                     );
+                    // Generated escapes occupy no display cells, so visual width is
+                    // measured after removing them.
+                    for line in text.lines() {
+                        let visible = layout::sanitize(line);
+                        assert!(
+                            layout::width(&visible) <= columns.max(1),
+                            "columns={columns} layout={layout} color={color} unicode={unicode}: {line:?}"
+                        );
+                    }
+                    if !color {
+                        assert!(
+                            !text.contains('\x1b'),
+                            "columns={columns} unicode={unicode}: unexpected escapes"
+                        );
+                    } else if text.lines().any(|line| !layout::sanitize(line).is_empty()) {
+                        assert!(
+                            text.contains('\x1b'),
+                            "columns={columns} unicode={unicode}: missing escapes"
+                        );
+                    }
+                    assert!(text.ends_with('\n'), "columns={columns}: missing newline");
                 }
-                if !color {
-                    assert!(
-                        !text.contains('\x1b'),
-                        "columns={columns} unicode={unicode}: unexpected escapes"
-                    );
-                } else if text.lines().any(|line| !layout::sanitize(line).is_empty()) {
-                    assert!(
-                        text.contains('\x1b'),
-                        "columns={columns} unicode={unicode}: missing escapes"
-                    );
-                }
-                assert!(text.ends_with('\n'), "columns={columns}: missing newline");
             }
         }
     }
@@ -440,34 +455,42 @@ fn every_column_count_and_capability_combination_stays_in_bounds() {
 #[test]
 fn color_never_moves_a_character_across_columns() {
     for columns in [12, 20, 36, 53, 54, 80, 120, 200] {
-        let plain = terminal::render(
-            &fixture(),
-            Options {
-                color: false,
-                ..options(columns)
-            },
-        );
-        let colored = terminal::render(
-            &fixture(),
-            Options {
-                color: true,
-                ..options(columns)
-            },
-        );
-        assert_eq!(
-            colored.lines().map(layout::sanitize).collect::<Vec<_>>(),
-            plain.lines().collect::<Vec<_>>(),
-            "columns={columns}"
-        );
+        for layout in Layout::ALL {
+            let plain = terminal::render(
+                &fixture(),
+                Options {
+                    depth: Depth::None,
+                    layout,
+                    ..options(columns)
+                },
+            );
+            let coloured = terminal::render(
+                &fixture(),
+                Options {
+                    depth: Depth::Ansi16,
+                    layout,
+                    ..options(columns)
+                },
+            );
+            assert_eq!(
+                coloured.lines().map(layout::sanitize).collect::<Vec<_>>(),
+                plain.lines().collect::<Vec<_>>(),
+                "columns={columns} layout={layout}"
+            );
+        }
     }
 }
 
 #[test]
-fn accent_of_empty_text_produces_nothing() {
-    assert_eq!(theme::accent("", AnsiColor::Cyan, true), "");
-    assert_eq!(theme::accent("", AnsiColor::Cyan, false), "");
-    assert!(theme::accent("x", AnsiColor::Cyan, true).contains('x'));
-    assert_eq!(theme::accent("x", AnsiColor::Cyan, false), "x");
+fn style_of_empty_text_produces_nothing() {
+    use anstyle::Style;
+    let coloured = Style::new()
+        .fg_color(Some(anstyle::Color::Ansi(anstyle::AnsiColor::Cyan)))
+        .bold();
+    assert_eq!(theme::styled("", coloured), "");
+    assert_eq!(theme::styled("", Style::new()), "");
+    assert!(theme::styled("x", coloured).contains('x'));
+    assert_eq!(theme::styled("x", Style::new()), "x");
 }
 
 /// A styled span is written as `<open><text><reset>`, and `open` is itself
@@ -499,14 +522,14 @@ fn has_empty_styled_span(line: &str) -> bool {
 #[test]
 fn rows_beyond_a_short_logo_carry_no_empty_styled_span() {
     let short = logo::Logo {
-        name: "short",
-        art: "x",
-        color: AnsiColor::Cyan,
+        name: "short".to_owned(),
+        art: "x".to_owned(),
+        color: Some(Colour::Ansi(anstyle::AnsiColor::Cyan)),
     };
     let text = terminal::render_with_logo(
         &fixture(),
         Options {
-            color: true,
+            depth: Depth::Ansi16,
             ..options(80)
         },
         &short,
@@ -690,7 +713,7 @@ fn color_only_adds_generated_ansi_after_layout() {
     let colored = terminal::render(
         &fixture(),
         Options {
-            color: true,
+            depth: Depth::Ansi16,
             ..options(80)
         },
     );
@@ -817,7 +840,7 @@ fn a_configured_accent_colours_the_text() {
     let plain = terminal::render(
         &snapshot,
         Options {
-            color: true,
+            depth: Depth::Ansi16,
             logo: false,
             accent: None,
             ..options(80)
@@ -826,12 +849,236 @@ fn a_configured_accent_colours_the_text() {
     let cyan = terminal::render(
         &snapshot,
         Options {
-            color: true,
+            depth: Depth::Ansi16,
             logo: false,
-            accent: Some(AnsiColor::Cyan),
+            accent: Some(Colour::Ansi(anstyle::AnsiColor::Cyan)),
             ..options(80)
         },
     );
     assert_ne!(plain, cyan, "the accent should change the emitted colour");
     assert!(cyan.contains('\u{1b}'));
+}
+
+#[test]
+fn every_built_in_theme_changes_only_the_colour() {
+    let plain = terminal::render(&fixture(), options(80));
+    for name in theme::names() {
+        let built_in = theme::built_in(name).expect("a listed theme exists");
+        let coloured = terminal::render(
+            &fixture(),
+            Options {
+                depth: Depth::TrueColor,
+                theme: &built_in,
+                ..options(80)
+            },
+        );
+        assert!(coloured.contains('\u{1b}'), "{name} emitted no styling");
+        // The swatch row is the theme's own palette, so its length is the one
+        // thing a theme is allowed to change; everything else must be identical.
+        // A swatch row is made only of dots and spaces; matching on the
+        // character alone would also drop rows whose text contains an `o`.
+        let information = |text: &str| {
+            text.lines()
+                .map(layout::sanitize)
+                .filter(|line| !line.chars().all(|c| c == '●' || c == 'o' || c == ' '))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            information(&coloured),
+            information(&plain),
+            "{name} moved or changed the text"
+        );
+    }
+}
+
+#[test]
+fn each_layout_shows_the_same_information() {
+    for layout in Layout::ALL {
+        let output = terminal::render(
+            &fixture(),
+            Options {
+                layout,
+                logo: false,
+                ..options(80)
+            },
+        );
+        for module in ModuleId::ALL {
+            assert!(output.contains(module.label()), "{layout}: {module:?}");
+        }
+        assert!(output.contains("192.0.2.10"), "{layout} lost a value");
+        assert!(output.contains("Test Machine"), "{layout} lost a value");
+    }
+}
+
+#[test]
+fn the_layouts_differ_in_the_way_they_describe() {
+    let render = |layout| {
+        terminal::render(
+            &fixture(),
+            Options {
+                layout,
+                ..options(80)
+            },
+        )
+    };
+    let classic = render(Layout::Classic);
+    assert!(classic.contains('─'), "classic has no rule");
+    assert!(classic.contains('●'), "classic has no swatches");
+    assert!(
+        classic.lines().any(|line| line.contains("o   o")),
+        "classic has no artwork"
+    );
+
+    let compact = render(Layout::Compact);
+    assert!(!compact.contains('─') && !compact.contains('●'));
+    assert!(compact.contains("OS      Example Linux 42"), "{compact}");
+
+    let minimal = render(Layout::Minimal);
+    assert!(minimal.contains("OS: Example Linux 42"), "{minimal}");
+    assert!(!minimal.contains('─'));
+
+    let vertical = render(Layout::Vertical);
+    let first = vertical.lines().next().unwrap_or_default();
+    assert!(
+        first.trim().is_empty() || first.starts_with(' '),
+        "the artwork is not centred"
+    );
+    assert!(vertical.contains('─') && vertical.contains('●'));
+    assert!(vertical.find("o   o").unwrap() < vertical.find("tester@host").unwrap());
+}
+
+#[test]
+fn decor_disappears_before_information_when_the_terminal_is_narrow() {
+    for layout in [Layout::Classic, Layout::Vertical] {
+        let output = terminal::render(
+            &fixture(),
+            Options {
+                layout,
+                logo: false,
+                ..options(20)
+            },
+        );
+        assert!(!output.contains('─'), "{layout} kept a rule at 20 columns");
+        assert!(
+            !output.contains('●'),
+            "{layout} kept swatches at 20 columns"
+        );
+        assert!(output.contains("Kernel"), "{layout} lost a row");
+    }
+}
+
+#[test]
+fn a_custom_logo_is_drawn_and_never_emits_its_own_escapes() {
+    let custom = logo::parse_custom("  /\\\n /  \\\x1b[31m\n", "mine", "logo.txt").unwrap();
+    let output = terminal::render_with_logo(&fixture(), options(80), &custom);
+    assert!(output.contains("  /\\"), "{output}");
+    assert!(output.contains(" /  \\"), "{output}");
+    assert!(
+        !output.contains('\u{1b}'),
+        "the file's escape reached the terminal"
+    );
+}
+
+#[test]
+fn colour_depth_is_visible_in_what_is_emitted() {
+    let nord = theme::built_in("nord").unwrap();
+    let at = |depth| {
+        terminal::render(
+            &fixture(),
+            Options {
+                depth,
+                theme: &nord,
+                logo: false,
+                ..options(80)
+            },
+        )
+    };
+    assert!(at(Depth::TrueColor).contains("\u{1b}[38;2;"));
+    assert!(at(Depth::Ansi256).contains("\u{1b}[38;5;"));
+    let sixteen = at(Depth::Ansi16);
+    assert!(!sixteen.contains("38;2;") && !sixteen.contains("38;5;"));
+    assert!(sixteen.contains('\u{1b}'), "16 colours is still colour");
+    assert!(!at(Depth::None).contains('\u{1b}'));
+}
+
+#[test]
+fn a_custom_theme_that_leaves_a_role_unset_falls_back() {
+    let custom = theme::parse("name = \"mine\"\nlogo = \"cyan\"\n", "theme.toml").unwrap();
+    let output = terminal::render(
+        &fixture(),
+        Options {
+            depth: Depth::Ansi16,
+            theme: &custom,
+            logo: false,
+            ..options(80)
+        },
+    );
+    // Title and labels take the logo colour; values stay unstyled.
+    let title = output.lines().next().unwrap();
+    assert!(title.contains("36"), "{title:?}");
+}
+
+#[test]
+fn a_wide_or_emoji_label_keeps_every_value_in_one_column() {
+    for label in ["处理器类型", "🖥️ CPU", "e\u{301}clair"] {
+        let labels = vec![(ModuleId::Cpu, label.to_owned())];
+        let output = terminal::render(
+            &fixture(),
+            Options {
+                labels: &labels,
+                logo: false,
+                ..options(80)
+            },
+        );
+        let expected = layout::width(label).max(6) + 2;
+        for value in ["Example Linux 42", "Linux 6.8", "2.00 / 8.00", "zsh"] {
+            let line = output
+                .lines()
+                .find(|line| line.contains(value))
+                .unwrap_or_else(|| panic!("{label}: no row for {value}\n{output}"));
+            let start = line.find(value).unwrap();
+            assert_eq!(
+                layout::width(&line[..start]),
+                expected,
+                "{label}: `{value}` starts at the wrong column"
+            );
+        }
+    }
+}
+
+#[test]
+fn an_explicitly_chosen_logo_is_stacked_rather_than_dropped() {
+    let art = logo::built_in("arch").expect("built in");
+    let narrow = |explicit| {
+        terminal::render_with_logo(
+            &fixture(),
+            Options {
+                logo_explicit: explicit,
+                ..options(40)
+            },
+            &art,
+        )
+    };
+    // The automatic choice still gives way to the information.
+    assert!(!narrow(false).contains("/\\"));
+    // An explicit one moves above it instead of vanishing.
+    let stacked = narrow(true);
+    assert!(stacked.contains("/\\"), "{stacked}");
+    assert!(stacked.contains("Kernel"), "the information must survive");
+    for line in stacked.lines() {
+        assert!(layout::width(line) <= 40, "{line:?}");
+    }
+    // Wide enough to sit beside the information, the arrangement is unchanged.
+    let beside = terminal::render_with_logo(
+        &fixture(),
+        Options {
+            logo_explicit: true,
+            ..options(80)
+        },
+        &art,
+    );
+    assert!(
+        beside.lines().any(|line| line.starts_with("         /\\")),
+        "{beside}"
+    );
 }
