@@ -291,4 +291,15 @@ Phase 10 added a module system and a TOML configuration file. `docs/configuratio
 
 **Not verified.** No Windows or Linux machine was available interactively. The configuration paths, `%APPDATA%` resolution and `--config` were exercised on macOS only; the other platforms are covered by cross-target `cargo check` and by CI, which has not run for this round yet.
 
-**Test count:** 79, up from 54.
+**Two-axis review of this round.** A Standards review and a Spec review ran independently against the same diff. Both axes reported; everything they raised is closed:
+
+- Several documents still described the pre-round state: `architecture.md` listed TOML as roadmap while `README.md` claimed it, `CONTRIBUTING.md` and the roadmap repeated the same error, the README's status list omitted `deselected`, and `configuration.md` promised a "file and position" for errors that only carry a key. All corrected against what the code actually does.
+- `--config` replaced the user file instead of layering over it, while the spec asks for inheritance through the chain. It now layers: keys the explicit file sets win, keys it omits fall back to the user file. Covered by `an_explicit_file_is_layered_over_the_user_one`.
+- The file format had no way to colour the title and labels, so `[color] accent` was added with the same basic-colour vocabulary as the rest, plus `parse_colour` and a renderer test that the accent reaches the text.
+- `config.rs` held both the configuration format and the two subcommands' output. They change for different reasons, so `init`, `doctor`, `Finding` and the template moved to `src/commands.rs`; `config.rs` keeps the schema, paths, parsing and precedence.
+- Running `doctor` by hand showed a defect no reviewer had raised: a missing `--config` file produced two problem lines, one from the existence check and one from resolution, saying the same thing. A normal run stops at the first, so `doctor` now does too, and `doctor_reports_a_missing_config_file_once` fails with two matches when the fix is reverted.
+- Smaller: the help text now has a test asserting it lists every module id, `LogoMode` gained `Display`, and the config-path resolution moved into a pure `config_base` so a Unicode path and an `XDG_CONFIG_HOME` override are covered without touching the real user directory.
+
+**Cross-target finding.** Collapsing the duplicated `if wanted(...) { ... } else { deselected }` blocks into `if_selected` replaced the `wanted` import in the Linux and Windows adapters, which still call it. The macOS build could not see this: those files are `#[cfg]`-excluded on the host. Only the cross-target check caught it — `error[E0425]: cannot find function 'wanted'`. The same blindness hid six redundant-closure warnings that clippy reported only for the host target. Both classes are now fixed in all platform files, and the cross-target clippy runs are part of the check list, not an afterthought.
+
+**Test count:** 87, up from 54 at the start of the round and 79 before the review.

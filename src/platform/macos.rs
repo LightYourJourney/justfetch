@@ -1,6 +1,6 @@
 use super::{PlatformData, disk, local_ip, uname, uname_identity};
 use crate::model::*;
-use crate::module::{ModuleId, wanted};
+use crate::module::{ModuleId, if_selected};
 use std::{
     ffi::CStr,
     io, mem, ptr,
@@ -250,58 +250,30 @@ pub fn collect(selection: &[ModuleId]) -> PlatformData {
     let data = uname();
     // The hostname is needed for the title even when no module asks for it.
     let (hostname, kernel) = uname_identity(&data);
-    let os = if wanted(selection, ModuleId::Os) {
+    let os = if_selected(selection, ModuleId::Os, || {
         sysctl_string(c"kern.osproductversion").map(|version| OsInfo {
             family: OsFamily::Macos,
             name: "macOS".to_owned(),
             version: Some(version),
             id: Some("macos".to_owned()),
         })
-    } else {
-        Detection::deselected()
-    };
-    let host = if wanted(selection, ModuleId::Host) {
+    });
+    let host = if_selected(selection, ModuleId::Host, || {
         sysctl_string(c"hw.model").map(|name| HostInfo {
             name,
             kind: HostKind::DeviceModel,
         })
-    } else {
-        Detection::deselected()
-    };
+    });
     PlatformData {
         hostname,
         environment: Environment::Native,
         os,
         host,
-        kernel: if wanted(selection, ModuleId::Kernel) {
-            kernel
-        } else {
-            Detection::deselected()
-        },
-        uptime: if wanted(selection, ModuleId::Uptime) {
-            uptime()
-        } else {
-            Detection::deselected()
-        },
-        memory: if wanted(selection, ModuleId::Memory) {
-            memory()
-        } else {
-            Detection::deselected()
-        },
-        swap: if wanted(selection, ModuleId::Swap) {
-            swap()
-        } else {
-            Detection::deselected()
-        },
-        disk: if wanted(selection, ModuleId::Disk) {
-            disk()
-        } else {
-            Detection::deselected()
-        },
-        local_ip: if wanted(selection, ModuleId::LocalIp) {
-            local_ip()
-        } else {
-            Detection::deselected()
-        },
+        kernel: if_selected(selection, ModuleId::Kernel, || kernel),
+        uptime: if_selected(selection, ModuleId::Uptime, uptime),
+        memory: if_selected(selection, ModuleId::Memory, memory),
+        swap: if_selected(selection, ModuleId::Swap, swap),
+        disk: if_selected(selection, ModuleId::Disk, disk),
+        local_ip: if_selected(selection, ModuleId::LocalIp, local_ip),
     }
 }

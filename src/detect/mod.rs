@@ -4,7 +4,7 @@ pub mod shell;
 
 use crate::{
     model::*,
-    module::{ModuleId, wanted},
+    module::{ModuleId, if_selected},
     platform,
 };
 use sysinfo::{CpuRefreshKind, System};
@@ -66,7 +66,7 @@ fn terminal() -> Detection<TerminalInfo> {
 pub fn collect(selection: &[ModuleId]) -> SystemSnapshot {
     let data = platform::collect(selection);
     // Enumerating processors is not free, so it happens only for a CPU row.
-    let cpu = if wanted(selection, ModuleId::Cpu) {
+    let cpu = if_selected(selection, ModuleId::Cpu, || {
         let mut system = System::new();
         system.refresh_cpu_list(CpuRefreshKind::nothing());
         match (
@@ -92,14 +92,8 @@ pub fn collect(selection: &[ModuleId]) -> SystemSnapshot {
             }
             (None, _) => Detection::unavailable("CPU brand not exposed by the system adapter"),
         }
-    } else {
-        Detection::deselected()
-    };
-    let shell = if wanted(selection, ModuleId::Shell) {
-        shell::collect()
-    } else {
-        Detection::deselected()
-    };
+    });
+    let shell = if_selected(selection, ModuleId::Shell, shell::collect);
     let variable = if cfg!(windows) { "USERNAME" } else { "USER" };
     let username = match std::env::var(variable)
         .ok()
@@ -128,11 +122,7 @@ pub fn collect(selection: &[ModuleId]) -> SystemSnapshot {
         swap: data.swap,
         disk: data.disk,
         shell,
-        terminal: if wanted(selection, ModuleId::Terminal) {
-            terminal()
-        } else {
-            Detection::deselected()
-        },
+        terminal: if_selected(selection, ModuleId::Terminal, terminal),
         local_ip: data.local_ip,
     }
 }

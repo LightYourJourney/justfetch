@@ -1,5 +1,5 @@
 use super::{PlatformData, c_chars, disk, local_ip, uname, uname_identity};
-use crate::module::{ModuleId, wanted};
+use crate::module::{ModuleId, if_selected, wanted};
 use crate::{detect::linux as parse, model::*};
 use std::{
     fs::File,
@@ -129,7 +129,7 @@ pub fn collect(selection: &[ModuleId]) -> PlatformData {
         Scope::OperatingSystem
     };
     // /etc takes precedence. Fall back only when absent, never on malformed data.
-    let os = if wanted(selection, ModuleId::Os) {
+    let os = if_selected(selection, ModuleId::Os, || {
         let release = read("/etc/os-release");
         let release = if matches!(release, Detection::Unavailable { .. }) {
             read("/usr/lib/os-release")
@@ -137,27 +137,21 @@ pub fn collect(selection: &[ModuleId]) -> PlatformData {
             release
         };
         parsed(release, parse::os_release)
-    } else {
-        Detection::deselected()
-    };
-    let uptime = if wanted(selection, ModuleId::Uptime) {
+    });
+    let uptime = if_selected(selection, ModuleId::Uptime, || {
         parsed(read("/proc/uptime"), parse::uptime).map(|seconds| UptimeInfo {
             seconds,
             scope: scope.clone(),
         })
-    } else {
-        Detection::deselected()
-    };
+    });
     // /proc/meminfo carries both fields, so it is read when either is wanted.
     let (memory, swap) = if wanted(selection, ModuleId::Memory) || wanted(selection, ModuleId::Swap)
     {
         let meminfo = read("/proc/meminfo");
-        let swap = if wanted(selection, ModuleId::Swap) {
+        let swap = if_selected(selection, ModuleId::Swap, || {
             parsed(meminfo.clone(), parse::swap)
-        } else {
-            Detection::deselected()
-        };
-        let memory = if wanted(selection, ModuleId::Memory) {
+        });
+        let memory = if_selected(selection, ModuleId::Memory, || {
             match parsed(meminfo, |text| parse::memory(text, scope)) {
                 Detection::Available {
                     value: (value, true),
@@ -170,41 +164,25 @@ pub fn collect(selection: &[ModuleId]) -> PlatformData {
                 ),
                 other => other.map(|(value, _)| value),
             }
-        } else {
-            Detection::deselected()
-        };
+        });
         (memory, swap)
     } else {
         (Detection::deselected(), Detection::deselected())
     };
-    let host = if wanted(selection, ModuleId::Host) {
+    let host = if_selected(selection, ModuleId::Host, || {
         host(hostname.clone(), &environment)
-    } else {
-        Detection::deselected()
-    };
+    });
     // Do not query /mnt/c, Windows executables, DMI or host hardware under WSL.
     PlatformData {
         hostname,
         environment,
         os,
         host,
-        kernel: if wanted(selection, ModuleId::Kernel) {
-            kernel
-        } else {
-            Detection::deselected()
-        },
+        kernel: if_selected(selection, ModuleId::Kernel, || kernel),
         uptime,
         memory,
         swap,
-        disk: if wanted(selection, ModuleId::Disk) {
-            disk()
-        } else {
-            Detection::deselected()
-        },
-        local_ip: if wanted(selection, ModuleId::LocalIp) {
-            local_ip()
-        } else {
-            Detection::deselected()
-        },
+        disk: if_selected(selection, ModuleId::Disk, disk),
+        local_ip: if_selected(selection, ModuleId::LocalIp, local_ip),
     }
 }

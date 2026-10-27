@@ -311,6 +311,20 @@ fn doctor_distinguishes_a_good_configuration_from_a_broken_one() {
 }
 
 #[test]
+fn doctor_reports_a_missing_config_file_once() {
+    let dir = temp_dir("doctor-missing");
+    let missing = dir.join("absent.toml");
+    let output = run(&["--config", missing.to_str().unwrap(), "doctor"]);
+    assert!(!output.status.success());
+    let report = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(
+        report.matches("file not found").count(),
+        1,
+        "the same missing file is reported twice:\n{report}"
+    );
+}
+
+#[test]
 fn configuration_errors_reach_stderr_without_stdout() {
     for (args, expected) in [
         (&["--modules", "gpu"][..], "not a module id"),
@@ -352,4 +366,38 @@ fn config_is_accepted_after_a_subcommand() {
         String::from_utf8_lossy(&out.stderr)
     );
     assert!(path.exists());
+}
+
+#[test]
+fn the_help_lists_every_module() {
+    // The list in `--help` is hand-written, so it is checked against the
+    // canonical set instead of being trusted to stay in step.
+    let help = run(&["--help"]);
+    assert!(help.status.success());
+    let text = String::from_utf8(help.stdout).unwrap();
+    for module in justfetch::module::ModuleId::ALL {
+        assert!(
+            text.contains(module.id()),
+            "{} is missing from --help",
+            module.id()
+        );
+    }
+}
+
+#[test]
+fn a_unicode_config_path_works() {
+    // Item 6 of the round's specification names Unicode paths; the config path
+    // is not ASCII in every home directory.
+    let dir = temp_dir("unicode");
+    let nested = dir.join("配置 目录");
+    std::fs::create_dir_all(&nested).unwrap();
+    let path = nested.join("config.toml");
+    std::fs::write(&path, "modules = [\"cpu\"]\n\n[layout]\nlogo = \"none\"\n").unwrap();
+    let out = run(&["--config", path.to_str().unwrap(), "--no-color"]);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(String::from_utf8_lossy(&out.stdout).contains("CPU"));
 }

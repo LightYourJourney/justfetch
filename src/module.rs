@@ -85,6 +85,20 @@ impl ModuleId {
     }
 }
 
+/// Collect only when the module is selected, and report `deselected` otherwise.
+/// The gate lives here so every collector states the same rule the same way.
+pub fn if_selected<T>(
+    selection: &[ModuleId],
+    id: ModuleId,
+    collect: impl FnOnce() -> crate::model::Detection<T>,
+) -> crate::model::Detection<T> {
+    if selection.contains(&id) {
+        collect()
+    } else {
+        crate::model::Detection::deselected()
+    }
+}
+
 /// Whether `modules` asks for `id`. A linear scan over at most eleven entries
 /// is cheaper than any lookup structure and keeps the call sites plain.
 pub fn wanted(modules: &[ModuleId], id: ModuleId) -> bool {

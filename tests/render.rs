@@ -111,6 +111,7 @@ fn options(columns: usize) -> Options<'static> {
         modules: &ModuleId::ALL,
         labels: &[],
         separator: "  ",
+        accent: None,
     }
 }
 
@@ -808,4 +809,29 @@ fn a_subset_keeps_the_default_label_column_width() {
         os.starts_with("OS      "),
         "the label column kept its default width: {os:?}"
     );
+}
+
+#[test]
+fn a_configured_accent_colours_the_text() {
+    let snapshot = fixture();
+    let plain = terminal::render(
+        &snapshot,
+        Options {
+            color: true,
+            logo: false,
+            accent: None,
+            ..options(80)
+        },
+    );
+    let cyan = terminal::render(
+        &snapshot,
+        Options {
+            color: true,
+            logo: false,
+            accent: Some(AnsiColor::Cyan),
+            ..options(80)
+        },
+    );
+    assert_ne!(plain, cyan, "the accent should change the emitted colour");
+    assert!(cyan.contains('\u{1b}'));
 }

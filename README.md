@@ -11,7 +11,7 @@ A compact Rust CLI that displays real local system information, with a responsiv
 This list describes the current source. The published v0.1.0 archive is older and does not contain the eleven fields or `--privacy`; see Status above.
 
 - OS, device model or labeled hostname, kernel, uptime, CPU, physical memory and swap, the filesystem holding your home directory, shell, terminal and local IPv4 addresses. Swap is reported as unsupported on Windows, which exposes no page-file figure to the APIs this project uses.
-- Explicit available/unavailable/unsupported/redacted/error states, source and confidence in JSON.
+- Explicit available/unavailable/unsupported/redacted/deselected/error states, source and confidence in JSON.
 - `--privacy` withholds the user name, the host name and the local addresses, and shortens the home path to `~`, identically in text and JSON.
 - Module selection and ordering, custom labels, a custom separator, and a TOML file to keep them in. Unselected modules are not collected at all. `justfetch init` writes a commented file; `justfetch doctor` explains what is wrong with a broken one.
 - Original ASCII logos for macOS, Windows, Linux, Arch, Debian, Ubuntu, Fedora, Gentoo, openSUSE, NixOS and unknown systems.

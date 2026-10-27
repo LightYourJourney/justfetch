@@ -14,7 +14,7 @@ Still open for this version: visual themes (point 4) and custom logo files (poin
 
 ## v0.3 — Advanced Detection
 
-Add reliable GPU/battery/display/DE/WM/packages/locale collectors individually, each with documented sources, status semantics, fixtures and platform coverage. Disk and terminal are already collected; docs/validation.md records why GPU, display resolution, battery, packages and desktop/window manager were not added with them. Add doctor and measured per-module timing. Avoid shell-based package scans as a default shortcut.
+Add reliable GPU/battery/display/DE/WM/packages/locale collectors individually, each with documented sources, status semantics, fixtures and platform coverage. Disk and terminal are already collected; docs/validation.md records why GPU, display resolution, battery, packages and desktop/window manager were not added with them. Add measured per-module timing; `doctor` shipped with v0.2. Avoid shell-based package scans as a default shortcut.
 
 ## v0.4 — Polish
 

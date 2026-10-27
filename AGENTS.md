@@ -7,7 +7,7 @@ Build a fast, accurate, offline Rust system-information CLI. Current scope: OS, 
 ## Architecture
 
 - src/main.rs: CLI lifecycle, stdout/stderr and exit codes.
-- src/cli.rs and config.rs: arguments, the TOML file, precedence, diagnostics and read-only terminal capabilities.
+- src/cli.rs, config.rs and commands.rs: arguments, the TOML file, precedence, read-only terminal capabilities, and the `init`/`doctor` subcommands.
 - src/module.rs: the stable module identifiers that selection, ordering, labels and collection all key off.
 - src/model.rs: serde schema, raw numeric units, source/confidence and distinct states.
 - src/detect/: orchestration, pure Linux parsers and conservative shell recognition.

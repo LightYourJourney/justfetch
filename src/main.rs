@@ -1,7 +1,7 @@
 use clap::Parser;
 use justfetch::{
     cli::{Cli, Command, Format},
-    config, detect, privacy, render,
+    commands, config, detect, privacy, render,
 };
 use std::{
     io::{self, Write},
@@ -10,7 +10,7 @@ use std::{
 
 fn run(cli: &Cli) -> io::Result<ExitCode> {
     match &cli.command {
-        Some(Command::Init) => match config::init(cli) {
+        Some(Command::Init) => match commands::init(cli) {
             Ok(path) => {
                 println!("wrote {}", path.display());
                 Ok(ExitCode::SUCCESS)
@@ -22,7 +22,7 @@ fn run(cli: &Cli) -> io::Result<ExitCode> {
         },
         Some(Command::Doctor) => {
             let mut problems = 0;
-            for finding in config::diagnose(cli) {
+            for finding in commands::diagnose(cli) {
                 if finding.problem {
                     problems += 1;
                     println!("problem: {}", finding.text);

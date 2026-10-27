@@ -1,6 +1,6 @@
 use super::{PlatformData, disk_detection, reportable};
 use crate::model::*;
-use crate::module::{ModuleId, wanted};
+use crate::module::{ModuleId, if_selected, wanted};
 use std::io;
 use sysinfo::System;
 use windows_sys::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
@@ -303,7 +303,7 @@ pub fn collect(selection: &[ModuleId]) -> PlatformData {
     let build = wants_build
         .then(|| System::kernel_version().filter(|s| !s.is_empty()))
         .flatten();
-    let os = if wanted(selection, ModuleId::Os) {
+    let os = if_selected(selection, ModuleId::Os, || {
         match (System::long_os_version(), &build) {
             (Some(name), Some(build)) => Detection::available(
                 OsInfo {
@@ -316,29 +316,21 @@ pub fn collect(selection: &[ModuleId]) -> PlatformData {
             ),
             _ => Detection::unavailable("Windows product name or build registry value unavailable"),
         }
-    } else {
-        Detection::deselected()
-    };
-    let kernel = if wanted(selection, ModuleId::Kernel) {
-        match build {
-            Some(build) => Detection::available(
-                format!("Windows NT build {build}"),
-                "sysinfo Windows CurrentBuildNumber",
-            ),
-            None => Detection::unavailable("Windows kernel build is unavailable"),
-        }
-    } else {
-        Detection::deselected()
-    };
-    let host = if wanted(selection, ModuleId::Host) {
+    });
+    let kernel = if_selected(selection, ModuleId::Kernel, || match build {
+        Some(build) => Detection::available(
+            format!("Windows NT build {build}"),
+            "sysinfo Windows CurrentBuildNumber",
+        ),
+        None => Detection::unavailable("Windows kernel build is unavailable"),
+    });
+    let host = if_selected(selection, ModuleId::Host, || {
         hostname.clone().map(|name| HostInfo {
             name,
             kind: HostKind::Hostname,
         })
-    } else {
-        Detection::deselected()
-    };
-    let uptime = if wanted(selection, ModuleId::Uptime) {
+    });
+    let uptime = if_selected(selection, ModuleId::Uptime, || {
         Detection::available(
             UptimeInfo {
                 seconds: System::uptime(),
@@ -346,9 +338,7 @@ pub fn collect(selection: &[ModuleId]) -> PlatformData {
             },
             "GetTickCount64",
         )
-    } else {
-        Detection::deselected()
-    };
+    });
     PlatformData {
         hostname,
         environment: Environment::Native,
@@ -356,25 +346,9 @@ pub fn collect(selection: &[ModuleId]) -> PlatformData {
         host,
         kernel,
         uptime,
-        memory: if wanted(selection, ModuleId::Memory) {
-            memory()
-        } else {
-            Detection::deselected()
-        },
-        swap: if wanted(selection, ModuleId::Swap) {
-            swap()
-        } else {
-            Detection::deselected()
-        },
-        disk: if wanted(selection, ModuleId::Disk) {
-            disk()
-        } else {
-            Detection::deselected()
-        },
-        local_ip: if wanted(selection, ModuleId::LocalIp) {
-            local_ip()
-        } else {
-            Detection::deselected()
-        },
+        memory: if_selected(selection, ModuleId::Memory, memory),
+        swap: if_selected(selection, ModuleId::Swap, swap),
+        disk: if_selected(selection, ModuleId::Disk, disk),
+        local_ip: if_selected(selection, ModuleId::LocalIp, local_ip),
     }
 }

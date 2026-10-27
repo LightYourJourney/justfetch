@@ -23,10 +23,11 @@ pub struct Cli {
     /// terminal, local_ip.
     #[arg(long, value_name = "LIST")]
     pub modules: Option<String>,
-    /// Read this configuration file instead of the user default.
+    /// Read this configuration file, layered over the user default.
     ///
-    /// Accepted after a subcommand too, so `justfetch init --config PATH`
-    /// works as well as `justfetch --config PATH init`.
+    /// Values in this file override the user one; anything it omits keeps the
+    /// user value. Accepted after a subcommand too, so `justfetch init
+    /// --config PATH` works as well as `justfetch --config PATH init`.
     #[arg(long, value_name = "PATH", global = true)]
     pub config: Option<PathBuf>,
     /// Automatically select a built-in logo, or hide it. Defaults to auto.

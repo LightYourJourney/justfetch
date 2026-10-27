@@ -1,6 +1,6 @@
 # Architecture — v0.1
 
-justfetch is a single Rust crate with a small library for deterministic tests and a thin CLI binary. Scope: eleven system fields, terminal and JSON output, automatic original ASCII logos, and no runtime network/configuration/subprocesses.
+justfetch is a single Rust crate with a small library for deterministic tests and a thin CLI binary. Scope: eleven system fields, terminal and JSON output, automatic original ASCII logos, a TOML configuration file and module selection, and no runtime network or subprocesses. The only file read outside system paths is the configuration file, at the documented location or the path given to `--config`.
 
 ## Data flow
 
@@ -26,11 +26,13 @@ Original built-in ASCII assets; no copied third-party logos. Colors are basic AN
 
 ## Modules and configuration
 
-`src/module.rs` holds the identifier enum. It is the single place a module is named: `--modules`, the TOML file, labels, diagnostics, collection and rendering all key off it, so adding a module means adding a variant and the arms the compiler then demands.
+`src/module.rs` holds the identifier enum. Selection, the TOML file, labels, diagnostics, collection and rendering all key off it, and the compiler demands the arms a new variant needs. Two things are still lists rather than variants: the identifier and default label strings inside `ModuleId`, and the module list in `--help`. The first is the canonical definition; the second is checked against `ModuleId::ALL` by a test, so it cannot drift silently.
 
 Collection is selection-driven end to end. `detect::collect` receives the ordered module list and does not call a collector that is not wanted, and each platform adapter follows the same rule down to the individual system call: an unselected module is never queried, so this is not a rendering filter. The user and host name stay unconditional because the title line shows them.
 
 `src/config.rs` owns the file format, the platform paths, the error messages and the precedence chain (command line, `--config`, user file, defaults). Precedence is applied in one function, `resolve_with`, so the CLI path and the tests exercise the same code. `docs/configuration.md` is the user-facing reference.
+
+`src/commands.rs` implements the two subcommands, `init` and `doctor`, with the text they print. They sit outside `config.rs` because they change for a different reason: the configuration module follows the file format and the precedence rules, while these follow what the commands say. `doctor` calls the same `resolve` a normal run does, so it reports what would actually happen rather than a second opinion.
 
 ## Implementation plan
 
@@ -46,6 +48,6 @@ Parser and state tests use deterministic inputs. Render tests use a fixed snapsh
 
 ## Decisions and alternatives
 
-Native-only collection would minimize dependencies but duplicate platform maintenance and require more FFI. A full libmacchina frontend would delegate too much semantic control. Selective sysinfo plus narrow adapters balances correctness and maintenance. A single library + binary package makes fixtures easy without creating a multi-crate workspace. TOML, themes, doctor and extra detection fields remain roadmap items.
+Native-only collection would minimize dependencies but duplicate platform maintenance and require more FFI. A full libmacchina frontend would delegate too much semantic control. Selective sysinfo plus narrow adapters balances correctness and maintenance. A single library + binary package makes fixtures easy without creating a multi-crate workspace. TOML configuration, module selection and `doctor` are implemented; visual themes, custom logo files, `init`-driven sample sharing and extra detection fields remain roadmap items.
 
 Existing GPLv3 LICENSE is preserved; package license is GPL-3.0-only. Upstream reference code/assets are not copied. See research.md for evidence and licenses.

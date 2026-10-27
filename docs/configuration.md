@@ -21,7 +21,7 @@ Tightest first:
 3. The user configuration file at the path above.
 4. Built-in defaults.
 
-`--config` replaces the user file rather than merging with it: a run either reads the file you named or the user one, never both. Command-line values then override whichever file was read.
+`--config` is layered over the user file rather than replacing it: keys it sets override the user value, and keys it omits keep the user value. Command-line values then override both.
 
 Nothing is ever written to the user directory unless you run `justfetch init`.
 
@@ -55,6 +55,7 @@ Running `justfetch init` writes this shape with every key at its default, so you
 | `layout.logo` | `"auto"` or `"none"` | `"auto"` | `auto` hides the logo when the terminal is too narrow; `none` never draws it. |
 | `layout.separator` | string, non-empty | `"  "` | Text between the label column and the value. |
 | `color.enabled` | boolean | `true` | ANSI colour, still subject to `NO_COLOR`, `TERM=dumb`, a non-terminal stdout and the platform's ANSI support. |
+| `color.accent` | string | the logo's own colour | Colour for the title and the labels: `black`, `red`, `green`, `yellow`, `blue`, `magenta`, `cyan`, `white`, or any of those prefixed `bright-`. Omitted, the accent follows the logo. |
 | `labels.<module>` | string, non-blank | the built-in label | Replaces the label shown for that module. |
 
 Unknown keys are an error rather than being ignored, so a misspelt key is reported instead of silently doing nothing.
@@ -75,7 +76,7 @@ The user and host name are collected even when no module asks for them, because 
 
 ## Diagnostics
 
-`justfetch doctor` reports what it can actually check: the resolved user path and whether it exists, the path given to `--config`, the effective module list and layout, and any configuration error with the file and position that produced it. It exits non-zero when it finds a problem and prints `no problems found` when it does not.
+`justfetch doctor` reports what it can actually check: the resolved user path and whether it exists, the path given to `--config`, the effective module list and layout, and any configuration error, naming the file — and the line and column when the TOML parser supplied them, which is parse and type errors; a value that parses but is wrong, such as an unknown module, names the file and the key instead. It exits non-zero when it finds a problem and prints `no problems found` when it does not.
 
 ```
 $ justfetch --config broken.toml doctor

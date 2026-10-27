@@ -21,6 +21,15 @@ pub enum LogoMode {
     None,
 }
 
+impl fmt::Display for LogoMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            LogoMode::Auto => "auto",
+            LogoMode::None => "none",
+        })
+    }
+}
+
 /// The effective settings after precedence has been applied.
 #[derive(Debug)]
 pub struct Config {
@@ -29,6 +38,9 @@ pub struct Config {
     pub modules: Vec<ModuleId>,
     pub logo: LogoMode,
     pub color: bool,
+    /// Overrides the accent colour used for the title and labels. `None` keeps
+    /// whatever the selected logo carries.
+    pub accent: Option<anstyle::AnsiColor>,
     pub separator: String,
     pub labels: Vec<(ModuleId, String)>,
 }
@@ -41,6 +53,7 @@ impl Default for Config {
             modules: ModuleId::ALL.to_vec(),
             logo: LogoMode::Auto,
             color: true,
+            accent: None,
             separator: DEFAULT_SEPARATOR.to_owned(),
             labels: Vec::new(),
         }
@@ -54,14 +67,14 @@ pub struct ConfigError {
 }
 
 impl ConfigError {
-    fn at(path: &Path, message: impl Into<String>) -> Self {
+    pub(crate) fn at(path: &Path, message: impl Into<String>) -> Self {
         Self {
             path: Some(path.to_path_buf()),
             message: message.into(),
         }
     }
 
-    fn plain(message: impl Into<String>) -> Self {
+    pub(crate) fn plain(message: impl Into<String>) -> Self {
         Self {
             path: None,
             message: message.into(),
@@ -100,20 +113,33 @@ struct LayoutSection {
 #[serde(deny_unknown_fields)]
 struct ColorSection {
     enabled: Option<bool>,
+    accent: Option<String>,
+}
+
+/// Where the user configuration lives, given the two environment variables
+/// that decide it. Pure, so the fallback order is testable.
+#[cfg(not(windows))]
+fn config_base(
+    xdg_config_home: Option<std::ffi::OsString>,
+    home: Option<std::ffi::OsString>,
+) -> Option<PathBuf> {
+    let base = xdg_config_home
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| {
+            home.filter(|value| !value.is_empty())
+                .map(|home| PathBuf::from(home).join(".config"))
+        })?;
+    Some(base.join("justfetch").join("config.toml"))
 }
 
 /// Where the user configuration lives.
 #[cfg(not(windows))]
 pub fn user_config_path() -> Option<PathBuf> {
-    let base = std::env::var_os("XDG_CONFIG_HOME")
-        .filter(|value| !value.is_empty())
-        .map(PathBuf::from)
-        .or_else(|| {
-            std::env::var_os("HOME")
-                .filter(|value| !value.is_empty())
-                .map(|home| PathBuf::from(home).join(".config"))
-        })?;
-    Some(base.join("justfetch").join("config.toml"))
+    config_base(
+        std::env::var_os("XDG_CONFIG_HOME"),
+        std::env::var_os("HOME"),
+    )
 }
 
 #[cfg(windows)]
@@ -128,6 +154,35 @@ fn read_file(path: &Path) -> Result<FileConfig, ConfigError> {
     let text = std::fs::read_to_string(path)
         .map_err(|error| ConfigError::at(path, format!("cannot be read: {error}")))?;
     toml::from_str(&text).map_err(|error| ConfigError::at(path, error.to_string()))
+}
+
+/// The eight basic ANSI colours, plus their bright forms as `bright-<name>`.
+fn parse_colour(text: &str) -> Option<anstyle::AnsiColor> {
+    use anstyle::AnsiColor;
+    let text = text.trim().to_ascii_lowercase();
+    let (bright, name) = match text.strip_prefix("bright-") {
+        Some(rest) => (true, rest),
+        None => (false, text.as_str()),
+    };
+    Some(match (name, bright) {
+        ("black", false) => AnsiColor::Black,
+        ("red", false) => AnsiColor::Red,
+        ("green", false) => AnsiColor::Green,
+        ("yellow", false) => AnsiColor::Yellow,
+        ("blue", false) => AnsiColor::Blue,
+        ("magenta", false) => AnsiColor::Magenta,
+        ("cyan", false) => AnsiColor::Cyan,
+        ("white", false) => AnsiColor::White,
+        ("black", true) => AnsiColor::BrightBlack,
+        ("red", true) => AnsiColor::BrightRed,
+        ("green", true) => AnsiColor::BrightGreen,
+        ("yellow", true) => AnsiColor::BrightYellow,
+        ("blue", true) => AnsiColor::BrightBlue,
+        ("magenta", true) => AnsiColor::BrightMagenta,
+        ("cyan", true) => AnsiColor::BrightCyan,
+        ("white", true) => AnsiColor::BrightWhite,
+        _ => return None,
+    })
 }
 
 fn parse_modules(list: &[String], origin: &str) -> Result<Vec<ModuleId>, ConfigError> {
@@ -182,10 +237,20 @@ impl FileConfig {
                 config.separator = separator;
             }
         }
-        if let Some(color) = self.color
-            && let Some(enabled) = color.enabled
-        {
-            config.color = enabled;
+        if let Some(color) = self.color {
+            if let Some(enabled) = color.enabled {
+                config.color = enabled;
+            }
+            if let Some(accent) = color.accent {
+                config.accent = Some(parse_colour(&accent).ok_or_else(|| {
+                    ConfigError::at(
+                        path,
+                        format!(
+                            "color.accent is `{accent}`; expected a basic colour name, optionally prefixed with `bright-`"
+                        ),
+                    )
+                })?);
+            }
         }
         if let Some(labels) = self.labels {
             let mut parsed = Vec::with_capacity(labels.len());
@@ -225,6 +290,14 @@ pub fn resolve(cli: &Cli) -> Result<Config, ConfigError> {
 pub fn resolve_with(cli: &Cli, user_config: Option<&Path>) -> Result<Config, ConfigError> {
     let mut config = Config::default();
 
+    // Layers are applied loosest first, so a key the tighter layer leaves out
+    // keeps the value from the looser one. `--config` is an overlay on the user
+    // file, not a replacement for it.
+    if let Some(path) = user_config
+        && path.exists()
+    {
+        read_file(path)?.apply(&mut config, path)?;
+    }
     if let Some(path) = &cli.config {
         if !path.exists() {
             return Err(ConfigError::plain(format!(
@@ -232,10 +305,6 @@ pub fn resolve_with(cli: &Cli, user_config: Option<&Path>) -> Result<Config, Con
                 path.display()
             )));
         }
-        read_file(path)?.apply(&mut config, path)?;
-    } else if let Some(path) = user_config
-        && path.exists()
-    {
         read_file(path)?.apply(&mut config, path)?;
     }
 
@@ -263,155 +332,6 @@ pub fn resolve_with(cli: &Cli, user_config: Option<&Path>) -> Result<Config, Con
     config.format = cli.format;
     config.privacy = cli.privacy;
     Ok(config)
-}
-
-/// One line of `doctor` output plus whether it is a problem.
-pub struct Finding {
-    pub problem: bool,
-    pub text: String,
-}
-
-/// Check what can actually be checked: the resolved path, whether the file
-/// exists, whether it parses, and what the effective settings became.
-pub fn diagnose(cli: &Cli) -> Vec<Finding> {
-    let mut findings = Vec::new();
-    fn problem(findings: &mut Vec<Finding>, text: String) {
-        findings.push(Finding {
-            problem: true,
-            text,
-        });
-    }
-
-    match user_config_path() {
-        Some(path) if path.exists() => findings.push(Finding {
-            problem: false,
-            text: format!("user config: {} (found)", path.display()),
-        }),
-        Some(path) => findings.push(Finding {
-            problem: false,
-            text: format!(
-                "user config: {} (not present; built-in defaults apply)",
-                path.display()
-            ),
-        }),
-        // A run with `--config`, or with no file at all, works without a home
-        // directory, so its absence is reported but is not a failure.
-        None => findings.push(Finding {
-            problem: false,
-            text: "user config: no home directory in the environment, so only --config and the built-in defaults apply".to_owned(),
-        }),
-    }
-    match &cli.config {
-        Some(path) if path.exists() => findings.push(Finding {
-            problem: false,
-            text: format!("--config: {} (found)", path.display()),
-        }),
-        Some(path) => problem(
-            &mut findings,
-            format!("--config: {} (file not found)", path.display()),
-        ),
-        None => {}
-    }
-
-    match resolve(cli) {
-        Ok(config) => {
-            findings.push(Finding {
-                problem: false,
-                text: format!(
-                    "modules: {} selected, in this order: {}",
-                    config.modules.len(),
-                    config
-                        .modules
-                        .iter()
-                        .map(|module| module.id())
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                ),
-            });
-            findings.push(Finding {
-                problem: false,
-                text: format!(
-                    "layout: logo {:?}, colour {}, separator {:?}",
-                    config.logo, config.color, config.separator
-                ),
-            });
-            if crate::render::layout::sanitize(&config.separator) != config.separator {
-                problem(
-                    &mut findings,
-                    "layout.separator contains characters that are stripped when rendering"
-                        .to_owned(),
-                );
-            }
-            for (module, label) in &config.labels {
-                if crate::render::layout::sanitize(label) != *label {
-                    problem(
-                        &mut findings,
-                        format!(
-                            "labels.{} contains characters that are stripped when rendering",
-                            module.id()
-                        ),
-                    );
-                } else {
-                    findings.push(Finding {
-                        problem: false,
-                        text: format!("label {}: {label}", module.id()),
-                    });
-                }
-            }
-        }
-        Err(error) => problem(&mut findings, format!("configuration error: {error}")),
-    }
-    findings
-}
-
-/// What `init` writes. Every setting is shown at its default so the file can be
-/// edited by deleting lines rather than by looking the format up.
-pub const INIT_TEMPLATE: &str = r#"# justfetch configuration
-#
-# Every setting is optional. The values below are the built-in defaults, so
-# deleting a line keeps the behaviour it describes.
-
-# Modules to show, in display order. Identifiers come from `justfetch --help`.
-modules = ["os", "host", "kernel", "uptime", "cpu", "memory", "swap", "disk", "shell", "terminal", "local_ip"]
-
-[layout]
-# "auto" shows a logo when the terminal is wide enough; "none" never does.
-logo = "auto"
-# Text between the label column and the value.
-separator = "  "
-
-[color]
-# ANSI colour, only on a terminal that supports it.
-enabled = true
-
-#[labels]
-# Rename a field. Keys are module ids; values are shown instead of the default.
-#cpu = "Processor"
-"#;
-
-/// Write the default configuration. Never overwrites an existing file.
-pub fn init(cli: &Cli) -> Result<PathBuf, ConfigError> {
-    let path = match &cli.config {
-        Some(path) => path.clone(),
-        None => user_config_path().ok_or_else(|| {
-            ConfigError::plain("no user config directory in the environment; pass --config PATH")
-        })?,
-    };
-    if path.exists() {
-        return Err(ConfigError::plain(format!(
-            "{}: already exists, not overwriting",
-            path.display()
-        )));
-    }
-    if let Some(parent) = path.parent()
-        && !parent.as_os_str().is_empty()
-    {
-        std::fs::create_dir_all(parent)
-            .map_err(|error| ConfigError::at(parent, format!("cannot create: {error}")))?;
-    }
-    std::fs::write(&path, INIT_TEMPLATE)
-        .map_err(|error| ConfigError::at(&path, format!("cannot write: {error}")))?;
-    Ok(path)
 }
 
 impl Config {
@@ -443,6 +363,7 @@ impl Config {
             modules: &self.modules,
             labels: &self.labels,
             separator: &self.separator,
+            accent: self.accent,
         }
     }
 }
@@ -488,25 +409,6 @@ mod tests {
         assert!(config.labels.is_empty());
         assert_eq!(config.format, Format::Text);
         assert!(!config.privacy);
-    }
-
-    #[test]
-    fn the_init_template_parses_to_the_defaults() {
-        let dir = tempdir("template");
-        let path = write(&dir, "config.toml", INIT_TEMPLATE);
-        let config = resolve_with(
-            &Cli {
-                config: Some(path),
-                ..cli()
-            },
-            None,
-        )
-        .unwrap();
-        assert_eq!(config.modules, ModuleId::ALL.to_vec());
-        assert_eq!(config.logo, LogoMode::Auto);
-        assert!(config.color);
-        assert_eq!(config.separator, DEFAULT_SEPARATOR);
-        assert!(config.labels.is_empty());
     }
 
     #[test]
@@ -586,6 +488,41 @@ mod tests {
     }
 
     #[test]
+    fn an_explicit_file_is_layered_over_the_user_one() {
+        let dir = tempdir("layered");
+        let user = write(
+            &dir,
+            "user.toml",
+            "modules = [\"cpu\", \"memory\"]\n\n[layout]\nlogo = \"none\"\n",
+        );
+        // The explicit file sets only the label, so the user file's modules and
+        // logo survive.
+        let explicit = write(&dir, "explicit.toml", "[labels]\ncpu = \"Processor\"\n");
+        let config = resolve_with(
+            &Cli {
+                config: Some(explicit),
+                ..cli()
+            },
+            Some(&user),
+        )
+        .unwrap();
+        assert_eq!(config.modules, vec![ModuleId::Cpu, ModuleId::Memory]);
+        assert_eq!(config.logo, LogoMode::None);
+        assert_eq!(config.labels, vec![(ModuleId::Cpu, "Processor".to_owned())]);
+        // And the command line still wins over both.
+        let config = resolve_with(
+            &Cli {
+                config: Some(dir.join("explicit.toml")),
+                modules: Some("os".to_owned()),
+                ..cli()
+            },
+            Some(&user),
+        )
+        .unwrap();
+        assert_eq!(config.modules, vec![ModuleId::Os]);
+    }
+
+    #[test]
     fn no_file_configured_means_defaults_not_an_error() {
         // A path that does not exist is only an error when it was asked for
         // explicitly.
@@ -657,6 +594,82 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.to_string().contains("file not found"));
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn the_config_path_prefers_xdg_and_survives_unicode() {
+        use std::ffi::OsString;
+        let path = config_base(
+            Some(OsString::from("/xdg/配置")),
+            Some(OsString::from("/home/lei")),
+        )
+        .unwrap();
+        assert_eq!(path, PathBuf::from("/xdg/配置/justfetch/config.toml"));
+        // An empty XDG variable is treated as unset, not as the current dir.
+        let path = config_base(Some(OsString::new()), Some(OsString::from("/home/lei"))).unwrap();
+        assert_eq!(
+            path,
+            PathBuf::from("/home/lei/.config/justfetch/config.toml")
+        );
+        assert_eq!(config_base(None, None), None);
+    }
+
+    #[test]
+    fn a_module_list_survives_modules_being_added_later() {
+        // A configuration lists names, never positions, so a later release that
+        // adds a module leaves this file valid and simply does not show the new
+        // one. An identifier that never existed stays an error rather than a
+        // silent skip.
+        let dir = tempdir("forward-compat");
+        let path = write(&dir, "config.toml", "modules = [\"cpu\", \"os\"]\n");
+        let config = resolve_with(
+            &Cli {
+                config: Some(path),
+                ..cli()
+            },
+            None,
+        )
+        .unwrap();
+        assert_eq!(config.modules, vec![ModuleId::Cpu, ModuleId::Os]);
+
+        let path = write(&dir, "future.toml", "modules = [\"cpu\", \"gpu\"]\n");
+        assert!(
+            resolve_with(
+                &Cli {
+                    config: Some(path),
+                    ..cli()
+                },
+                None
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn accent_colours_are_parsed_and_invalid_ones_rejected() {
+        let dir = tempdir("accent");
+        let path = write(&dir, "c.toml", "[color]\naccent = \"bright-cyan\"\n");
+        let config = resolve_with(
+            &Cli {
+                config: Some(path),
+                ..cli()
+            },
+            None,
+        )
+        .unwrap();
+        assert_eq!(config.accent, Some(anstyle::AnsiColor::BrightCyan));
+
+        let path = write(&dir, "bad.toml", "[color]\naccent = \"chartreuse\"\n");
+        let error = resolve_with(
+            &Cli {
+                config: Some(path),
+                ..cli()
+            },
+            None,
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("basic colour"), "{error}");
     }
 
     #[test]

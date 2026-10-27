@@ -19,6 +19,8 @@ pub struct Options<'a> {
     pub labels: &'a [(ModuleId, String)],
     /// Text between the label column and the value.
     pub separator: &'a str,
+    /// Accent for the title and labels. `None` uses the logo's own colour.
+    pub accent: Option<AnsiColor>,
 }
 
 /// Pure policy: NO_COLOR has effect only when nonempty, per no-color.org.
@@ -114,6 +116,8 @@ pub fn render_with_logo(
     } else {
         columns
     };
+    // A configured accent colours the text; the artwork keeps its own colour.
+    let accent = options.accent.unwrap_or(logo.color);
     let username = display(&snapshot.identity.username, Clone::clone);
     let hostname = display(&snapshot.identity.hostname, Clone::clone);
     let title = plain(&format!("{username}@{hostname}"), options.unicode);
@@ -229,14 +233,10 @@ pub fn render_with_logo(
         if let Some(line) = lines.get(index) {
             match line.accent {
                 Some(Accent::Whole) => {
-                    output.push_str(&theme::accent(&line.text, logo.color, options.color));
+                    output.push_str(&theme::accent(&line.text, accent, options.color));
                 }
                 Some(Accent::Prefix(length)) => {
-                    output.push_str(&theme::accent(
-                        &line.text[..length],
-                        logo.color,
-                        options.color,
-                    ));
+                    output.push_str(&theme::accent(&line.text[..length], accent, options.color));
                     output.push_str(&line.text[length..]);
                 }
                 None => output.push_str(&line.text),
