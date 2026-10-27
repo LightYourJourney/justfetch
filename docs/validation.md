@@ -289,7 +289,7 @@ Phase 10 added a module system and a TOML configuration file. `docs/configuratio
 - With `os` deselected, the logo fell back to the generic emblem. That is the honest consequence of not querying the distribution and is now documented rather than changed.
 - Smaller corrections: the test count, the claim that only one status value had been added, `research.md` still saying TOML was omitted, and the dependency-MSRV list missing the new crate.
 
-**Not verified.** No Windows or Linux machine was available interactively. The configuration paths, `%APPDATA%` resolution and `--config` were exercised on macOS only; the other platforms are covered by cross-target `cargo check` and by CI, which has not run for this round yet.
+**Not verified.** No Windows or Linux machine was available interactively. The configuration paths, `%APPDATA%` resolution and `--config` were exercised on macOS only, and the other platforms are covered by cross-target compilation and by CI rather than by a person using the binary there.
 
 **Two-axis review of this round.** A Standards review and a Spec review ran independently against the same diff. Both axes reported; everything they raised is closed:
 
@@ -301,5 +301,7 @@ Phase 10 added a module system and a TOML configuration file. `docs/configuratio
 - Smaller: the help text now has a test asserting it lists every module id, `LogoMode` gained `Display`, and the config-path resolution moved into a pure `config_base` so a Unicode path and an `XDG_CONFIG_HOME` override are covered without touching the real user directory.
 
 **Cross-target finding.** Collapsing the duplicated `if wanted(...) { ... } else { deselected }` blocks into `if_selected` replaced the `wanted` import in the Linux and Windows adapters, which still call it. The macOS build could not see this: those files are `#[cfg]`-excluded on the host. Only the cross-target check caught it — `error[E0425]: cannot find function 'wanted'`. The same blindness hid six redundant-closure warnings that clippy reported only for the host target. Both classes are now fixed in all platform files, and the cross-target clippy runs are part of the check list, not an afterthought.
+
+**CI.** Run [40450257128](https://github.com/LightYourJourney/justfetch/actions/runs/40450257128) on commit `ac95ac2` passed all four jobs — MSRV 1.95.0, Ubuntu, Windows and macOS — including the format, lint, test, release-build and live-JSON steps. This is the round's first real execution of the Linux and Windows adapters: the `wanted` import breakage described above failed only the cross-target check locally, and those two jobs are where it would have surfaced had it reached the push.
 
 **Test count:** 87, up from 54 at the start of the round and 79 before the review.
