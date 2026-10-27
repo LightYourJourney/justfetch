@@ -356,4 +356,6 @@ Phase 11 added a theme model, four layouts and custom artwork. `docs/themes.md` 
 
 **Accepted deviation.** `--theme-file`, `--logo-file` and `--format json themes` go beyond the specification's suggested CLI list. The file flags are how a custom theme or logo is selected without a configuration file, which the spec requires; the JSON listing exists so that asking for JSON yields JSON.
 
+**CI.** Run [40479860007](https://github.com/LightYourJourney/justfetch/actions/runs/40479860007) on `99327a7` passed all four jobs — MSRV 1.95.0, Ubuntu, Windows and macOS. The preceding run on `f8233b7` failed the Windows job alone, for the test defect recorded above: the first execution of the theme code on that platform is also the first time a Windows path met the TOML parser.
+
 **Test count:** 133, up from 87.
