@@ -507,7 +507,7 @@ fn display() -> Detection<DisplayInfo> {
         )
     };
     if found == 0 || displays.is_empty() {
-        return Detection::unavailable("EnumDisplayMonitors reports no active monitor");
+        return Detection::unsupported("No monitor is attached to this session");
     }
     Detection::available(
         DisplayInfo {

@@ -120,7 +120,7 @@ For example, an available memory field has this structure (numbers here illustra
 }
 ```
 
-The full document has `schema_version: 1`, identity/environment metadata and seventeen field objects. Missing values have status/reason rather than fake N/A values; errors carry source/code/message. Consumers should ignore new additive fields. See [architecture](docs/architecture.md) and [accounting definitions](docs/compatibility.md).
+The full document has `schema_version: 1`, identity/environment metadata and seventeen field objects. The shape is described formally in [json-schema.json](docs/json-schema.json), and a test validates every run against it. Missing values have status/reason rather than fake N/A values; errors carry source/code/message. Consumers should ignore new additive fields. See [architecture](docs/architecture.md) and [accounting definitions](docs/compatibility.md).
 
 ## Stability for 1.x
 

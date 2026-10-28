@@ -723,3 +723,49 @@ Measured against installed fastfetch 2.70.0 and macchina 6.4.0 with their own
 default outputs; commands, field counts and caveats are in
 [benchmark.md](benchmark.md#phase-13-measurement-2026-10-28). This machine is not
 quiesced, so the instruction counts are the figure to compare.
+
+## Compatibility evidence round (2026-10-29)
+
+Phase 14. The point of this round was evidence rather than features.
+
+### JSON Schema v1
+
+`docs/json-schema.json` now describes the document: seventeen module fields,
+the six states, raw units in the field names, and the two optional keys
+(`note` and `interface`). `tests/schema.rs` validates real runs against it —
+a default run, a run with one module selected (the `deselected` variant), and a
+run of the platform-dependent modules — and asserts the schema describes exactly
+`ModuleId::ALL`. Five negative cases mutate a valid document and must be
+rejected, so a validator that silently accepted everything would fail the test.
+
+The validator implements only the keywords the schema uses (local `$ref`,
+`oneOf`, `type`, `const`, `enum`, `required`, `properties`,
+`additionalProperties: false`, `items`, `minimum`, `maximum`); adding a schema
+keyword the validator does not know is a test panic rather than a silent pass.
+
+### State semantics
+
+The states had drifted: "no battery" was `unsupported` while "no display" and
+"no graphics adapter" were `unavailable`, although all three mean the same thing
+— the question does not apply on this machine. They are `unsupported` now, and
+the rule is written down in `docs/compatibility.md`: unavailable means the
+platform should have answered and did not; error means an API reported failure.
+
+### Verification procedures for platforms this machine does not have
+
+`scripts/verify-linux.sh`, `scripts/verify-windows.ps1` and
+`scripts/verify-wsl.sh` run the binary beside the platform's own tools and print
+both sides for comparison. They are read-only, require no tool that may be
+absent, and say so when one is. They have not been run on their platforms; they
+are the procedure, not evidence. Their syntax is checked here (`sh -n`, and the
+PowerShell parser), and `verify-wsl.sh` exits non-zero if WSL is mislabelled or
+a not-applicable module reports a value.
+
+`scripts/check-release.sh` checks that the version, tag, release-notes path, the
+tag/version gate, the draft flag, the five asset names and (when `dist/` exists)
+the checksums all agree. It passes on this tree.
+
+### CI
+
+The release-candidate commit `5f01550` passed all five jobs on GitHub Actions:
+the three native runners, the 1.95 MSRV job and the packaging job.

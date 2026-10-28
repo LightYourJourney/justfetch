@@ -1,4 +1,4 @@
-# Architecture — v0.1
+# Architecture
 
 justfetch is a single Rust crate with a small library for deterministic tests and a thin CLI binary. Scope: seventeen system fields, terminal and JSON output, automatic original ASCII logos, a TOML configuration file and module selection, and no runtime network or subprocesses. The only files read outside system paths are the configuration file — at the documented location or the path given to `--config` — and the theme or logo files it names, or that `--theme-file` and `--logo-file` name. Nothing is written unless `init` runs.
 
@@ -6,7 +6,7 @@ justfetch is a single Rust crate with a small library for deterministic tests an
 
 `CLI + TOML → Config (precedence) → detect::collect(&modules) → platform adapter → SystemSnapshot → privacy::redact (only with --privacy) → renderer → stdout`
 
-The collector owns all system-information access. The one exception is the terminal capability query (`terminal_columns`, `supports_ansi`), which `Config` calls because it decides how to render, not what to collect; it reads no data into the snapshot. Renderers receive an immutable snapshot and explicit terminal capabilities; they never inspect the environment or call system APIs. Privacy is a separate pass over the finished snapshot, so the text and JSON renderers cannot disagree about what was withheld. CLI derives only effective output options. v0.2 will extend configuration here without changing detection.
+The collector owns all system-information access. The one exception is the terminal capability query (`terminal_columns`, `supports_ansi`), which `Config` calls because it decides how to render, not what to collect; it reads no data into the snapshot. Renderers receive an immutable snapshot and explicit terminal capabilities; they never inspect the environment or call system APIs. Privacy is a separate pass over the finished snapshot, so the text and JSON renderers cannot disagree about what was withheld. CLI derives only effective output options. Configuration grew in v0.2 and detection in v0.3 without moving this boundary.
 
 ## Model
 
@@ -33,6 +33,14 @@ Collection is selection-driven end to end. `detect::collect` receives the ordere
 `src/config.rs` owns the file format, the platform paths, the error messages and the precedence chain (command line, `--config`, user file, defaults). Precedence is applied in one function, `resolve_with`, so the CLI path and the tests exercise the same code. `docs/configuration.md` is the user-facing reference.
 
 `src/commands.rs` implements the subcommands — `init`, `doctor` and `themes` — with the text they print. They sit outside `config.rs` because they change for a different reason: the configuration module follows the file format and the precedence rules, while these follow what the commands say. `doctor` calls the same `resolve` a normal run does, so it reports what would actually happen rather than a second opinion.
+
+## The JSON contract
+
+`docs/json-schema.json` is the machine-readable description of the document:
+seventeen module fields, the six states, the raw units and the optional keys.
+`tests/schema.rs` validates real runs against it — including negative cases, so
+the validator cannot pass vacuously — and asserts that the schema describes
+exactly the modules `ModuleId::ALL` defines.
 
 ## Themes and layouts
 

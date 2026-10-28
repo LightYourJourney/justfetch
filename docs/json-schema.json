@@ -1,0 +1,1456 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/LightYourJourney/justfetch/blob/main/docs/json-schema.json",
+  "title": "justfetch document",
+  "description": "The single JSON document justfetch writes to stdout. Every field is a tagged detection; the available variant carries the value plus its source and confidence.",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "identity": {
+      "type": "object",
+      "properties": {
+        "username": {
+          "$ref": "#/$defs/string_field"
+        },
+        "hostname": {
+          "$ref": "#/$defs/string_field"
+        }
+      },
+      "required": [
+        "username",
+        "hostname"
+      ],
+      "additionalProperties": false
+    },
+    "environment": {
+      "$ref": "#/$defs/environment"
+    },
+    "os": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "const": "available"
+            },
+            "value": {
+              "type": "object",
+              "properties": {
+                "family": {
+                  "enum": [
+                    "linux",
+                    "macos",
+                    "windows"
+                  ]
+                },
+                "name": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "family",
+                "name",
+                "version",
+                "id"
+              ],
+              "additionalProperties": false
+            },
+            "source": {
+              "type": "string"
+            },
+            "confidence": {
+              "$ref": "#/$defs/confidence"
+            },
+            "note": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "value",
+            "source",
+            "confidence"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "#/$defs/unavailable"
+        },
+        {
+          "$ref": "#/$defs/unsupported"
+        },
+        {
+          "$ref": "#/$defs/redacted"
+        },
+        {
+          "$ref": "#/$defs/deselected"
+        },
+        {
+          "$ref": "#/$defs/error"
+        }
+      ]
+    },
+    "host": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "const": "available"
+            },
+            "value": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "kind": {
+                  "enum": [
+                    "device_model",
+                    "hostname"
+                  ]
+                }
+              },
+              "required": [
+                "name",
+                "kind"
+              ],
+              "additionalProperties": false
+            },
+            "source": {
+              "type": "string"
+            },
+            "confidence": {
+              "$ref": "#/$defs/confidence"
+            },
+            "note": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "value",
+            "source",
+            "confidence"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "#/$defs/unavailable"
+        },
+        {
+          "$ref": "#/$defs/unsupported"
+        },
+        {
+          "$ref": "#/$defs/redacted"
+        },
+        {
+          "$ref": "#/$defs/deselected"
+        },
+        {
+          "$ref": "#/$defs/error"
+        }
+      ]
+    },
+    "kernel": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "const": "available"
+            },
+            "value": {
+              "type": "string"
+            },
+            "source": {
+              "type": "string"
+            },
+            "confidence": {
+              "$ref": "#/$defs/confidence"
+            },
+            "note": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "value",
+            "source",
+            "confidence"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "#/$defs/unavailable"
+        },
+        {
+          "$ref": "#/$defs/unsupported"
+        },
+        {
+          "$ref": "#/$defs/redacted"
+        },
+        {
+          "$ref": "#/$defs/deselected"
+        },
+        {
+          "$ref": "#/$defs/error"
+        }
+      ]
+    },
+    "uptime": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "const": "available"
+            },
+            "value": {
+              "type": "object",
+              "properties": {
+                "seconds": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "scope": {
+                  "$ref": "#/$defs/scope"
+                }
+              },
+              "required": [
+                "seconds",
+                "scope"
+              ],
+              "additionalProperties": false
+            },
+            "source": {
+              "type": "string"
+            },
+            "confidence": {
+              "$ref": "#/$defs/confidence"
+            },
+            "note": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "value",
+            "source",
+            "confidence"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "#/$defs/unavailable"
+        },
+        {
+          "$ref": "#/$defs/unsupported"
+        },
+        {
+          "$ref": "#/$defs/redacted"
+        },
+        {
+          "$ref": "#/$defs/deselected"
+        },
+        {
+          "$ref": "#/$defs/error"
+        }
+      ]
+    },
+    "cpu": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "const": "available"
+            },
+            "value": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "logical_cores": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "name",
+                "logical_cores"
+              ],
+              "additionalProperties": false
+            },
+            "source": {
+              "type": "string"
+            },
+            "confidence": {
+              "$ref": "#/$defs/confidence"
+            },
+            "note": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "value",
+            "source",
+            "confidence"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "#/$defs/unavailable"
+        },
+        {
+          "$ref": "#/$defs/unsupported"
+        },
+        {
+          "$ref": "#/$defs/redacted"
+        },
+        {
+          "$ref": "#/$defs/deselected"
+        },
+        {
+          "$ref": "#/$defs/error"
+        }
+      ]
+    },
+    "gpu": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "const": "available"
+            },
+            "value": {
+              "type": "object",
+              "properties": {
+                "devices": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "vendor": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "driver": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "kind": {
+                        "enum": [
+                          "integrated",
+                          "discrete",
+                          "unknown"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "vendor",
+                      "id",
+                      "driver",
+                      "kind"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "devices"
+              ],
+              "additionalProperties": false
+            },
+            "source": {
+              "type": "string"
+            },
+            "confidence": {
+              "$ref": "#/$defs/confidence"
+            },
+            "note": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "value",
+            "source",
+            "confidence"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "#/$defs/unavailable"
+        },
+        {
+          "$ref": "#/$defs/unsupported"
+        },
+        {
+          "$ref": "#/$defs/redacted"
+        },
+        {
+          "$ref": "#/$defs/deselected"
+        },
+        {
+          "$ref": "#/$defs/error"
+        }
+      ]
+    },
+    "memory": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "const": "available"
+            },
+            "value": {
+              "type": "object",
+              "properties": {
+                "total_bytes": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "used_bytes": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "definition": {
+                  "enum": [
+                    "total_minus_available",
+                    "total_minus_free_buffers_cache",
+                    "app_wired_compressed"
+                  ]
+                },
+                "scope": {
+                  "$ref": "#/$defs/scope"
+                }
+              },
+              "required": [
+                "total_bytes",
+                "used_bytes",
+                "definition",
+                "scope"
+              ],
+              "additionalProperties": false
+            },
+            "source": {
+              "type": "string"
+            },
+            "confidence": {
+              "$ref": "#/$defs/confidence"
+            },
+            "note": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "value",
+            "source",
+            "confidence"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "#/$defs/unavailable"
+        },
+        {
+          "$ref": "#/$defs/unsupported"
+        },
+        {
+          "$ref": "#/$defs/redacted"
+        },
+        {
+          "$ref": "#/$defs/deselected"
+        },
+        {
+          "$ref": "#/$defs/error"
+        }
+      ]
+    },
+    "swap": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "const": "available"
+            },
+            "value": {
+              "type": "object",
+              "properties": {
+                "total_bytes": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "used_bytes": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "total_bytes",
+                "used_bytes"
+              ],
+              "additionalProperties": false
+            },
+            "source": {
+              "type": "string"
+            },
+            "confidence": {
+              "$ref": "#/$defs/confidence"
+            },
+            "note": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "value",
+            "source",
+            "confidence"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "#/$defs/unavailable"
+        },
+        {
+          "$ref": "#/$defs/unsupported"
+        },
+        {
+          "$ref": "#/$defs/redacted"
+        },
+        {
+          "$ref": "#/$defs/deselected"
+        },
+        {
+          "$ref": "#/$defs/error"
+        }
+      ]
+    },
+    "disk": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "const": "available"
+            },
+            "value": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "total_bytes": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "used_bytes": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "available_bytes": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "path",
+                "total_bytes",
+                "used_bytes",
+                "available_bytes"
+              ],
+              "additionalProperties": false
+            },
+            "source": {
+              "type": "string"
+            },
+            "confidence": {
+              "$ref": "#/$defs/confidence"
+            },
+            "note": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "value",
+            "source",
+            "confidence"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "#/$defs/unavailable"
+        },
+        {
+          "$ref": "#/$defs/unsupported"
+        },
+        {
+          "$ref": "#/$defs/redacted"
+        },
+        {
+          "$ref": "#/$defs/deselected"
+        },
+        {
+          "$ref": "#/$defs/error"
+        }
+      ]
+    },
+    "battery": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "const": "available"
+            },
+            "value": {
+              "type": "object",
+              "properties": {
+                "units": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "percent": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ],
+                        "minimum": 0,
+                        "maximum": 100
+                      },
+                      "state": {
+                        "enum": [
+                          "charging",
+                          "discharging",
+                          "full",
+                          "unknown"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "percent",
+                      "state"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "power": {
+                  "enum": [
+                    "ac",
+                    "battery",
+                    "unknown"
+                  ]
+                }
+              },
+              "required": [
+                "units",
+                "power"
+              ],
+              "additionalProperties": false
+            },
+            "source": {
+              "type": "string"
+            },
+            "confidence": {
+              "$ref": "#/$defs/confidence"
+            },
+            "note": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "value",
+            "source",
+            "confidence"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "#/$defs/unavailable"
+        },
+        {
+          "$ref": "#/$defs/unsupported"
+        },
+        {
+          "$ref": "#/$defs/redacted"
+        },
+        {
+          "$ref": "#/$defs/deselected"
+        },
+        {
+          "$ref": "#/$defs/error"
+        }
+      ]
+    },
+    "display": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "const": "available"
+            },
+            "value": {
+              "type": "object",
+              "properties": {
+                "displays": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "width": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "height": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "refresh_hz": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ]
+                      },
+                      "primary": {
+                        "type": [
+                          "boolean",
+                          "null"
+                        ]
+                      },
+                      "kind": {
+                        "enum": [
+                          "built_in",
+                          "unknown"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "width",
+                      "height",
+                      "refresh_hz",
+                      "primary",
+                      "kind"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "definition": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "displays",
+                "definition"
+              ],
+              "additionalProperties": false
+            },
+            "source": {
+              "type": "string"
+            },
+            "confidence": {
+              "$ref": "#/$defs/confidence"
+            },
+            "note": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "value",
+            "source",
+            "confidence"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "#/$defs/unavailable"
+        },
+        {
+          "$ref": "#/$defs/unsupported"
+        },
+        {
+          "$ref": "#/$defs/redacted"
+        },
+        {
+          "$ref": "#/$defs/deselected"
+        },
+        {
+          "$ref": "#/$defs/error"
+        }
+      ]
+    },
+    "packages": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "const": "available"
+            },
+            "value": {
+              "type": "object",
+              "properties": {
+                "managers": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "count": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "definition": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "count",
+                      "definition"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "managers"
+              ],
+              "additionalProperties": false
+            },
+            "source": {
+              "type": "string"
+            },
+            "confidence": {
+              "$ref": "#/$defs/confidence"
+            },
+            "note": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "value",
+            "source",
+            "confidence"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "#/$defs/unavailable"
+        },
+        {
+          "$ref": "#/$defs/unsupported"
+        },
+        {
+          "$ref": "#/$defs/redacted"
+        },
+        {
+          "$ref": "#/$defs/deselected"
+        },
+        {
+          "$ref": "#/$defs/error"
+        }
+      ]
+    },
+    "desktop": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "const": "available"
+            },
+            "value": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "kind": {
+                  "enum": [
+                    "desktop",
+                    "window_manager",
+                    "unknown"
+                  ]
+                },
+                "session": {
+                  "enum": [
+                    "x11",
+                    "wayland",
+                    "tty",
+                    "unknown"
+                  ]
+                }
+              },
+              "required": [
+                "name",
+                "kind",
+                "session"
+              ],
+              "additionalProperties": false
+            },
+            "source": {
+              "type": "string"
+            },
+            "confidence": {
+              "$ref": "#/$defs/confidence"
+            },
+            "note": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "value",
+            "source",
+            "confidence"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "#/$defs/unavailable"
+        },
+        {
+          "$ref": "#/$defs/unsupported"
+        },
+        {
+          "$ref": "#/$defs/redacted"
+        },
+        {
+          "$ref": "#/$defs/deselected"
+        },
+        {
+          "$ref": "#/$defs/error"
+        }
+      ]
+    },
+    "locale": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "const": "available"
+            },
+            "value": {
+              "type": "object",
+              "properties": {
+                "process": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "process_source": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "system": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "system_source": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "process",
+                "process_source",
+                "system",
+                "system_source"
+              ],
+              "additionalProperties": false
+            },
+            "source": {
+              "type": "string"
+            },
+            "confidence": {
+              "$ref": "#/$defs/confidence"
+            },
+            "note": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "value",
+            "source",
+            "confidence"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "#/$defs/unavailable"
+        },
+        {
+          "$ref": "#/$defs/unsupported"
+        },
+        {
+          "$ref": "#/$defs/redacted"
+        },
+        {
+          "$ref": "#/$defs/deselected"
+        },
+        {
+          "$ref": "#/$defs/error"
+        }
+      ]
+    },
+    "shell": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "const": "available"
+            },
+            "value": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "kind": {
+                  "enum": [
+                    "current_parent",
+                    "configured_default"
+                  ]
+                }
+              },
+              "required": [
+                "name",
+                "kind"
+              ],
+              "additionalProperties": false
+            },
+            "source": {
+              "type": "string"
+            },
+            "confidence": {
+              "$ref": "#/$defs/confidence"
+            },
+            "note": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "value",
+            "source",
+            "confidence"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "#/$defs/unavailable"
+        },
+        {
+          "$ref": "#/$defs/unsupported"
+        },
+        {
+          "$ref": "#/$defs/redacted"
+        },
+        {
+          "$ref": "#/$defs/deselected"
+        },
+        {
+          "$ref": "#/$defs/error"
+        }
+      ]
+    },
+    "terminal": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "const": "available"
+            },
+            "value": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "kind": {
+                  "enum": [
+                    "application",
+                    "capability_type"
+                  ]
+                }
+              },
+              "required": [
+                "name",
+                "version",
+                "kind"
+              ],
+              "additionalProperties": false
+            },
+            "source": {
+              "type": "string"
+            },
+            "confidence": {
+              "$ref": "#/$defs/confidence"
+            },
+            "note": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "value",
+            "source",
+            "confidence"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "#/$defs/unavailable"
+        },
+        {
+          "$ref": "#/$defs/unsupported"
+        },
+        {
+          "$ref": "#/$defs/redacted"
+        },
+        {
+          "$ref": "#/$defs/deselected"
+        },
+        {
+          "$ref": "#/$defs/error"
+        }
+      ]
+    },
+    "local_ip": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "const": "available"
+            },
+            "value": {
+              "type": "object",
+              "properties": {
+                "addresses": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "interface": {
+                        "type": "string"
+                      },
+                      "address": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "address"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "addresses"
+              ],
+              "additionalProperties": false
+            },
+            "source": {
+              "type": "string"
+            },
+            "confidence": {
+              "$ref": "#/$defs/confidence"
+            },
+            "note": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "value",
+            "source",
+            "confidence"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "#/$defs/unavailable"
+        },
+        {
+          "$ref": "#/$defs/unsupported"
+        },
+        {
+          "$ref": "#/$defs/redacted"
+        },
+        {
+          "$ref": "#/$defs/deselected"
+        },
+        {
+          "$ref": "#/$defs/error"
+        }
+      ]
+    }
+  },
+  "required": [
+    "schema_version",
+    "identity",
+    "environment",
+    "os",
+    "host",
+    "kernel",
+    "uptime",
+    "cpu",
+    "gpu",
+    "memory",
+    "swap",
+    "disk",
+    "battery",
+    "display",
+    "packages",
+    "desktop",
+    "locale",
+    "shell",
+    "terminal",
+    "local_ip"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "confidence": {
+      "enum": [
+        "confirmed",
+        "estimated"
+      ]
+    },
+    "error_code": {
+      "enum": [
+        "io",
+        "invalid_data",
+        "api_failed"
+      ]
+    },
+    "scope": {
+      "enum": [
+        "operating_system",
+        "wsl_environment"
+      ]
+    },
+    "environment": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "enum": [
+            "native",
+            "wsl"
+          ]
+        },
+        "version": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "additionalProperties": false
+    },
+    "string_field": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "const": "available"
+            },
+            "value": {
+              "type": "string"
+            },
+            "source": {
+              "type": "string"
+            },
+            "confidence": {
+              "$ref": "#/$defs/confidence"
+            },
+            "note": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "value",
+            "source",
+            "confidence"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "#/$defs/unavailable"
+        },
+        {
+          "$ref": "#/$defs/unsupported"
+        },
+        {
+          "$ref": "#/$defs/redacted"
+        },
+        {
+          "$ref": "#/$defs/deselected"
+        },
+        {
+          "$ref": "#/$defs/error"
+        }
+      ]
+    },
+    "unavailable": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "const": "unavailable"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "reason"
+      ],
+      "additionalProperties": false
+    },
+    "unsupported": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "const": "unsupported"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "reason"
+      ],
+      "additionalProperties": false
+    },
+    "redacted": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "const": "redacted"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "additionalProperties": false
+    },
+    "deselected": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "const": "deselected"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "additionalProperties": false
+    },
+    "error": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "const": "error"
+        },
+        "source": {
+          "type": "string"
+        },
+        "code": {
+          "$ref": "#/$defs/error_code"
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "source",
+        "code",
+        "message"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

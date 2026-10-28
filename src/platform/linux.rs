@@ -246,7 +246,7 @@ fn gpu() -> Detection<GpuInfo> {
         });
     }
     if devices.is_empty() {
-        return Detection::unavailable("No DRM adapter exposes a device node in sysfs");
+        return Detection::unsupported("No graphics adapter is present in /sys/class/drm");
     }
     Detection::available(GpuInfo { devices }, "/sys/class/drm")
 }
@@ -298,7 +298,7 @@ fn display() -> Detection<DisplayInfo> {
         });
     }
     if displays.is_empty() {
-        return Detection::unavailable("No DRM connector reports a connected display");
+        return Detection::unsupported("No display is connected to this machine");
     }
     Detection::estimated(
         DisplayInfo {

@@ -2,6 +2,23 @@
 
 The support contract is conservative: a platform adapter is implemented, but only explicitly recorded environments have been exercised. No administrator access, external commands or runtime network are required.
 
+## What each state means
+
+Every field carries one of six states. The distinction decides whether "no
+value" means "not here", "not read" or "failed":
+
+| State | Meaning | Example |
+| --- | --- | --- |
+| `available` | Measured, with a source and a confidence | A battery reading |
+| `unavailable` | The platform should be able to answer but did not | `/sys` could not be read |
+| `unsupported` | The question does not apply here | No battery, no display, Windows swap, macOS desktop |
+| `redacted` | Withheld because `--privacy` was passed | User name |
+| `deselected` | Not collected because the module was not selected | Any module outside `--modules` |
+| `error` | An API was called and reported a failure | `CGGetActiveDisplayList` returning an error code |
+
+A machine with no battery, no display or no graphics adapter reports
+`unsupported` with a reason rather than a zero, an empty list or a guess.
+
 ## Evidence matrix
 
 | Platform | Implementation | Local compile check | Actual detector run | Native CI |
@@ -11,8 +28,13 @@ The support contract is conservative: a platform adapter is implemented, but onl
 | Linux ARM64 | Complete | Passed cargo check (Rust 1.98.1; no cross link/run) | Executed in the release workflow: the packaged archive ran on an ARM64 runner and reported `os` and `memory` available. Not exercised interactively, and no distribution was tested | Release workflow run 40304542365 |
 | Linux x86-64 | Complete | Passed cargo check (Rust 1.98.1; no link/run) | Executed on Ubuntu 24.04 (Azure VM, kernel 6.17.0-1022-azure), then re-run in CI with the eleven-field build: all eleven fields then available, os-release and proc parsers live, parent-shell path exercised. `battery` added later and not yet run on Linux | Executed: run 38604699769, then 40301536939 |
 | Windows x86-64 | Complete | GNU-target cargo check (Rust 1.98.1; no link/run) | Executed on Windows Server 2025 Datacenter build 26100, MSVC toolchain, then re-run in CI with the eleven-field build: nine fields available, `swap` unsupported, and `terminal` unavailable because a CI job has no terminal environment; registry OS name, GlobalMemoryStatusEx and ToolHelp parent snapshot live | Executed: run 38604699769, then 40301536939 |
-| WSL1 | Linux adapter, WSL detection/semantic safeguards | Pure parser fixtures only | Not tested in WSL1 | No WSL runner |
-| WSL2 | Linux adapter, explicit WSL2 marker detection | Pure parser fixtures only | Not tested in WSL2 | No WSL runner |
+| WSL1 | Linux adapter, WSL detection/semantic safeguards | Pure parser fixtures only | Not tested in WSL1 | No WSL runner; `scripts/verify-wsl.sh` is the procedure |
+| WSL2 | Linux adapter, explicit WSL2 marker detection | Pure parser fixtures only | Not tested in WSL2 | No WSL runner; `scripts/verify-wsl.sh` is the procedure |
+
+On WSL the Linux adapter runs, so packages and locale are expected to work,
+while battery, display and desktop have nothing to answer and should report
+`unsupported`. The script checks exactly that, including that `environment.kind`
+says `wsl`.
 | BSD and other OS | Out of v0.1 scope | Compile-time unsupported | Not tested | None |
 
 "Executed" means the release binary ran on a real kernel of that platform and returned the JSON above; it does not mean every distribution, device or hardware configuration has been tried. What the runners establish is that the Linux `os-release`/`proc`/sysfs and parent-shell paths and the Windows registry/memory/ToolHelp paths work on at least one real system each. Arch, Debian, Fedora, Gentoo, openSUSE, NixOS, Intel Macs, WSL and container guests remain unexercised. ARM64 Linux has had one non-interactive run, described in its row, which is not a distribution or interactive check.

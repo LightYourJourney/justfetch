@@ -465,7 +465,7 @@ fn display() -> Detection<DisplayInfo> {
         });
     }
     if displays.is_empty() {
-        return Detection::unavailable("CoreGraphics reports no active display");
+        return Detection::unsupported("No display is attached to this machine");
     }
     Detection::available(
         DisplayInfo {

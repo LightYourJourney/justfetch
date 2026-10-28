@@ -1,5 +1,10 @@
 # Roadmap
 
+This file is history plus what is still open. The current release state is in
+[README](../README.md#status) and the per-platform evidence in
+[compatibility](compatibility.md); the sections below record what each version
+was for, not a promise that every item shipped in that order.
+
 ## v0.1 — Core (implementation candidate)
 
 Implemented: single-package Rust CLI; eleven real detection fields; Linux/macOS/Windows adapters and conservative WSL detection; original ASCII logos for macOS, Windows, Linux, Arch, Debian, Ubuntu, Fedora, Gentoo, openSUSE, NixOS and fallback; width-aware terminal output, ANSI capability policy, no-color/no-logo, `--privacy`; tagged JSON with raw numeric units/source/confidence; independent field errors; deterministic parser/render tests and real CLI tests; three-OS CI; GPLv3-preserving documentation.
