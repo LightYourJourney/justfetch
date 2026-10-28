@@ -449,7 +449,38 @@ findings; all are closed:
 
 **CI.** Run [40681651007](https://github.com/LightYourJourney/justfetch/actions/runs/40681651007) on `e4d0b34` passed all four jobs — MSRV 1.95.0, Ubuntu, Windows and macOS — so the six collectors compile and the test suite runs on all three platforms.
 
-**Test count:** 167, up from 87.
+**Two-axis review of Phase 12.** The Standards and Spec axes examined the six
+commits independently. Both reported; the findings are closed:
+
+- The README example claimed to be "captured from the current source" while
+  showing the eleven-row output from before the round. It is regenerated from a
+  real run.
+- The configuration reference used `gpu` as its example of an unknown module id
+  while listing `gpu` among the valid ones; it says `bogus` now.
+- The Windows GPU dedup fell back to the name only in its key, while the stored
+  entry kept no id, so duplicates with an empty `DeviceID` were never merged.
+- macOS scaled a charge above the maximum into 100%: an invalid counter became a
+  plausible figure. It reports no percentage instead. A missing `Is Charging`
+  flag no longer reads as "not charging".
+- The Nix package manager had no entry at all. It now reports `unsupported` with
+  a reason: a store-path count is not a package count and the profiles are not
+  read.
+- Sway was reported as confirmed from its socket alone, which is the single
+  source the module's own rule forbids. It is `estimated` with a note.
+- Compatibility tables for Packages, Desktop and Locale were missing entirely
+  (earlier edits had silently matched nothing); they exist now, and the display
+  section states what `width`/`height` measure per platform.
+- `DisplayInfo` gained a `definition` field so the JSON says whether the numbers
+  are logical points, desktop pixels or a connector's preferred mode.
+- Three copies of the Core Foundation string extraction became one helper, and
+  the PCI vendor table that existed twice now lives in `detect::hardware` with
+  tests, alongside the dpkg status counter and the NVIDIA model parser. Those
+  three pure functions are how the Linux and Windows parsing paths get exercised
+  on this machine at all.
+- `ModuleId::DEFAULT` is now pinned by a test to be `ALL` minus `display`, so a
+  new module cannot join the default list by accident.
+
+**Test count:** 171, up from 87.
 
 ## Advanced detection round (2026-10-28)
 

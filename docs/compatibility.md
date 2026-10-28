@@ -6,7 +6,7 @@ The support contract is conservative: a platform adapter is implemented, but onl
 
 | Platform | Implementation | Local compile check | Actual detector run | Native CI |
 | --- | --- | --- | --- | --- |
-| macOS ARM64 | Complete | Native build/test/release | Apple M3 / Mac15,12 / macOS 26.6.2 locally; Apple M1 (Virtual) / VirtualMac2,1 on the macOS runner. All eleven fields available in both; `battery` was added later and verified locally (below) | Executed: run 40301536939 |
+| macOS ARM64 | Complete | Native build/test/release | Apple M3 / Mac15,12 / macOS 26.6.2 locally; Apple M1 (Virtual) / VirtualMac2,1 on the macOS runner. All fields available at the time of that run; `battery` was added later and verified locally (below) | Executed: run 40301536939 |
 | macOS Intel | Complete | Passed cargo check (Rust 1.98.1; no cross link/run) | Not tested on Intel hardware | macOS runner is ARM64; no Intel runner |
 | Linux ARM64 | Complete | Passed cargo check (Rust 1.98.1; no cross link/run) | Executed in the release workflow: the packaged archive ran on an ARM64 runner and reported `os` and `memory` available. Not exercised interactively, and no distribution was tested | Release workflow run 40304542365 |
 | Linux x86-64 | Complete | Passed cargo check (Rust 1.98.1; no link/run) | Executed on Ubuntu 24.04 (Azure VM, kernel 6.17.0-1022-azure), then re-run in CI with the eleven-field build: all eleven fields then available, os-release and proc parsers live, parent-shell path exercised. `battery` added later and not yet run on Linux | Executed: run 38604699769, then 40301536939 |
@@ -25,6 +25,10 @@ The support contract is conservative: a platform adapter is implemented, but onl
 | macOS Intel | Implemented, untested | Same API |
 | Linux | Implemented, untested | DRM connectors and their preferred mode, **marked estimated**: sysfs does not know which mode the compositor is using. Monitor names are connector names (`card0-eDP-1`), not panel names |
 | Windows | Implemented, untested | `EnumDisplayMonitors` with `GetMonitorInfoW`; the desktop rectangle is the resolution, and the refresh rate comes from `EnumDisplaySettingsW` |
+
+`DisplayInfo` carries a `definition` saying what `width`/`height` measure,
+because the platforms differ; `kind` is `built_in` or `unknown` only, since
+CoreGraphics cannot tell an external panel from a virtual or remote one.
 
 The panel's native resolution is not reported on macOS: CoreGraphics exposes the
 current mode, not the panel's EDID. A scaled MacBook mode therefore shows the
@@ -56,6 +60,34 @@ A machine with no battery — a desktop, a container, most cloud VMs — reports
 reports no percentage rather than zero.
 
 One behaviour the Windows runner made concrete: `cargo run` is the parent there, because Cargo replaces itself with `exec` on Unix but must spawn a child on Windows. Shell detection therefore resolved to `bash` as `current_parent` on Linux and fell back to `cmd` as `configured_default` on Windows, which is the documented immediate-parent-only semantics working as intended rather than a platform defect.
+
+### Packages (Phase 12)
+
+| Platform | Status | Counts |
+| --- | --- | --- |
+| macOS ARM64 | Supported and tested | Homebrew formulae and casks as separate entries: 883 and 44, matching `brew list --formula` and `--cask` on Mac15,12 |
+| Linux | Implemented, untested | Entries with `Status: install ok installed` in `/var/lib/dpkg/status`, and directories in `/var/lib/pacman/local`. RPM and Nix report unsupported with a reason |
+| Windows | Implemented, untested | Directories in `scoop/apps`. winget reports unsupported: it has no local package database |
+
+Counts are per manager and never summed; each entry carries a `definition`.
+
+### Desktop (Phase 12)
+
+| Platform | Status | Evidence |
+| --- | --- | --- |
+| Linux | Implemented, untested on a real desktop | Pure detector in `detect::desktop` with unit tests covering agreement, a single hint, a compositor socket, a conflicting session, a TTY, an unknown identifier and the display fallback |
+| macOS | Unsupported by design | Aqua is the window server, not a session the user chooses |
+| Windows | Unsupported by design | The shell is part of the system |
+
+### Locale (Phase 12)
+
+| Platform | Status | Evidence |
+| --- | --- | --- |
+| macOS ARM64 | Supported and tested | Process `zh_CN.UTF-8` from `LANG`, system `zh_CN` from `CFPreferences AppleLocale`, matching `defaults read -g AppleLocale` |
+| Linux | Implemented, untested | Environment plus `/etc/locale.conf`, falling back to `/etc/default/locale` |
+| Windows | Implemented, untested | Environment plus `GetUserDefaultLocaleName` |
+
+The process locale and the system default are reported separately.
 
 ## Per-module sources
 

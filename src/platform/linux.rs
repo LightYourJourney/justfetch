@@ -226,29 +226,16 @@ fn gpu() -> Detection<GpuInfo> {
         };
         let pci_id = field("PCI_ID");
         let driver = field("DRIVER");
-        let vendor = pci_id.as_deref().and_then(|id| {
-            let vendor_id = id.split(':').next()?.to_ascii_lowercase();
-            match vendor_id.as_str() {
-                "10de" => Some("NVIDIA"),
-                "1002" => Some("AMD"),
-                "8086" => Some("Intel"),
-                "1af4" => Some("Red Hat"),
-                "15ad" => Some("VMware"),
-                "1b36" => Some("Red Hat"),
-                _ => None,
-            }
-        });
+        let vendor = pci_id
+            .as_deref()
+            .and_then(crate::detect::hardware::pci_vendor);
         // NVIDIA publishes a model name in procfs; others do not, and the
         // sysfs PCI id is not a name.
         let display_name = field("PCI_SLOT_NAME")
             .and_then(|slot| {
                 std::fs::read_to_string(format!("/proc/driver/nvidia/gpus/{slot}/information")).ok()
             })
-            .and_then(|info| {
-                info.lines()
-                    .find_map(|line| line.strip_prefix("Model:"))
-                    .map(|model| model.trim().to_owned())
-            });
+            .and_then(|info| crate::detect::hardware::nvidia_model(&info));
         devices.push(GpuDevice {
             name: display_name,
             vendor: vendor.map(str::to_owned),
@@ -314,7 +301,11 @@ fn display() -> Detection<DisplayInfo> {
         return Detection::unavailable("No DRM connector reports a connected display");
     }
     Detection::estimated(
-        DisplayInfo { displays },
+        DisplayInfo {
+            displays,
+            definition: "each connector's preferred mode; the mode in use is set by the compositor"
+                .to_owned(),
+        },
         "/sys/class/drm",
         "Each connector's preferred mode; the mode actually in use is set by the compositor",
     )
@@ -329,10 +320,7 @@ fn packages() -> Detection<PackagesInfo> {
     // package that was removed but not purged, and there is one per
     // architecture, so counting those overcounts what is installed.
     if let Ok(status) = std::fs::read_to_string("/var/lib/dpkg/status") {
-        let count = status
-            .lines()
-            .filter(|line| line.trim() == "Status: install ok installed")
-            .count() as u64;
+        let count = crate::detect::hardware::dpkg_installed(&status);
         if count > 0 {
             managers.push(PackageManager {
                 name: "dpkg".to_owned(),
@@ -356,10 +344,12 @@ fn packages() -> Detection<PackagesInfo> {
         }
     }
     if managers.is_empty() {
-        let reason = if std::path::Path::new("/var/lib/rpm").exists() {
+        let reason = if std::path::Path::new("/nix/store").exists() {
+            "Nix is present, but a store-path count is not a package count and this build does not read profiles"
+        } else if std::path::Path::new("/var/lib/rpm").exists() {
             "An RPM database is present, but this build has no RPM database reader"
         } else {
-            "No dpkg, pacman or RPM database was found"
+            "No dpkg, pacman, RPM or Nix database was found"
         };
         return Detection::unsupported(reason);
     }

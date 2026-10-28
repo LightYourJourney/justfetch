@@ -251,6 +251,10 @@ pub enum DisplayKind {
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct DisplayInfo {
     pub displays: Vec<DisplayUnit>,
+    /// What `width` and `height` measure. Platforms differ: macOS reports the
+    /// logical points of the current mode, Windows the desktop pixels, and
+    /// Linux a connector's preferred mode, which is not necessarily in use.
+    pub definition: String,
 }
 
 /// Every graphics adapter, in the order the platform enumerates them.

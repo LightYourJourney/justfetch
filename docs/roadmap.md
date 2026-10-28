@@ -16,6 +16,24 @@ Still open for this version: shareable sample configurations (point 6), which ca
 
 ## v0.3 — Advanced Detection
 
+Phase 12 delivered GPU, Battery, Display, Packages, Desktop and Locale. Release
+preparation still needs, in this order:
+
+1. Run the Linux collectors on a real machine: dpkg and pacman counts, sysfs
+   battery and display, desktop and session detection.
+2. Run the Windows collectors on a real machine: `GetSystemPowerStatus` (the 128
+   and 255 branches), `EnumDisplayDevicesW` vendor parsing, and
+   `GetUserDefaultLocaleName`.
+3. Exercise the multi-device paths on hardware this project has not had: two
+   GPUs, two monitors, two battery packs.
+4. Check WSL1 and WSL2 report `unsupported` for battery and display rather than
+   inventing a value.
+5. Write the JSON schema documentation for the new fields; the README only
+   summarises them.
+6. Decide and state whether the new additive fields keep `schema_version: 1`.
+
+
+
 Add reliable GPU/battery/display/DE/WM/packages/locale collectors individually, each with documented sources, status semantics, fixtures and platform coverage. Disk and terminal are already collected; docs/validation.md records why GPU, display resolution, battery, packages and desktop/window manager were not added with them. Add measured per-module timing; `doctor` shipped with v0.2. Avoid shell-based package scans as a default shortcut.
 
 ## v0.4 — Polish

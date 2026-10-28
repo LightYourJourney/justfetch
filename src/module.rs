@@ -185,3 +185,20 @@ mod tests {
         assert_eq!(ModuleId::parse("local-ip"), Some(ModuleId::LocalIp));
     }
 }
+
+#[cfg(test)]
+mod default_tests {
+    use super::*;
+
+    /// The default list is the full list without the expensive module, in the
+    /// same order. A new module added to `ALL` must be a deliberate decision
+    /// for `DEFAULT`, not an accident of a hand-copied list.
+    #[test]
+    fn the_default_list_is_all_except_display() {
+        let expected: Vec<ModuleId> = ModuleId::ALL
+            .into_iter()
+            .filter(|module| *module != ModuleId::Display)
+            .collect();
+        assert_eq!(ModuleId::DEFAULT.to_vec(), expected);
+    }
+}

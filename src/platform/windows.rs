@@ -318,9 +318,7 @@ fn battery() -> Detection<BatteryInfo> {
         return Detection::unsupported("Windows reports no system battery on this machine");
     }
     let percent = (status.BatteryLifePercent != 255).then_some(status.BatteryLifePercent);
-    let state = if status.BatteryFlag == 255 {
-        BatteryState::Unknown
-    } else if status.BatteryFlag & 8 != 0 {
+    let state = if status.BatteryFlag & 8 != 0 {
         // Bit 3 is "charging"; a full pack also clears it.
         BatteryState::Charging
     } else if percent == Some(100) {
@@ -392,32 +390,23 @@ fn gpu() -> Detection<GpuInfo> {
         }
         let id = wide(&device.DeviceID);
         // One adapter behind several monitors appears once per monitor with the
-        // same DeviceID; two identical cards have different ones.
-        let dedup_key = if id.is_empty() {
-            name.clone()
+        // same DeviceID; two identical cards have different ones. Without an
+        // id the name is the only key the entry will have.
+        let duplicate = if id.is_empty() {
+            devices
+                .iter()
+                .any(|existing| existing.name.as_deref() == Some(name.as_str()))
         } else {
-            id.clone()
+            devices
+                .iter()
+                .any(|existing| existing.id.as_deref() == Some(id.as_str()))
         };
-        if devices
-            .iter()
-            .any(|existing| existing.id.as_deref() == Some(dedup_key.as_str()))
-        {
+        if duplicate {
             continue;
         }
         // The id looks like `PCI\VEN_10DE&DEV_2504&SUBSYS_…`; the vendor is the
         // four hex digits after `VEN_`, wherever they fall in the string.
-        let vendor = id
-            .find("VEN_")
-            .map(|at| &id[at + 4..])
-            .and_then(|rest| rest.get(..4))
-            .and_then(|vendor| match vendor.to_ascii_uppercase().as_str() {
-                "10DE" => Some("NVIDIA"),
-                "1002" => Some("AMD"),
-                "8086" => Some("Intel"),
-                "15AD" => Some("VMware"),
-                "1AF4" => Some("Red Hat"),
-                _ => None,
-            });
+        let vendor = crate::detect::hardware::pci_vendor(&id);
         devices.push(GpuDevice {
             name: Some(name),
             vendor: vendor.map(str::to_owned),
@@ -520,7 +509,13 @@ fn display() -> Detection<DisplayInfo> {
     if found == 0 || displays.is_empty() {
         return Detection::unavailable("EnumDisplayMonitors reports no active monitor");
     }
-    Detection::available(DisplayInfo { displays }, "EnumDisplayMonitors")
+    Detection::available(
+        DisplayInfo {
+            displays,
+            definition: "desktop pixels reported by GetMonitorInfoW".to_owned(),
+        },
+        "EnumDisplayMonitors",
+    )
 }
 
 /// Scoop's installed applications. winget has no local database this build can

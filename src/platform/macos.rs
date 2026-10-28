@@ -84,6 +84,31 @@ fn power_value(description: CFDictionaryRef, key: &CStr) -> Option<CFTypeRef> {
     (!value.is_null()).then_some(value)
 }
 
+/// Copy a Core Foundation string into a Rust `String`. The caller checks the
+/// type first and keeps ownership, so nothing is released here.
+fn cf_string(value: CFStringRef) -> Option<String> {
+    let mut buffer = [0_i8; 256];
+    // SAFETY: the buffer size matches the capacity passed and the value was
+    // checked to be a CFString. A non-zero return means the text fitted.
+    let ok = unsafe {
+        CFStringGetCString(
+            value,
+            buffer.as_mut_ptr(),
+            buffer.len() as libc::c_long,
+            CF_UTF8,
+        )
+    };
+    if ok == 0 {
+        return None;
+    }
+    // SAFETY: the call above wrote a NUL-terminated string into the buffer.
+    Some(
+        unsafe { CStr::from_ptr(buffer.as_ptr()) }
+            .to_string_lossy()
+            .into_owned(),
+    )
+}
+
 /// Whether a Core Foundation value is of the expected type. Sending a string
 /// message to a number is an Objective-C exception, not an error code, and it
 /// aborts the process — so the type is checked before the call, not after.
@@ -114,26 +139,8 @@ fn power_string(description: CFDictionaryRef, key: &CStr) -> Option<String> {
     if !is_type(value, string_type()) {
         return None;
     }
-    let mut buffer = [0_i8; 128];
-    // SAFETY: the buffer size matches the capacity passed, and the value is a
-    // CFString as its key documents. A non-zero return means the text fitted.
-    let ok = unsafe {
-        CFStringGetCString(
-            value,
-            buffer.as_mut_ptr(),
-            buffer.len() as libc::c_long,
-            CF_UTF8,
-        )
-    };
-    if ok == 0 {
-        return None;
-    }
-    // SAFETY: the call above wrote a NUL-terminated string into the buffer.
-    Some(
-        unsafe { CStr::from_ptr(buffer.as_ptr()) }
-            .to_string_lossy()
-            .into_owned(),
-    )
+    // The dictionary owns the value; `cf_string` does not release it.
+    cf_string(value)
 }
 
 fn power_int(description: CFDictionaryRef, key: &CStr) -> Option<i32> {
@@ -216,23 +223,24 @@ fn battery() -> Detection<BatteryInfo> {
         }
         let current = power_int(description, c"Current Capacity");
         let maximum = power_int(description, c"Max Capacity").filter(|max| *max > 0);
+        // A charge above the maximum is not a percentage; it is not scaled into
+        // one either, because that would make an invalid counter look valid.
         let percent = match (current, maximum) {
-            (Some(current), Some(maximum)) => Some(
-                ((f64::from(current) / f64::from(maximum)) * 100.0)
-                    .round()
-                    .clamp(0.0, 100.0) as u8,
-            ),
+            (Some(current), Some(maximum)) if (0..=maximum).contains(&current) => {
+                Some(((f64::from(current) / f64::from(maximum)) * 100.0).round() as u8)
+            }
             _ => None,
         };
-        let charging = power_bool(description, c"Is Charging").unwrap_or(false);
-        let charged = power_bool(description, c"Is Charged").unwrap_or(false);
-        let state = if charged || percent == Some(100) {
+        let charging = power_bool(description, c"Is Charging");
+        let charged = power_bool(description, c"Is Charged");
+        let state = if charged == Some(true) || percent == Some(100) {
             BatteryState::Full
-        } else if charging {
+        } else if charging == Some(true) {
             BatteryState::Charging
-        } else if power == PowerSource::Battery {
+        } else if charging == Some(false) && power == PowerSource::Battery {
             BatteryState::Discharging
         } else {
+            // A missing flag is not evidence of discharging.
             BatteryState::Unknown
         };
         units.push(BatteryUnit {
@@ -304,35 +312,18 @@ fn registry_string(entry: IoObject, key: &CStr) -> Option<String> {
         unsafe { CFRelease(value) };
         return None;
     }
-    let mut buffer = [0_i8; 128];
-    // SAFETY: the buffer size matches the capacity passed and the value was
-    // checked to be a CFString. A non-zero return means it fitted.
-    let ok = unsafe {
-        CFStringGetCString(
-            value,
-            buffer.as_mut_ptr(),
-            buffer.len() as libc::c_long,
-            CF_UTF8,
-        )
-    };
+    // The property is an owned copy; read it, then release it.
+    let text = cf_string(value);
     // SAFETY: the property reference is an owned copy and is released once.
     unsafe { CFRelease(value) };
-    if ok == 0 {
-        return None;
-    }
-    // SAFETY: the call above wrote a NUL-terminated string into the buffer.
-    Some(
-        unsafe { CStr::from_ptr(buffer.as_ptr()) }
-            .to_string_lossy()
-            .into_owned(),
-    )
+    text
 }
 
 /// Every IOAccelerator, which is how macOS exposes the graphics adapters.
 fn gpu() -> Detection<GpuInfo> {
     let source = "IOKit IOAccelerator";
-    // SAFETY: IOServiceMatching returns a dictionary owned by the matching
-    // machinery, consumed by IOServiceGetMatchingServices.
+    // SAFETY: IOServiceMatching returns a dictionary the caller owns, and
+    // IOServiceGetMatchingServices consumes that reference.
     let matching = unsafe { IOServiceMatching(c"IOAccelerator".as_ptr()) };
     if matching.is_null() {
         return Detection::error(source, ErrorCode::ApiFailed, "IOServiceMatching failed");
@@ -475,7 +466,13 @@ fn display() -> Detection<DisplayInfo> {
     if displays.is_empty() {
         return Detection::unavailable("CoreGraphics reports no active display");
     }
-    Detection::available(DisplayInfo { displays }, source)
+    Detection::available(
+        DisplayInfo {
+            displays,
+            definition: "logical points of the current display mode".to_owned(),
+        },
+        source,
+    )
 }
 
 /// Homebrew's installed formulae and casks. The count is directories in each
@@ -567,28 +564,11 @@ fn system_locale() -> Option<String> {
         unsafe { CFRelease(value) };
         return None;
     }
-    let mut buffer = [0_i8; 128];
-    // SAFETY: the buffer size matches the capacity passed and the value was
-    // checked to be a CFString. A non-zero return means it fitted.
-    let ok = unsafe {
-        CFStringGetCString(
-            value,
-            buffer.as_mut_ptr(),
-            buffer.len() as libc::c_long,
-            CF_UTF8,
-        )
-    };
+    // The preference value is an owned copy; read it, then release it.
+    let text = cf_string(value);
     // SAFETY: the value is an owned copy and is released once.
     unsafe { CFRelease(value) };
-    if ok == 0 {
-        return None;
-    }
-    // SAFETY: the call above wrote a NUL-terminated string into the buffer.
-    Some(
-        unsafe { CStr::from_ptr(buffer.as_ptr()) }
-            .to_string_lossy()
-            .into_owned(),
-    )
+    text
 }
 
 fn locale() -> Detection<LocaleInfo> {

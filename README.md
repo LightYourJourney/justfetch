@@ -24,23 +24,28 @@ This list describes the current source. The published v0.1.0 archive is older an
 
 ## Example
 
-Captured from a real `--no-color` invocation of the current source on Apple M3 / macOS 26.6.2; the v0.1.0 archive renders seven rows, not the sixteen a default run now shows. The user and host identity and the home path are replaced by shorter placeholders; the divider tracks the title's width, so it is shorter here than in the original. Memory, swap, disk and uptime naturally change. This is plain output; a compatible TTY adds colors automatically.
+Captured from a real `--no-color` invocation of the current source on Apple M3 / macOS 26.6.2; the v0.1.0 archive renders seven rows, not the sixteen a default run now shows. `display` is not in the default list, so it has no row here. The user and host identity and the home path are replaced by shorter placeholders; the divider tracks the title's width, so it is shorter here than in the original. Memory, swap, disk and uptime naturally change. This is plain output; a compatible TTY adds colors automatically.
 
 ```text
          .'       ~ [user]@[host]
-       .'         ───────────────
-   .--.  .--.     OS      macOS 26.6.2
-  /          \    Host    Mac15,12
- |            |   Kernel  Darwin 25.6.0
- |            |   Uptime  5h 54m
-  \          /    CPU     Apple M3 (8 logical)
-   `--.  .--'     Memory  13.47 / 16.00 GiB (84%)
-                  Swap    11.84 / 13.00 GiB (91%)
-                  Disk    302.06 / 460.43 GiB (66%) on /home/user
-                  Shell   zsh
-                  Term    iTerm.app 3.7.1beta1
-                  IP      192.168.137.177 (en0)
-                  ───────────────
+       .'         ──────────────────────────────
+   .--.  .--.     OS        macOS 26.6.2
+  /          \    Host      Mac15,12
+ |            |   Kernel    Darwin 25.6.0
+ |            |   Uptime    6d 1h 20m
+  \          /    CPU       Apple M3 (8 logical)
+   `--.  .--'     GPU       Apple M3
+                  Memory    12.60 / 16.00 GiB (79%)
+                  Swap      8.35 / 9.00 GiB (93%)
+                  Disk      342.62 / 460.43 GiB (74%) on /home/user
+                  Battery   100% (full)
+                  Packages  homebrew formulae 883, homebrew casks 44
+                  Desktop   Unsupported
+                  Locale    zh_CN.UTF-8 (LANG), system zh_CN
+                  Shell     zsh
+                  Term      iTerm.app 3.7.1beta1
+                  IP        192.168.137.185 (en0)
+                  ──────────────────────────────
                   ● ● ● ● ● ● ● ●
 ```
 

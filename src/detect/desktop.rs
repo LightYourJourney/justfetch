@@ -31,14 +31,17 @@ pub fn describe(evidence: &Evidence<'_>) -> Detection<DesktopInfo> {
         _ => SessionType::Unknown,
     };
     // A compositor's socket exists only while that compositor runs.
+    // The socket proves the compositor is running; it does not name the
+    // session on its own, so it is a strong hint rather than a confirmation.
     if evidence.sway_socket {
-        return Detection::available(
+        return Detection::estimated(
             DesktopInfo {
                 name: "Sway".to_owned(),
                 kind: DesktopKind::WindowManager,
                 session,
             },
             "SWAYSOCK",
+            "the socket proves Sway is running, not which session launched it",
         );
     }
     if evidence.hyprland_signature {

@@ -96,6 +96,7 @@ fn fixture() -> SystemSnapshot {
         ),
         display: Detection::available(
             DisplayInfo {
+                definition: "logical points".to_owned(),
                 displays: vec![DisplayUnit {
                     name: None,
                     width: 1470,
@@ -1466,6 +1467,7 @@ fn several_displays_mark_the_primary_and_keep_their_own_modes() {
     let mut snapshot = fixture();
     snapshot.display = Detection::available(
         DisplayInfo {
+            definition: "logical points".to_owned(),
             displays: vec![
                 DisplayUnit {
                     name: None,

@@ -108,14 +108,14 @@ The theme format, the role names and the artwork rules are in
 $ justfetch --config broken.toml doctor
 user config: /home/you/.config/justfetch/config.toml (not present; built-in defaults apply)
 --config: broken.toml (found)
-problem: configuration error: broken.toml: modules: `gpu` is not a module id; expected one of os, host, kernel, uptime, cpu, gpu, memory, swap, disk, battery, display, packages, desktop, locale, shell, terminal, local_ip
+problem: configuration error: broken.toml: modules: `bogus` is not a module id; expected one of os, host, kernel, uptime, cpu, gpu, memory, swap, disk, battery, display, packages, desktop, locale, shell, terminal, local_ip
 ```
 
 Errors from a normal run go to stderr with a non-zero exit code, and nothing is written to stdout:
 
 | Situation | Message |
 | --- | --- |
-| Unknown module | `` `gpu` is not a module id; expected one of … `` |
+| Unknown module | `` `bogus` is not a module id; expected one of … `` |
 | Duplicate module | `` `os` is listed twice `` |
 | Empty list | `the module list is empty; name at least one module or omit the setting` |
 | `--config` missing | `--config PATH: file not found` |

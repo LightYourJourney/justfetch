@@ -1,5 +1,6 @@
 //! Collection orchestrator; detection never writes to stdout or stderr.
 pub mod desktop;
+pub mod hardware;
 pub mod linux;
 pub mod locale;
 pub mod shell;
