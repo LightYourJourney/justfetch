@@ -107,6 +107,17 @@ fn fixture() -> SystemSnapshot {
             },
             "fixture",
         ),
+        packages: Detection::available(
+            PackagesInfo {
+                managers: vec![PackageManager {
+                    name: "dpkg".to_owned(),
+                    count: 1234,
+                    definition: "installed packages: one .list file in /var/lib/dpkg/info"
+                        .to_owned(),
+                }],
+            },
+            "fixture",
+        ),
         battery: Detection::available(
             BatteryInfo {
                 units: vec![BatteryUnit {
@@ -163,6 +174,15 @@ fn options(columns: usize) -> Options<'static> {
 
 /// The value of a row, found by its label. Tests ask for the row rather than
 /// counting spaces, because the label column widens when a module is added.
+/// The default label column width: whatever the widest built-in label needs.
+fn label_column() -> usize {
+    ModuleId::ALL
+        .iter()
+        .map(|module| layout::width(module.label()))
+        .max()
+        .unwrap_or(0)
+}
+
 fn row_value(text: &str, label: &str) -> Option<String> {
     let line = text
         .lines()
@@ -186,20 +206,21 @@ fn fixed_plain_render_is_aligned() {
         concat!(
             "tester@host\n",
             "------------\n",
-            "OS       Example Linux 42\n",
-            "Host     Test Machine\n",
-            "Kernel   Linux 6.8\n",
-            "Uptime   1d 1h 1m\n",
-            "CPU      Test CPU (8 logical)\n",
-            "GPU      Test GPU\n",
-            "Memory   2.00 / 8.00 GiB (25%)\n",
-            "Swap     1.00 / 4.00 GiB (25%)\n",
-            "Disk     100.00 / 500.00 GiB (20%) on /home/tester\n",
-            "Battery  82% (charging)\n",
-            "Display  1470x956 @60Hz (built-in)\n",
-            "Shell    zsh\n",
-            "Term     Test Terminal 1.2\n",
-            "IP       192.0.2.10 (eth0)\n",
+            "OS        Example Linux 42\n",
+            "Host      Test Machine\n",
+            "Kernel    Linux 6.8\n",
+            "Uptime    1d 1h 1m\n",
+            "CPU       Test CPU (8 logical)\n",
+            "GPU       Test GPU\n",
+            "Memory    2.00 / 8.00 GiB (25%)\n",
+            "Swap      1.00 / 4.00 GiB (25%)\n",
+            "Disk      100.00 / 500.00 GiB (20%) on /home/tester\n",
+            "Battery   82% (charging)\n",
+            "Display   1470x956 @60Hz (built-in)\n",
+            "Packages  dpkg 1234\n",
+            "Shell     zsh\n",
+            "Term      Test Terminal 1.2\n",
+            "IP        192.0.2.10 (eth0)\n",
             "------------\n",
             "o o o o o o o o\n",
         )
@@ -1182,12 +1203,12 @@ fn a_row_too_narrow_for_the_column_still_styles_what_it_can() {
             depth: Depth::TrueColor,
             logo: false,
             theme: &nord,
-            ..options(10)
+            ..options(label_column() + 3)
         },
     );
     let row = output
         .lines()
-        .find(|line| layout::sanitize(line).starts_with("OS "))
+        .find(|line| layout::sanitize(line).starts_with("OS"))
         .unwrap_or_else(|| panic!("no OS row:\n{output}"));
     // Label styled, separator plain, then a styled value fragment.
     let label_end = row.find("\u{1b}[0m").expect("the label is styled");
@@ -1202,15 +1223,16 @@ fn a_row_too_narrow_for_the_column_still_styles_what_it_can() {
 #[test]
 fn a_separator_split_across_lines_does_not_leave_the_value_plain() {
     let nord = theme::built_in("nord").expect("built in");
-    // Seven columns holds the six-cell label column and one cell of separator,
-    // so the separator straddles two lines.
+    // One column past the label column means the separator straddles two
+    // lines. The column width follows the labels, so it is computed here.
+    let columns = label_column() + 1;
     let output = terminal::render(
         &fixture(),
         Options {
             depth: Depth::TrueColor,
             logo: false,
             theme: &nord,
-            ..options(7)
+            ..options(columns)
         },
     );
     let lines: Vec<&str> = output.lines().collect();
@@ -1485,4 +1507,65 @@ fn a_display_the_platform_cannot_describe_is_unavailable() {
         },
     );
     assert_eq!(row_value(&text, "Display").as_deref(), Some("Unavailable"));
+}
+
+#[test]
+fn package_counts_are_listed_per_manager_and_never_summed() {
+    let mut snapshot = fixture();
+    snapshot.packages = Detection::available(
+        PackagesInfo {
+            managers: vec![
+                PackageManager {
+                    name: "homebrew formulae".to_owned(),
+                    count: 883,
+                    definition: "directories in /opt/homebrew/Cellar".to_owned(),
+                },
+                PackageManager {
+                    name: "homebrew casks".to_owned(),
+                    count: 44,
+                    definition: "directories in /opt/homebrew/Caskroom".to_owned(),
+                },
+            ],
+        },
+        "fixture",
+    );
+    let text = terminal::render(
+        &snapshot,
+        Options {
+            logo: false,
+            unicode: false,
+            ..options(80)
+        },
+    );
+    assert_eq!(
+        row_value(&text, "Packages").as_deref(),
+        Some("homebrew formulae 883, homebrew casks 44")
+    );
+    let json: serde_json::Value = serde_json::from_str(&json::render(&snapshot).unwrap()).unwrap();
+    let managers = json["packages"]["value"]["managers"].as_array().unwrap();
+    assert_eq!(managers.len(), 2);
+    assert_eq!(managers[1]["count"], 44);
+    assert!(
+        managers[1]["definition"]
+            .as_str()
+            .unwrap()
+            .contains("Caskroom")
+    );
+    // No total is produced anywhere.
+    assert!(json["packages"]["value"].get("total").is_none());
+}
+
+#[test]
+fn no_readable_package_database_is_unsupported_not_zero() {
+    let mut snapshot = fixture();
+    snapshot.packages = Detection::unsupported("No dpkg, pacman or RPM database was found");
+    let text = terminal::render(
+        &snapshot,
+        Options {
+            logo: false,
+            unicode: false,
+            ..options(80)
+        },
+    );
+    assert_eq!(row_value(&text, "Packages").as_deref(), Some("Unsupported"));
 }

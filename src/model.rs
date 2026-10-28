@@ -165,6 +165,22 @@ pub enum GpuKind {
     Unknown,
 }
 
+/// One package manager's installed count. Managers are never summed: a dpkg
+/// package, a Homebrew formula and a cask are different things, and one number
+/// over them would be a number about nothing.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct PackageManager {
+    pub name: String,
+    pub count: u64,
+    /// What the count counts, so a consumer knows what it is comparing.
+    pub definition: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct PackagesInfo {
+    pub managers: Vec<PackageManager>,
+}
+
 /// One display, as the platform describes it.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct DisplayUnit {
@@ -249,6 +265,7 @@ pub struct SystemSnapshot {
     pub disk: Detection<DiskInfo>,
     pub gpu: Detection<GpuInfo>,
     pub display: Detection<DisplayInfo>,
+    pub packages: Detection<PackagesInfo>,
     pub battery: Detection<BatteryInfo>,
     pub shell: Detection<ShellInfo>,
     pub terminal: Detection<TerminalInfo>,

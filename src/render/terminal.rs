@@ -647,6 +647,13 @@ fn value_for(snapshot: &SystemSnapshot, module: ModuleId) -> String {
                 .collect::<Vec<_>>()
                 .join(", ")
         }),
+        ModuleId::Packages => display(&snapshot.packages, |info| {
+            info.managers
+                .iter()
+                .map(|manager| format!("{} {}", manager.name, manager.count))
+                .collect::<Vec<_>>()
+                .join(", ")
+        }),
         ModuleId::Memory => display(&snapshot.memory, |mem| {
             capacity(mem.used_bytes, mem.total_bytes)
         }),

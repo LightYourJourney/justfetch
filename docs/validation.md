@@ -386,11 +386,43 @@ The tests that pinned the old behaviour were rewritten rather than kept: one ass
 
 **CI caught another test defect.** The first CI run of this pass failed on Ubuntu only: a test asserted that the output does not contain `"CPU "` to prove a custom label replaced the default. The GitHub runner's processor is an `Intel(R) Xeon(R) ... CPU @ 2.80GHz`, so the *value* contains the substring the test forbade. The assertion now checks that no line starts with the label, which is what "the row's label" means; a value that merely mentions the word cannot satisfy or break it. This is the second time this round that a test, not the product, was tied to one machine's data.
 
-**Test count:** 147, up from 87.
+**Test count:** 149, up from 87.
 
 ## Advanced detection round (2026-10-28)
 
 Phase 12 adds collectors one at a time, each with its own platform evidence.
+
+### Packages
+
+**Implementation.** macOS counts directories in Homebrew's Cellar and Caskroom;
+Linux counts `.list` files in `/var/lib/dpkg/info` and directories in
+`/var/lib/pacman/local`; Windows counts directories in `scoop/apps`. Each
+manager is its own entry with a `definition`; nothing is summed.
+
+**macOS evidence.** Executed on a MacBook Air and compared with Homebrew's own
+answer:
+
+```
+brew list --formula | wc -l   883
+brew list --cask    | wc -l    44
+justfetch: homebrew formulae 883, homebrew casks 44
+```
+
+**RPM and winget.** Both are reported as unsupported with a reason. The RPM
+database is SQLite or Berkeley DB and this build has no driver for it; winget
+has no local package database, only a manifest cache. Counting files near either
+would be a number about something else.
+
+**Performance.** 30 runs, instruction medians, raw data in
+[benchmarks/packages-2026-10-28.json](benchmarks/packages-2026-10-28.json):
+
+| Selection | Median instructions | Wall |
+| --- | --- | --- |
+| `--modules os` | 28.15 M | 11.5 ms |
+| `--modules packages` | 34.13 M | 12.8 ms |
+
+The cost is enumerating ~900 directory entries, each needing its type; it is
++21% instructions but +11% wall, so it stays in the default list.
 
 ### Display
 

@@ -58,7 +58,7 @@ Running `justfetch init` writes this shape with every key at its default, so you
 
 | Key | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `modules` | array of strings | thirteen, in display order, without `display` | Which rows to show, in the order given. The same list decides what is collected. `display` is not in the default list because its platform query costs tens of milliseconds (see [validation](validation.md)); name it here or on `--modules` to show it. |
+| `modules` | array of strings | fourteen, in display order, without `display` | Which rows to show, in the order given. The same list decides what is collected. `display` is not in the default list because its platform query costs tens of milliseconds (see [validation](validation.md)); name it here or on `--modules` to show it. |
 | `theme.name` | theme identifier | `"default"` | A built-in theme: `default`, `catppuccin-mocha`, `nord`, `tokyo-night`, `gruvbox`, `monochrome`. |
 | `theme.file` | path | none | A custom theme file, relative to the configuration file. Cannot be combined with `theme.name`; `--theme-file PATH` sets the same thing. |
 | `layout.name` | `"classic"`, `"compact"`, `"minimal"` or `"vertical"` | `"classic"` | Where the pieces go. See [themes and layouts](themes.md). |
@@ -73,7 +73,7 @@ Unknown keys are an error rather than being ignored, so a misspelt key is report
 
 ### Module identifiers
 
-`os`, `host`, `kernel`, `uptime`, `cpu`, `gpu`, `memory`, `swap`, `disk`, `battery`, `display`, `shell`, `terminal`, `local_ip`.
+`os`, `host`, `kernel`, `uptime`, `cpu`, `gpu`, `memory`, `swap`, `disk`, `battery`, `display`, `packages`, `shell`, `terminal`, `local_ip`.
 
 Identifiers are case-insensitive and `local-ip` is accepted as an alias for `local_ip`. `justfetch --help` lists them too.
 
@@ -108,7 +108,7 @@ The theme format, the role names and the artwork rules are in
 $ justfetch --config broken.toml doctor
 user config: /home/you/.config/justfetch/config.toml (not present; built-in defaults apply)
 --config: broken.toml (found)
-problem: configuration error: broken.toml: modules: `gpu` is not a module id; expected one of os, host, kernel, uptime, cpu, gpu, memory, swap, disk, battery, display, shell, terminal, local_ip
+problem: configuration error: broken.toml: modules: `gpu` is not a module id; expected one of os, host, kernel, uptime, cpu, gpu, memory, swap, disk, battery, display, packages, shell, terminal, local_ip
 ```
 
 Errors from a normal run go to stderr with a non-zero exit code, and nothing is written to stdout:

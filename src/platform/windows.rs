@@ -510,6 +510,38 @@ fn display() -> Detection<DisplayInfo> {
     Detection::available(DisplayInfo { displays }, "EnumDisplayMonitors")
 }
 
+/// Scoop's installed applications. winget has no local database this build can
+/// read: its manifest cache is not a package list, so it is reported through
+/// the module's unsupported state rather than counted from something else.
+fn packages() -> Detection<PackagesInfo> {
+    let Some(home) = std::env::var_os("USERPROFILE") else {
+        return Detection::unavailable("USERPROFILE is not set, so Scoop's directory is unknown");
+    };
+    let apps = std::path::PathBuf::from(home).join("scoop").join("apps");
+    let Ok(entries) = std::fs::read_dir(&apps) else {
+        return Detection::unsupported(
+            "No Scoop installation was found, and winget has no local package database to read",
+        );
+    };
+    let count = entries
+        .flatten()
+        .filter(|entry| entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false))
+        .count() as u64;
+    if count == 0 {
+        return Detection::unsupported("Scoop's apps directory is empty");
+    }
+    Detection::available(
+        PackagesInfo {
+            managers: vec![PackageManager {
+                name: "scoop".to_owned(),
+                count,
+                definition: "installed applications: one directory in scoop/apps".to_owned(),
+            }],
+        },
+        "scoop/apps directories",
+    )
+}
+
 pub fn collect(selection: &[ModuleId]) -> PlatformData {
     // The hostname is needed for the title even when no module asks for it.
     let hostname = match System::host_name().filter(|s| !s.is_empty()) {
@@ -570,6 +602,7 @@ pub fn collect(selection: &[ModuleId]) -> PlatformData {
         disk: if_selected(selection, ModuleId::Disk, disk),
         gpu: if_selected(selection, ModuleId::Gpu, gpu),
         display: if_selected(selection, ModuleId::Display, display),
+        packages: if_selected(selection, ModuleId::Packages, packages),
         battery: if_selected(selection, ModuleId::Battery, battery),
         local_ip: if_selected(selection, ModuleId::LocalIp, local_ip),
     }

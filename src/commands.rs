@@ -147,7 +147,7 @@ pub const INIT_TEMPLATE: &str = r#"# justfetch configuration
 # deleting a line keeps the behaviour it describes.
 
 # Modules to show, in display order. Identifiers come from `justfetch --help`.
-modules = ["os", "host", "kernel", "uptime", "cpu", "gpu", "memory", "swap", "disk", "battery", "shell", "terminal", "local_ip"]
+modules = ["os", "host", "kernel", "uptime", "cpu", "gpu", "memory", "swap", "disk", "battery", "packages", "shell", "terminal", "local_ip"]
 
 [theme]
 # A built-in theme, or `file = "path.toml"` for one of your own.

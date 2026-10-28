@@ -421,6 +421,52 @@ fn display() -> Detection<DisplayInfo> {
     Detection::available(DisplayInfo { displays }, source)
 }
 
+/// Homebrew's installed formulae and casks. The count is directories in each
+/// prefix's Cellar and Caskroom: a formula with several versions installed is
+/// still one formula. Homebrew's own database is not parsed, so this does not
+/// claim to match `brew list` exactly.
+fn packages() -> Detection<PackagesInfo> {
+    let count_dirs = |path: &std::path::Path| -> Option<u64> {
+        let entries = std::fs::read_dir(path).ok()?;
+        Some(
+            entries
+                .flatten()
+                .filter(|entry| entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false))
+                .count() as u64,
+        )
+    };
+    let mut managers = Vec::new();
+    for prefix in ["/opt/homebrew", "/usr/local"] {
+        let base = std::path::Path::new(prefix);
+        if let Some(count) = count_dirs(&base.join("Cellar")) {
+            managers.push(PackageManager {
+                name: "homebrew formulae".to_owned(),
+                count,
+                definition: format!("directories in {prefix}/Cellar"),
+            });
+            if let Some(casks) = count_dirs(&base.join("Caskroom")) {
+                managers.push(PackageManager {
+                    name: "homebrew casks".to_owned(),
+                    count: casks,
+                    definition: format!("directories in {prefix}/Caskroom"),
+                });
+            }
+            // The other prefix is a second installation of the same manager;
+            // counting it too would merge two independent sets silently.
+            break;
+        }
+    }
+    if managers.is_empty() {
+        return Detection::unsupported(
+            "No Homebrew Cellar was found in /opt/homebrew or /usr/local",
+        );
+    }
+    Detection::available(
+        PackagesInfo { managers },
+        "Homebrew Cellar and Caskroom directories",
+    )
+}
+
 pub fn parent_executable() -> io::Result<String> {
     let mut buffer = [0_u8; libc::PROC_PIDPATHINFO_MAXSIZE as usize];
     // SAFETY: getppid is a read-only operation with no pointer arguments.
@@ -677,6 +723,7 @@ pub fn collect(selection: &[ModuleId]) -> PlatformData {
         disk: if_selected(selection, ModuleId::Disk, disk),
         gpu: if_selected(selection, ModuleId::Gpu, gpu),
         display: if_selected(selection, ModuleId::Display, display),
+        packages: if_selected(selection, ModuleId::Packages, packages),
         battery: if_selected(selection, ModuleId::Battery, battery),
         local_ip: if_selected(selection, ModuleId::LocalIp, local_ip),
     }

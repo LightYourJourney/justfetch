@@ -1,6 +1,6 @@
 # Architecture — v0.1
 
-justfetch is a single Rust crate with a small library for deterministic tests and a thin CLI binary. Scope: fourteen system fields, terminal and JSON output, automatic original ASCII logos, a TOML configuration file and module selection, and no runtime network or subprocesses. The only files read outside system paths are the configuration file — at the documented location or the path given to `--config` — and the theme or logo files it names, or that `--theme-file` and `--logo-file` name. Nothing is written unless `init` runs.
+justfetch is a single Rust crate with a small library for deterministic tests and a thin CLI binary. Scope: fifteen system fields, terminal and JSON output, automatic original ASCII logos, a TOML configuration file and module selection, and no runtime network or subprocesses. The only files read outside system paths are the configuration file — at the documented location or the path given to `--config` — and the theme or logo files it names, or that `--theme-file` and `--logo-file` name. Nothing is written unless `init` runs.
 
 ## Data flow
 

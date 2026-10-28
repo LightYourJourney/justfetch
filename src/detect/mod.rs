@@ -123,6 +123,7 @@ pub fn collect(selection: &[ModuleId]) -> SystemSnapshot {
         disk: data.disk,
         gpu: data.gpu,
         display: data.display,
+        packages: data.packages,
         battery: data.battery,
         shell,
         terminal: if_selected(selection, ModuleId::Terminal, terminal),

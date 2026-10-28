@@ -308,6 +308,50 @@ fn display() -> Detection<DisplayInfo> {
     )
 }
 
+/// Installed counts from the package databases this build can read without a
+/// process or a database driver. RPM is not read: its database is SQLite or
+/// Berkeley DB, and guessing from file counts would be a number about nothing.
+fn packages() -> Detection<PackagesInfo> {
+    let mut managers = Vec::new();
+    // dpkg keeps one `.list` file per installed package.
+    if let Ok(entries) = std::fs::read_dir("/var/lib/dpkg/info") {
+        let count = entries
+            .flatten()
+            .filter(|entry| entry.file_name().to_string_lossy().ends_with(".list"))
+            .count() as u64;
+        if count > 0 {
+            managers.push(PackageManager {
+                name: "dpkg".to_owned(),
+                count,
+                definition: "installed packages: one .list file in /var/lib/dpkg/info".to_owned(),
+            });
+        }
+    }
+    // pacman keeps one directory per package under `local`.
+    if let Ok(entries) = std::fs::read_dir("/var/lib/pacman/local") {
+        let count = entries
+            .flatten()
+            .filter(|entry| entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false))
+            .count() as u64;
+        if count > 0 {
+            managers.push(PackageManager {
+                name: "pacman".to_owned(),
+                count,
+                definition: "installed packages: one directory in /var/lib/pacman/local".to_owned(),
+            });
+        }
+    }
+    if managers.is_empty() {
+        let reason = if std::path::Path::new("/var/lib/rpm").exists() {
+            "An RPM database is present, but this build has no RPM database reader"
+        } else {
+            "No dpkg, pacman or RPM database was found"
+        };
+        return Detection::unsupported(reason);
+    }
+    Detection::available(PackagesInfo { managers }, "package database directories")
+}
+
 pub fn collect(selection: &[ModuleId]) -> PlatformData {
     let uname = uname();
     // The hostname is needed for the title even when no module asks for it.
@@ -383,6 +427,7 @@ pub fn collect(selection: &[ModuleId]) -> PlatformData {
         disk: if_selected(selection, ModuleId::Disk, disk),
         gpu: if_selected(selection, ModuleId::Gpu, gpu),
         display: if_selected(selection, ModuleId::Display, display),
+        packages: if_selected(selection, ModuleId::Packages, packages),
         battery: if_selected(selection, ModuleId::Battery, battery),
         local_ip: if_selected(selection, ModuleId::LocalIp, local_ip),
     }
