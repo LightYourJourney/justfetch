@@ -4,7 +4,7 @@
 
 A compact Rust CLI that displays real local system information, with a responsive ASCII layout and structured JSON. It runs offline, requires no configuration or administrator access, and does not call other fetch tools.
 
-**Status:** this source is **v1.0.0-rc.1**, a release candidate on GitHub only. Nothing is on crates.io, and no Homebrew, Scoop or winget package is published. The previous release, v0.1.0, was a seven-field pre-release.
+**Status:** this source is **v1.0.0-rc.1**, a release candidate prepared for GitHub only. No `v1.0.0-rc.1` tag or release exists yet; the steps and the remaining gates are in [docs/roadmap.md](docs/roadmap.md). Nothing is on crates.io, and no Homebrew, Scoop or winget package is published. The previous release, v0.1.0, was a seven-field pre-release.
 
 Verified by execution: macOS on Apple Silicon. The Intel macOS binary cross-compiles and runs under Rosetta 2, which is execution but not Intel hardware. Linux and Windows are built and tested natively in CI, and each runner smoke-tests its own packaged binary, but the Phase 12 collectors have not been executed on those platforms; WSL and distributions other than Ubuntu are untested. See the [compatibility matrix](docs/compatibility.md) for the per-module evidence.
 

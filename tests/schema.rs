@@ -45,7 +45,37 @@ fn type_matches(kind: &str, instance: &Value) -> bool {
     }
 }
 
+/// Every keyword this validator implements. A schema that grows a constraint
+/// outside this list must fail the test rather than be quietly ignored.
+const IMPLEMENTED: [&str; 16] = [
+    "$ref",
+    "oneOf",
+    "type",
+    "const",
+    "enum",
+    "minimum",
+    "maximum",
+    "items",
+    "required",
+    "properties",
+    "additionalProperties",
+    // Document metadata, which constrains nothing.
+    "$schema",
+    "$id",
+    "title",
+    "description",
+    "$defs",
+];
+
 fn validate_at(schema: &Value, root: &Value, instance: &Value, path: &str) -> Result<(), String> {
+    if let Some(object) = schema.as_object() {
+        for key in object.keys() {
+            assert!(
+                IMPLEMENTED.contains(&key.as_str()),
+                "{path}: schema keyword `{key}` is not implemented by this validator"
+            );
+        }
+    }
     if let Some(reference) = schema.get("$ref").and_then(Value::as_str) {
         let name = reference
             .strip_prefix("#/$defs/")
@@ -132,6 +162,48 @@ fn validate_at(schema: &Value, root: &Value, instance: &Value, path: &str) -> Re
 fn validate(instance: &Value) -> Result<(), String> {
     let root = schema();
     validate_at(&root, &root, instance, "$")
+}
+
+/// Walk every schema node, including ones no document happens to reach, and
+/// assert each keyword is one the validator implements.
+fn check_keywords(schema: &Value, path: &str) {
+    let Some(object) = schema.as_object() else {
+        return;
+    };
+    for key in object.keys() {
+        assert!(
+            IMPLEMENTED.contains(&key.as_str()),
+            "{path}: schema keyword `{key}` is not implemented by this validator"
+        );
+    }
+    if let Some(properties) = object.get("properties").and_then(Value::as_object) {
+        for (name, child) in properties {
+            check_keywords(child, &format!("{path}.properties.{name}"));
+        }
+    }
+    for key in ["items", "additionalProperties"] {
+        if let Some(child) = object.get(key) {
+            check_keywords(child, &format!("{path}.{key}"));
+        }
+    }
+    for key in ["oneOf", "anyOf", "allOf"] {
+        if let Some(variants) = object.get(key).and_then(Value::as_array) {
+            for (index, child) in variants.iter().enumerate() {
+                check_keywords(child, &format!("{path}.{key}[{index}]"));
+            }
+        }
+    }
+    if let Some(defs) = object.get("$defs").and_then(Value::as_object) {
+        for (name, child) in defs {
+            check_keywords(child, &format!("{path}.$defs.{name}"));
+        }
+    }
+}
+
+#[test]
+fn the_schema_uses_only_keywords_the_validator_implements() {
+    let root = schema();
+    check_keywords(&root, "$");
 }
 
 #[test]

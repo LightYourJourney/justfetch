@@ -681,7 +681,7 @@ only.
 ### Packaging
 
 `cargo package --locked` builds the crate from exactly the published file list:
-77 files after anchoring the `include` patterns to the repository root (the
+79 files after anchoring the `include` patterns to the repository root (the
 unanchored `LICENSE`/`README.md` entries had been picking up copies staged for
 the release archives), and it compiled from the packaged sources.
 
@@ -747,7 +747,7 @@ keyword the validator does not know is a test panic rather than a silent pass.
 
 The states had drifted: "no battery" was `unsupported` while "no display" and
 "no graphics adapter" were `unavailable`, although all three mean the same thing
-— the question does not apply on this machine. They are `unsupported` now, and
+— the question does not apply on this machine. They are `unsupported` now on all three platforms, and
 the rule is written down in `docs/compatibility.md`: unavailable means the
 platform should have answered and did not; error means an API reported failure.
 
@@ -762,8 +762,11 @@ PowerShell parser), and `verify-wsl.sh` exits non-zero if WSL is mislabelled or
 a not-applicable module reports a value.
 
 `scripts/check-release.sh` checks that the version, tag, release-notes path, the
-tag/version gate, the draft flag, the five asset names and (when `dist/` exists)
-the checksums all agree. It passes on this tree.
+tag/version gate and the draft flag agree, derives the asset name for each of
+the five targets from the workflow, and — when `dist/` exists — checks that each
+local archive carries the expected name and that `SHA256SUMS` verifies and
+covers every archive present. It cannot check that the workflow actually
+produces those names; only a real tag run can. It passes on this tree.
 
 ### CI
 

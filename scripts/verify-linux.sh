@@ -24,7 +24,7 @@ if [ -e /proc/1/cgroup ] && grep -qiE 'docker|kubepods|lxc' /proc/1/cgroup 2>/de
 fi
 
 say "justfetch --format json"
-"$BIN" --format json > /tmp/jf.json || { echo "justfetch failed" >&2; exit 1; }
+"$BIN" --format json --modules gpu,battery,display,packages,desktop,locale > /tmp/jf.json || { echo "justfetch failed" >&2; exit 1; }
 python3 - <<'PY'
 import json
 d = json.load(open('/tmp/jf.json'))

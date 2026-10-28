@@ -342,7 +342,7 @@ fn gpu() -> Detection<GpuInfo> {
     // Success with a null iterator means no service matched, and a null object
     // must not be released or iterated.
     if iterator == 0 {
-        return Detection::unavailable("No IOAccelerator service is registered");
+        return Detection::unsupported("No graphics accelerator is registered on this machine");
     }
     let mut devices = Vec::new();
     loop {
@@ -381,7 +381,7 @@ fn gpu() -> Detection<GpuInfo> {
     // SAFETY: the iterator is an owned object and is released exactly once.
     unsafe { IOObjectRelease(iterator) };
     if devices.is_empty() {
-        return Detection::unavailable("No IOAccelerator service is registered");
+        return Detection::unsupported("No graphics accelerator is registered on this machine");
     }
     Detection::available(GpuInfo { devices }, source)
 }
@@ -465,7 +465,12 @@ fn display() -> Detection<DisplayInfo> {
         });
     }
     if displays.is_empty() {
-        return Detection::unsupported("No display is attached to this machine");
+        // Zero active displays can mean a headless session or a sandbox that
+        // denies the window server; the two look identical from here, so this
+        // is "could not be answered", not "there is no display".
+        return Detection::unavailable(
+            "CoreGraphics reports no active display; a headless session and a sandbox that denies the window server look the same from here",
+        );
     }
     Detection::available(
         DisplayInfo {

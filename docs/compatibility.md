@@ -17,7 +17,11 @@ value" means "not here", "not read" or "failed":
 | `error` | An API was called and reported a failure | `CGGetActiveDisplayList` returning an error code |
 
 A machine with no battery, no display or no graphics adapter reports
-`unsupported` with a reason rather than a zero, an empty list or a guess.
+`unsupported` with a reason rather than a zero, an empty list or a guess — where
+the platform can prove the absence (`/sys` lists no connector, Windows lists no
+monitor, macOS reports no internal battery). When an API simply returns nothing
+and a sandbox that denies it would look identical, the state is `unavailable`
+with a reason saying so; macOS display is reported that way.
 
 ## Evidence matrix
 
@@ -31,11 +35,12 @@ A machine with no battery, no display or no graphics adapter reports
 | WSL1 | Linux adapter, WSL detection/semantic safeguards | Pure parser fixtures only | Not tested in WSL1 | No WSL runner; `scripts/verify-wsl.sh` is the procedure |
 | WSL2 | Linux adapter, explicit WSL2 marker detection | Pure parser fixtures only | Not tested in WSL2 | No WSL runner; `scripts/verify-wsl.sh` is the procedure |
 
+| BSD and other OS | Out of v0.1 scope | Compile-time unsupported | Not tested | None |
+
 On WSL the Linux adapter runs, so packages and locale are expected to work,
 while battery, display and desktop have nothing to answer and should report
 `unsupported`. The script checks exactly that, including that `environment.kind`
 says `wsl`.
-| BSD and other OS | Out of v0.1 scope | Compile-time unsupported | Not tested | None |
 
 "Executed" means the release binary ran on a real kernel of that platform and returned the JSON above; it does not mean every distribution, device or hardware configuration has been tried. What the runners establish is that the Linux `os-release`/`proc`/sysfs and parent-shell paths and the Windows registry/memory/ToolHelp paths work on at least one real system each. Arch, Debian, Fedora, Gentoo, openSUSE, NixOS, Intel Macs, WSL and container guests remain unexercised. ARM64 Linux has had one non-interactive run, described in its row, which is not a distribution or interactive check.
 

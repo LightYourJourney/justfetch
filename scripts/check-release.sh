@@ -12,6 +12,16 @@ version=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
 tag="v$version"
 printf 'version: %s (tag %s)\n' "$version" "$tag"
 
+lock_version=$(grep -A1 'name = "justfetch"' Cargo.lock | sed -n 's/^version = "\(.*\)"/\1/p')
+[ "$lock_version" = "$version" ] && note "Cargo.lock agrees" || bad "Cargo.lock says '$lock_version'"
+
+grep -q "^## $version" CHANGELOG.md && note "CHANGELOG has an entry" || bad "CHANGELOG has no '## $version' entry"
+
+if [ -x target/release/justfetch ]; then
+  reported=$(target/release/justfetch --version | awk '{print $2}')
+  [ "$reported" = "$version" ] && note "binary reports $reported" || bad "binary reports '$reported'"
+fi
+
 notes="docs/release-notes/$tag.md"
 if [ -f "$notes" ]; then note "release notes: $notes"; else bad "missing $notes"; fi
 
@@ -24,6 +34,10 @@ grep -q "Check the tag matches the crate version" .github/workflows/release.yml 
   && note "tag/version gate present" || bad "no tag/version gate"
 grep -q -- "--draft" .github/workflows/release.yml \
   && note "release is a draft" || bad "release is not a draft"
+grep -q -- "--prerelease" .github/workflows/release.yml \
+  && note "release is marked prerelease" || bad "release is not marked prerelease"
+grep -q "github.event_name == 'push'" .github/workflows/release.yml \
+  && note "only a tag push reaches the release job" || bad "release job can run for a non-push event"
 
 # Targets the workflow builds, and the archive name it gives each.
 targets=$(sed -n 's/^ *target: //p' .github/workflows/release.yml | tr -d '\r')
@@ -48,6 +62,18 @@ if [ -d dist ]; then
   if [ -f dist/SHA256SUMS ]; then
     (cd dist && shasum -a 256 -c SHA256SUMS >/dev/null 2>&1 || sha256sum -c SHA256SUMS >/dev/null 2>&1) \
       && note "SHA256SUMS verifies" || bad "SHA256SUMS does not verify"
+    for archive in dist/*.tar.gz dist/*.zip; do
+      [ -e "$archive" ] || continue
+      case "$archive" in
+        *.tar.gz) contents=$(tar -tzf "$archive" | sed 's#.*/##' | sort | tr '\n' ' ') ;;
+        *.zip)    contents=$(unzip -Z1 "$archive" 2>/dev/null | sed 's#.*/##' | sort | tr '\n' ' ') ;;
+      esac
+      echo "$contents" | grep -qE '(^| )justfetch(\.exe)?( |$)' \
+        && echo "$contents" | grep -q ' LICENSE ' \
+        && echo "$contents" | grep -q ' README.md ' \
+        && note "archive contents: $(basename "$archive")" \
+        || bad "archive is missing the binary, LICENSE or README: $(basename "$archive")"
+    done
     listed=$(wc -l < dist/SHA256SUMS | tr -d ' ')
     archives=$(find dist -maxdepth 1 -type f \( -name '*.tar.gz' -o -name '*.zip' \) | wc -l | tr -d ' ')
     [ "$listed" = "$archives" ] && note "SHA256SUMS covers all $archives archives" \

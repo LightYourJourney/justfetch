@@ -416,7 +416,7 @@ fn gpu() -> Detection<GpuInfo> {
         });
     }
     if devices.is_empty() {
-        return Detection::unavailable("EnumDisplayDevicesW reports no active display adapter");
+        return Detection::unsupported("No display adapter is present in this session");
     }
     Detection::available(GpuInfo { devices }, "EnumDisplayDevicesW")
 }

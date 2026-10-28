@@ -18,7 +18,8 @@ Section 'justfetch --format json'
 $doc = & $bin --format json | ConvertFrom-Json
 foreach ($k in 'gpu','battery','display','packages','desktop','locale') {
     $item = $doc.$k
-    Write-Host ("{0,-9} {1,-12} {2}" -f $k, $item.status, ($item.reason ?? $item.source))
+    $detail = if ($item.PSObject.Properties['reason']) { $item.reason } else { $item.source }
+    Write-Host ("{0,-9} {1,-12} {2}" -f $k, $item.status, $detail)
 }
 
 Section 'battery (compare with justfetch)'
@@ -34,7 +35,7 @@ Get-CimInstance -ClassName Win32_VideoController |
 Section 'packages (compare with justfetch)'
 $scoopApps = Join-Path $env:USERPROFILE 'scoop\apps'
 if (Test-Path $scoopApps) {
-    Write-Host "scoop apps: $((Get-ChildItem $scoopApps -Directory).Count)"
+    Write-Host "scoop apps: $((@(Get-ChildItem $scoopApps -Directory)).Count)"
 } else { Write-Host 'scoop: not installed' }
 $winget = Get-Command winget -ErrorAction SilentlyContinue
 if ($winget) {

@@ -21,7 +21,7 @@ if ! grep -qi microsoft /proc/version 2>/dev/null; then
 fi
 
 printf '\n=== justfetch --format json ===\n'
-"$BIN" --format json > /tmp/jf-wsl.json || { echo "justfetch failed" >&2; exit 1; }
+"$BIN" --format json --modules os,host,kernel,gpu,battery,display,packages,desktop,locale > /tmp/jf-wsl.json || { echo "justfetch failed" >&2; exit 1; }
 python3 - <<'PY'
 import json, sys
 d = json.load(open('/tmp/jf-wsl.json'))
