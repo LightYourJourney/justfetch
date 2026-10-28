@@ -10,12 +10,18 @@ on:
     tags: ["v*"]
   workflow_dispatch:
 
+# The build job only needs to read; the release job asks for write on its own.
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   build:
     name: ${{ matrix.target }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -41,7 +47,7 @@ jobs:
             native: true
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Install stable Rust
         run: rustup toolchain install stable --profile minimal
       - name: Add the build target
@@ -68,7 +74,9 @@ jobs:
       - name: Package (windows)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: Compress-Archive -Path "stage/$env:NAME" -DestinationPath "$env:NAME.zip"
+        # Archive the contents, not the directory: Scoop expects the binary at the
+        # archive root, while the tar keeps its top-level directory.
+        run: Compress-Archive -Path "stage/$env:NAME/*" -DestinationPath "$env:NAME.zip"
       # A successful cross-compile says nothing about whether the archive runs,
       # and running the build output would not prove the archive is usable. This
       # unpacks the archive it just produced and runs the binary from inside it,
@@ -99,7 +107,7 @@ jobs:
               throw "$field is not available in the packaged binary"
             }
           }
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: ${{ matrix.target }}
           path: |
@@ -109,14 +117,29 @@ jobs:
   release:
     name: Publish the release
     needs: build
-    if: startsWith(github.ref, 'refs/tags/')
+    # Only a tag push publishes. A manual dispatch of this workflow builds the
+    # archives and stops; it cannot reach this job even if it is dispatched
+    # against a tag ref.
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v8
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           path: dist
           merge-multiple: true
+      - name: Check the tag matches the crate version
+        run: |
+          set -eu
+          tag="${GITHUB_REF_NAME#v}"
+          version=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
+          if [ "$tag" != "$version" ]; then
+            echo "tag $GITHUB_REF_NAME does not match Cargo.toml version $version"
+            exit 1
+          fi
       - name: Write checksums
         run: |
           set -eu
@@ -131,15 +154,16 @@ jobs:
             echo "SHA256SUMS lists $listed files but $archives archives exist"
             exit 1
           fi
-      # --prerelease is deliberate: the three CI-verified platforms are not the
-      # whole matrix. Removing this one word is the change once the real-hardware
-      # verification in docs/roadmap.md is done.
-      - name: Create the GitHub release
+      # --draft is the gate: the workflow assembles and verifies, and a
+      # maintainer publishes. --prerelease stays until the real-hardware
+      # verification in docs/roadmap.md is done; removing both words is the
+      # change that turns a candidate into a release.
+      - name: Create the draft release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "${GITHUB_REF_NAME}" \
             --title "justfetch ${GITHUB_REF_NAME}" \
             --notes-file "docs/release-notes/${GITHUB_REF_NAME}.md" \
-            --prerelease \
+            --draft --prerelease \
             dist/*

@@ -44,7 +44,7 @@ Two rules follow from those:
 
 `classic` and `vertical` drop automatically chosen artwork when the column would
 fall below 36 cells of information beside it (`classic`) or when the artwork
-leaves fewer than four spare columns (`vertical`). Artwork the user named
+is wider than the terminal (`vertical`). Artwork the user named
 explicitly — `--logo NAME`, `--logo-file` or the matching configuration keys —
 is not dropped while it fits the terminal: `classic` moves it above the
 information instead, the same arrangement `vertical` uses. Artwork wider than

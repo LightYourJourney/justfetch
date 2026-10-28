@@ -5,6 +5,8 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Least privilege: the workflow only reads the repository, and every third-party
+# action is pinned to a commit SHA so a retagged release cannot change what runs.
 permissions:
   contents: read
 
@@ -17,7 +19,7 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Install stable Rust and lint tools
         run: rustup toolchain install stable --profile minimal --component rustfmt --component clippy
       - name: Format
@@ -48,6 +50,17 @@ jobs:
     name: MSRV / 1.95.0
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - run: rustup toolchain install 1.95.0 --profile minimal
       - run: cargo +1.95.0 check --locked --all-targets
+
+  package:
+    name: Package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - run: rustup toolchain install stable --profile minimal
+      # Builds the crate from exactly the files the published package would
+      # contain, so a missing entry in `include` fails here rather than at
+      # publish time.
+      - run: cargo +stable package --locked

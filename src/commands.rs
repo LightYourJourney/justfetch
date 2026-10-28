@@ -139,15 +139,27 @@ pub fn diagnose(cli: &Cli) -> Vec<Finding> {
     findings
 }
 
-/// What `init` writes. Every setting is shown at its default so the file can be
-/// edited by deleting lines rather than by looking the format up.
-pub const INIT_TEMPLATE: &str = r#"# justfetch configuration
+/// What `init` writes, with the module line this platform defaults to. Every
+/// other setting is shown at its default so the file can be edited by deleting
+/// lines rather than by looking the format up.
+pub fn init_template() -> String {
+    INIT_TEMPLATE.replace(
+        "@MODULES@",
+        &crate::module::ModuleId::default_selection()
+            .iter()
+            .map(|module| format!("\"{}\"", module.id()))
+            .collect::<Vec<_>>()
+            .join(", "),
+    )
+}
+
+const INIT_TEMPLATE: &str = r#"# justfetch configuration
 #
 # Every setting is optional. The values below are the built-in defaults, so
 # deleting a line keeps the behaviour it describes.
 
 # Modules to show, in display order. Identifiers come from `justfetch --help`.
-modules = ["os", "host", "kernel", "uptime", "cpu", "gpu", "memory", "swap", "disk", "battery", "packages", "desktop", "locale", "shell", "terminal", "local_ip"]
+modules = [@MODULES@]
 
 [theme]
 # A built-in theme, or `file = "path.toml"` for one of your own.
@@ -195,7 +207,7 @@ pub fn init(cli: &Cli) -> Result<PathBuf, ConfigError> {
         std::fs::create_dir_all(parent)
             .map_err(|error| ConfigError::at(parent, format!("cannot create: {error}")))?;
     }
-    std::fs::write(&path, INIT_TEMPLATE)
+    std::fs::write(&path, init_template())
         .map_err(|error| ConfigError::at(&path, format!("cannot write: {error}")))?;
     Ok(path)
 }
@@ -423,7 +435,7 @@ mod tests {
     #[test]
     fn the_init_template_parses_to_the_defaults() {
         let dir = tempdir("template");
-        let path = write(&dir, "config.toml", INIT_TEMPLATE);
+        let path = write(&dir, "config.toml", &init_template());
         let parsed = crate::config::resolve_with(
             &Cli {
                 config: Some(path),
@@ -432,7 +444,7 @@ mod tests {
             None,
         )
         .unwrap();
-        assert_eq!(parsed.modules, crate::module::ModuleId::DEFAULT.to_vec());
+        assert_eq!(parsed.modules, crate::module::ModuleId::default_selection());
         assert_eq!(parsed.logo, crate::config::LogoChoice::Auto);
         assert!(parsed.color);
         assert_eq!(parsed.separator, crate::config::DEFAULT_SEPARATOR);

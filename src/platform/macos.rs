@@ -372,8 +372,9 @@ fn gpu() -> Detection<GpuInfo> {
         devices.push(GpuDevice {
             name: model,
             vendor,
-            id: (!class.is_empty()).then(|| class.clone()),
-            driver: None,
+            // The accelerator class is the driver's class, not a hardware id.
+            id: None,
+            driver: (!class.is_empty()).then(|| class.clone()),
             kind,
         });
     }
@@ -492,7 +493,7 @@ fn packages() -> Detection<PackagesInfo> {
     let mut managers = Vec::new();
     for prefix in ["/opt/homebrew", "/usr/local"] {
         let base = std::path::Path::new(prefix);
-        if let Some(count) = count_dirs(&base.join("Cellar")) {
+        if let Some(count) = count_dirs(&base.join("Cellar")).filter(|count| *count > 0) {
             managers.push(PackageManager {
                 name: "homebrew formulae".to_owned(),
                 count,

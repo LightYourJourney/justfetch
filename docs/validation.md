@@ -51,7 +51,7 @@ Reviewer follow-up found no further substantive defects in these corrections. Wi
 
 ## Performance and licensing
 
-[performance.md](performance.md) documents 600 measured ordinary-user runs (10 warmups and 100 samples for each of six commands), all recorded exits zero, with raw Hyperfine JSON. [third-party.md](third-party.md) lists exact dependency license metadata, including target-specific crates and Unicode notices. Existing LICENSE is unchanged. All logos were authored locally; upstream repository research is design reference only.
+[benchmark.md](benchmark.md) documents 600 measured ordinary-user runs (10 warmups and 100 samples for each of six commands), all recorded exits zero, with raw Hyperfine JSON. [third-party.md](third-party.md) lists exact dependency license metadata, including target-specific crates and Unicode notices. Existing LICENSE is unchanged. All logos were authored locally; upstream repository research is design reference only.
 
 ## Final verification additions
 
@@ -70,7 +70,7 @@ An independent pass re-ran every claim above against the actual checkout rather 
 
 - Cross-target checks reproduce. `RUSTC=~/.rustup/toolchains/stable-aarch64-apple-darwin/bin/rustc cargo check --locked --all-targets --target <t>` passes for `aarch64-unknown-linux-gnu`, `x86_64-unknown-linux-gnu`, `x86_64-pc-windows-gnu` and `x86_64-apple-darwin`. A first attempt failed with `can't find crate for std`; the cause is the documented one — PATH resolves Homebrew rustc 1.99.0, which does not know the Rustup targets — and it is an environment error, not a code error.
 - The macOS memory figure is not fabricated and matches its documented formula exactly. A C program calling `host_statistics64` directly computed `(internal_page_count - purgeable_count + wire_count + compressor_page_count) * page_size = 13953368064`, and `justfetch --format json` reported `used_bytes = 13953368064` in the same window.
-- Tool versions in `docs/performance.md` are accurate: `fastfetch 2.69.0`, `hyperfine 2.0.0`, and `/opt/homebrew/bin/pfetch` reports `pfetch-rs 3.0.2`, so the "pfetch-rs" label is correct rather than the shell `pfetch`.
+- Tool versions in `docs/benchmark.md` are accurate: `fastfetch 2.69.0`, `hyperfine 2.0.0`, and `/opt/homebrew/bin/pfetch` reports `pfetch-rs 3.0.2`, so the "pfetch-rs" label is correct rather than the shell `pfetch`.
 - Dependency MSRVs in `docs/research.md` match the registry manifests: sysinfo 0.39.6 declares 1.95, clap 4.6.7 declares 1.85, serde 1.0.229 declares 1.56, serde_json 1.0.151 declares 1.71, unicode-width 0.2.2 declares 1.66, unicode-segmentation 1.13.3 declares 1.85, anstyle 1.0.14 declares 1.66, libc 0.2.190 declares 1.65, windows-sys 0.61.2 declares 1.71, toml 1.1.8 and its chain declare 1.85.
 
 ### Defect found and fixed
@@ -83,7 +83,7 @@ The regression test was written twice. The first version used a logo *taller* th
 
 - `docs/compatibility.md` claimed long fields "wrap without dropping data". They wrap on grapheme boundaries, but a grapheme wider than the columns left for it is replaced by `?`; `wrap("中", 1) == ["?"]` and `wrap("👩🔬", 1) == ["?"]`. The hard column bound is deliberate, so the text was corrected rather than the code.
 - `docs/compatibility.md` described the logo threshold as "the two-column threshold", which names no actual rule, and implied a hostname fallback on macOS that does not exist. Both are now stated as implemented and confirmed against the source.
-- `docs/performance.md` gained the re-measurement below.
+- `docs/benchmark.md` gained the re-measurement below.
 
 ### Re-measurement that did not reproduce
 
@@ -124,7 +124,7 @@ A two-axis review ran against the whole working tree with two independent review
 
 ### Known gap this round did not close
 
-The benchmark at that point had no Macchina measurement and no reproducible wall-time baseline, so the spec's "benchmark against Fastfetch, Macchina and pfetch-rs" was only partly satisfied. Both were recorded in performance.md rather than papered over. **Closed on 2026-10-16; see the benchmark section below.**
+The benchmark at that point had no Macchina measurement and no reproducible wall-time baseline, so the spec's "benchmark against Fastfetch, Macchina and pfetch-rs" was only partly satisfied. Both were recorded in benchmark.md rather than papered over. **Closed on 2026-10-16; see the benchmark section below.**
 
 ## First CI run (2026-10-15)
 
@@ -160,11 +160,11 @@ Macchina 6.4.0 was installed and measured, closing the comparator the spec asked
 
 **Result.** Wall-clock coefficient of variation across the seven commands was 59%–125%; CPU time 17%–21%; instruction counts **1.2%–2.1%**. Wall clock on this host measures the machine, not the program. The baseline was therefore moved onto instruction counts, with wall clock retained only as a load-contaminated upper bound, and the round's medians are 27.8 M instructions for a full justfetch run against 34.2 M pfetch-rs, 41.8 M Fastfetch and 46.0 M Macchina.
 
-**A hypothesis was tested and failed.** The note written on 2026-10-11 guessed that a uniform per-run harness cost explained the 3x wall-time drift. Measuring the same four commands sandboxed and unsandboxed minutes apart showed the sandbox is not the cause — the unsandboxed run was slower and far noisier because the machine had become busier. Host load explains it; the earlier guess was wrong and `docs/performance.md` now says so.
+**A hypothesis was tested and failed.** The note written on 2026-10-11 guessed that a uniform per-run harness cost explained the 3x wall-time drift. Measuring the same four commands sandboxed and unsandboxed minutes apart showed the sandbox is not the cause — the unsandboxed run was slower and far noisier because the machine had become busier. Host load explains it; the earlier guess was wrong and `docs/benchmark.md` now says so.
 
 **A finding worth acting on later.** `justfetch --help` costs 27.4 M instructions and a full run 27.8 M. Collection and rendering are about 1.5% of the process; the rest is process creation, dynamic linking and argument parsing. No detector change can move the remaining 98.5%, so future performance work that matters would have to target startup, not collection.
 
-**Corrections made during this round.** Two claims of mine were wrong and were fixed before commit. The first, in `docs/performance.md`, was the harness-cost inference above. The second was a sentence asserting Macchina "has no such key in its binary" for hiding ASCII art: a wider search of the binary found `hide_ascii` and `prefer_small_ascii` theme keys, so the sentence was replaced with what is actually true — no CLI flag exists, the theme schema is undocumented, `-t` silently falls back on an unknown name, and `XDG_CONFIG_HOME` is ignored on macOS, so using a theme would mean writing into the reader's own config directory. Macchina was measured as it ships and its figures are labelled an upper bound rather than a like-for-like ratio.
+**Corrections made during this round.** Two claims of mine were wrong and were fixed before commit. The first, in `docs/benchmark.md`, was the harness-cost inference above. The second was a sentence asserting Macchina "has no such key in its binary" for hiding ASCII art: a wider search of the binary found `hide_ascii` and `prefer_small_ascii` theme keys, so the sentence was replaced with what is actually true — no CLI flag exists, the theme schema is undocumented, `-t` silently falls back on an unknown name, and `XDG_CONFIG_HOME` is ignored on macOS, so using a theme would mean writing into the reader's own config directory. Macchina was measured as it ships and its figures are labelled an upper bound rather than a like-for-like ratio.
 
 **What this round does not establish.** The host was never quiesced, at the operator's explicit request, so no wall-clock figure here should be published as a baseline. Instruction counts do not capture I/O waits or terminal painting. Nothing here is evidence about Linux or Windows performance, and peak RSS is Hyperfine's process peak-resident metric, not retained heap.
 
@@ -270,7 +270,7 @@ Two of its findings were stale rather than real: it reported the release workflo
 
 Phase 10 added a module system and a TOML configuration file. `docs/configuration.md` is the reference; this records what was exercised.
 
-**Selection-driven collection.** The claim that an unselected module is never queried was measured rather than asserted: 100 runs each with `hyperfine --shell none --output pipe`, comparing a full run against progressively smaller selections. Instruction medians: full run 28.47 M, `--modules cpu` 27.81 M (97.7%), `--modules cpu,memory` 27.91 M (98.0%), every module except `host` 28.34 M (99.6%). Raw measurements are in [benchmarks/module-selection-2026-10-27.json](benchmarks/module-selection-2026-10-27.json). The saving is real and small because process startup dominates; no wall-clock figure is quoted, for the reason recorded in performance.md.
+**Selection-driven collection.** The claim that an unselected module is never queried was measured rather than asserted: 100 runs each with `hyperfine --shell none --output pipe`, comparing a full run against progressively smaller selections. Instruction medians: full run 28.47 M, `--modules cpu` 27.81 M (97.7%), `--modules cpu,memory` 27.91 M (98.0%), every module except `host` 28.34 M (99.6%). Raw measurements are in [benchmarks/module-selection-2026-10-27.json](benchmarks/module-selection-2026-10-27.json). The saving is real and small because process startup dominates; no wall-clock figure is quoted, for the reason recorded in benchmark.md.
 
 **Configuration.** Paths resolve to `$XDG_CONFIG_HOME/justfetch/config.toml` or `~/.config/justfetch/config.toml` on Unix-like platforms, and `%APPDATA%\justfetch\config.toml` on Windows. Precedence was exercised at every layer with conflicting values: the command line beats `--config`, which beats the user file, which beats the defaults, and `--color`/`--no-color` override the file in both directions. Every malformed case — unknown module, duplicate module, empty list, unknown key, wrong type, malformed TOML, blank label, invalid `layout.logo`, missing `--config` file, empty `--modules` value — exits non-zero, writes nothing to stdout, and names the file and position.
 
@@ -627,7 +627,7 @@ and cloud-VM cases are the same code path but were not exercised on such a
 machine here.
 
 **Performance.** 30 runs each, instruction counts (load-resistant; wall clock on
-this host is not, see performance.md), raw data in
+this host is not, see benchmark.md), raw data in
 [benchmarks/battery-2026-10-28.json](benchmarks/battery-2026-10-28.json):
 
 | Selection | Median instructions | vs `--modules os` |
@@ -647,3 +647,79 @@ by 0.6%, which is the run-to-run drift to compare against.
 **Not verified.** Linux and Windows are implemented and cross-compiled but have
 not been run: no Linux or Windows machine was available. Their sysfs and
 `GetSystemPowerStatus` paths are covered by cross-target compilation only.
+
+## Release candidate round (2026-10-28)
+
+Phase 13 preparation for v1.0.0-rc.1. What follows was executed on this machine
+or in CI; nothing is inferred from a previous phase's claims.
+
+### Toolchain finding
+
+The `cargo` on `PATH` is Homebrew's Rust 1.99.1, which has no std for any target
+other than the host, and the rustup stable toolchain here has a broken
+`rust-objcopy` (it cannot load `libLLVM.dylib`), so `strip = true` does not run
+for cross-target builds made with it. The release binaries in `dist/` were
+therefore built without the strip this profile asks for, and are larger than
+what CI produces. CI uses its own rustup toolchain where strip works; the local
+`dist/` is a preview, not the release artifact set.
+
+### Cross-platform matrix
+
+| Target | `cargo check --all-targets` | Release build | Executed |
+| --- | --- | --- | --- |
+| aarch64-apple-darwin | Yes (host) | Yes | Yes, interactively on Mac15,12 |
+| x86_64-apple-darwin | Yes | Yes (cross) | Yes, under Rosetta 2 — execution, not Intel hardware |
+| aarch64-unknown-linux-gnu | Yes | No — no cross linker installed | No |
+| x86_64-unknown-linux-gnu | Yes | No — no cross linker installed | No |
+| x86_64-pc-windows-gnu | Yes | No — no MinGW toolchain installed | No |
+
+The Linux and Windows binaries are built natively by the release workflow on
+their own runners, which also unpack and run the archive they produced. Those CI
+runs are the evidence for those platforms; this machine contributes compilation
+only.
+
+### Packaging
+
+`cargo package --locked` builds the crate from exactly the published file list:
+77 files after anchoring the `include` patterns to the repository root (the
+unanchored `LICENSE`/`README.md` entries had been picking up copies staged for
+the release archives), and it compiled from the packaged sources.
+
+Two macOS archives were assembled locally with the release workflow's naming and
+contents (binary, `LICENSE`, `README.md`), a `SHA256SUMS` was written and
+verified with `shasum -a 256 -c`, and both binaries report `justfetch 1.0.0-rc.1`
+when run from the extracted archive — the x86_64 one under Rosetta.
+
+### Dependencies
+
+The RustSec advisory database was downloaded and compared against `Cargo.lock`:
+51 dependency packages, two advisories match by name (`windows`,
+`hashbrown`), and both locked versions are at or above the patched version. No
+known vulnerability is present as of this snapshot. `cargo audit` itself could
+not fetch the database from GitHub in this environment, so the comparison was
+done directly against the downloaded files and the result is reproducible from
+them.
+
+### File-size limits
+
+The limits were checked against the file's size before reading, so an oversized
+file is refused rather than loaded. A 200 KB logo and a 2 MB configuration are
+both rejected with the size and the limit in the message, at about 7.7 MB peak
+memory; before this change the same files were read whole (73 MB and 75 MB peak)
+and only then rejected. The configuration file gained a 1 MiB limit; before, it
+had none.
+
+### Release gates
+
+The release job now runs only for a tag push (a manual dispatch builds and
+stops), checks that the tag equals the version in `Cargo.toml`, and creates a
+**draft** release. Publishing the draft is a maintainer action. None of this has
+been executed here: no tag exists, and creating one is not something this round
+does without authorisation.
+
+### Performance
+
+Measured against installed fastfetch 2.70.0 and macchina 6.4.0 with their own
+default outputs; commands, field counts and caveats are in
+[benchmark.md](benchmark.md#phase-13-measurement-2026-10-28). This machine is not
+quiesced, so the instruction counts are the figure to compare.

@@ -103,3 +103,45 @@ Kept because they are the reason the method changed, and because deleting an inc
 **2026-10-11.** A 40-run re-run of the same commands on the same binary produced roughly one third of those wall times across the board, including `--help`, with RSS agreeing to 0.05 MiB. The ranking also reversed: pfetch-rs was faster than justfetch on 2026-10-10 and slower on 2026-10-11. A third attempt during a busy period (load 11.6 / 29.7 / 31.7, `/usr/bin/true` baseline 31.5 ± 26.9 ms) was discarded as unusable.
 
 Both rounds' wall times should be treated as upper bounds measured under unidentified load. Neither should be quoted as a baseline, and no comparison against Fastfetch, pfetch-rs or Macchina should be taken from them.
+
+## Phase 13 measurement (2026-10-28)
+
+Same machine, not quiesced, so wall clock carries the usual caveat and the
+instruction counts are the figure to compare.
+
+```
+Machine   Apple M3 / Mac15,12 / macOS 26.6.2
+Tools     justfetch 1.0.0-rc.1 (stable toolchain, release profile)
+          fastfetch 2.70.0, macchina 6.4.0, hyperfine 2.0.0
+Runs      5 warmups, 30 measured per command, --shell none
+Commands  justfetch --no-color | justfetch --format json
+          fastfetch --logo none  | macchina
+```
+
+| Tool | Fields shown | Median wall | Median instructions |
+| --- | ---: | ---: | ---: |
+| justfetch (text) | 15 on macOS (16 on Linux) | 11.1 ms | 37.8 M |
+| justfetch (JSON) | 17 module objects, 15 collected | 9.8 ms | 37.5 M |
+| fastfetch 2.70.0 | 18 | 78.6 ms | 242.7 M |
+| macchina 6.4.0 | 16 | 70.2 ms | 170.9 M |
+
+The wall figures move between runs on this host: an earlier run of the same
+commands in the same session measured fastfetch at 116 ms and macchina at
+116 ms. That is the machine, not the tools; the instruction counts moved by less
+than 1%.
+
+The field sets are not identical — fastfetch also reports window manager, WM
+theme, font and cursor, macchina reports brightness and CPU load — so this is
+not a like-for-like ratio and is not presented as one. What it shows is the cost
+of each tool as it ships with its own default configuration on this machine.
+
+Binary size and peak memory, release profile with `strip` and thin LTO:
+
+| Binary | Size |
+| --- | ---: |
+| justfetch aarch64-apple-darwin | 1 511 KiB |
+| justfetch x86_64-apple-darwin | 1 610 KiB |
+| fastfetch 2.70.0 (Homebrew) | 1 450 KiB |
+| macchina 6.4.0 (Homebrew) | 1 676 KiB |
+
+Peak resident set size for a default run: 7.9 MB.

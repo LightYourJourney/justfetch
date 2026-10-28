@@ -58,9 +58,9 @@ fn help_and_version() {
 
 /// Every field the snapshot promises, so adding one cannot silently ship
 /// without a status.
-const FIELDS: [&str; 11] = [
-    "os", "host", "kernel", "uptime", "cpu", "memory", "swap", "disk", "shell", "terminal",
-    "local_ip",
+const FIELDS: [&str; 17] = [
+    "os", "host", "kernel", "uptime", "cpu", "gpu", "memory", "swap", "disk", "battery", "display",
+    "packages", "desktop", "locale", "shell", "terminal", "local_ip",
 ];
 
 #[test]
@@ -86,11 +86,15 @@ fn json_is_one_structured_document() {
     assert!(!out.stdout.contains(&27));
     let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(json["schema_version"], 1);
-    const KNOWN: [&str; 5] = [
+    // Every state the model defines, including the two that mean "nothing was
+    // attempted" and "nothing was collected": a default run leaves `display`
+    // deselected.
+    const KNOWN: [&str; 6] = [
         "available",
         "unavailable",
         "unsupported",
         "redacted",
+        "deselected",
         "error",
     ];
     for field in FIELDS {
@@ -223,9 +227,7 @@ fn json_marks_unselected_modules_as_deselected() {
     let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(json["schema_version"], 1);
     assert_eq!(json["cpu"]["status"], "available");
-    for field in [
-        "os", "host", "kernel", "uptime", "memory", "swap", "disk", "shell", "terminal", "local_ip",
-    ] {
+    for field in FIELDS.iter().filter(|field| **field != "cpu") {
         assert_eq!(json[field]["status"], "deselected", "{field}");
         assert!(json[field].get("value").is_none(), "{field} kept a value");
     }

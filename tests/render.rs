@@ -113,8 +113,7 @@ fn fixture() -> SystemSnapshot {
                 managers: vec![PackageManager {
                     name: "dpkg".to_owned(),
                     count: 1234,
-                    definition: "installed packages: one .list file in /var/lib/dpkg/info"
-                        .to_owned(),
+                    definition: "installed packages: entries in /var/lib/dpkg/status".to_owned(),
                 }],
             },
             "fixture",

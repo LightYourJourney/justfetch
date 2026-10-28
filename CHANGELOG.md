@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+## 1.0.0-rc.1 — release candidate
+
+First candidate for a stable release. Everything below was already in the
+repository; this entry records what the candidate contains and what has been
+verified for it.
+
+- Seventeen modules: OS, Host, Kernel, Uptime, CPU, GPU, Memory, Swap, Disk,
+  Battery, Display (opt-in), Packages, Desktop (Linux), Locale, Shell, Terminal
+  and Local IP.
+- A TOML configuration file with `init` and `doctor`; module selection and
+  ordering; custom labels and separator.
+- Six colour themes, four layouts, custom theme and logo files, and `themes`.
+- `--privacy`, machine-readable JSON with provenance on every field, and a
+  documented stability policy for 1.x.
+- Release automation for five targets with packaged-binary smoke tests on every
+  runner that can run its own build, and a checksum file whose count is
+  checked.
+- Verified by execution on macOS ARM64; the Intel macOS binary runs under
+  Rosetta 2. Linux and Windows are built and tested in CI, and their packaged
+  binaries are smoke-tested there, but the newer collectors have not been run
+  on those platforms.
+
+
 ### Advanced detection
 
 - Add **Locale**, the sixth Phase 12 module. The process locale follows POSIX precedence (`LC_ALL`, then `LC_MESSAGES`, then `LANG`) as a pure function with its own tests; the system default is read separately — `/etc/locale.conf` or `/etc/default/locale` on Linux, `CFPreferences AppleLocale` on macOS, `GetUserDefaultLocaleName` on Windows. The two are never conflated, and when they match the row says it once.
@@ -75,7 +98,7 @@
 - Add a regression test that fails without that fix, plus two property tests sweeping 0–260, 1000, 4096 and 100000 columns across all color/Unicode combinations. That round took the test count from 27 to 31.
 - Correct `docs/compatibility.md`: long fields wrap on grapheme boundaries but a grapheme wider than the columns left for it is replaced by `?` rather than preserved, and the logo threshold is stated as the actual rule instead of an unexplained one.
 - Correct `docs/compatibility.md` on Host fallback: Linux falls back to the labeled hostname only when a model source is absent, while macOS never falls back and reports an error instead.
-- Record an independent re-measurement in `docs/performance.md`. Peak RSS reproduced to within 0.05 MiB, but wall times and the Fastfetch/pfetch-rs ranking did not reproduce on the loaded measurement machine. The earlier wall times are now marked as an upper bound, not a baseline.
+- Record an independent re-measurement in `docs/benchmark.md`. Peak RSS reproduced to within 0.05 MiB, but wall times and the Fastfetch/pfetch-rs ranking did not reproduce on the loaded measurement machine. The earlier wall times are now marked as an upper bound, not a baseline.
 
 ### Code review round
 
@@ -92,7 +115,7 @@
 - Measure Macchina 6.4.0, the comparator the spec asked for and the two earlier rounds had to leave open. It is included in the baseline table and in the new raw artifact.
 - Move the baseline onto instruction counts. Wall clock on a loaded host varied by 59–125% across commands while instruction counts varied by 1.2–2.1%, so wall clock was demoted to a load-contaminated upper bound. Ten interleaved rounds with a rotating command order replaced the sequential protocol, which let a single load spike bias a whole command.
 - Record the raw 700-sample evidence in `docs/benchmarks/macos-arm64-interleaved-2026-10-16.json`, including every metric Hyperfine emitted and the load samples, with no statistic baked in.
-- Correct the hypothesis recorded in `docs/performance.md` for the 2026-10-11 re-measurement: the 3x wall-time drift was attributed to a per-run harness cost, and measuring sandboxed against unsandboxed showed it was host load instead.
+- Correct the hypothesis recorded in `docs/benchmark.md` for the 2026-10-11 re-measurement: the 3x wall-time drift was attributed to a per-run harness cost, and measuring sandboxed against unsandboxed showed it was host load instead.
 - Report the result that collection and rendering are about 1.5% of the process's instructions — `--help` costs 27.4 M against 27.8 M for a full run — so the remaining cost is startup, linking and argument parsing.
 
 ### Release round

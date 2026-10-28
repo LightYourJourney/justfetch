@@ -4,7 +4,9 @@
 
 A compact Rust CLI that displays real local system information, with a responsive ASCII layout and structured JSON. It runs offline, requires no configuration or administrator access, and does not call other fetch tools.
 
-**Status:** the published [v0.1.0 pre-release](https://github.com/LightYourJourney/justfetch/releases) carries the **seven-field** build described in its [release notes](docs/release-notes/v0.1.0.md). The seventeen fields, `--privacy`, the module, theme and layout system, and the wider test and CI work described below are in the repository and **not yet released**; nothing is on crates.io. Apple Silicon macOS was exercised locally, Linux x86-64 and Windows x64 in the CI test job, and ARM64 Linux in the release workflow, which also runs each packaged archive on its own runner except the cross-compiled Intel macOS one. Intel macOS is built but has never been run, so its archive is unverified; WSL and distributions other than Ubuntu remain untested. See the [compatibility matrix](docs/compatibility.md).
+**Status:** this source is **v1.0.0-rc.1**, a release candidate on GitHub only. Nothing is on crates.io, and no Homebrew, Scoop or winget package is published. The previous release, v0.1.0, was a seven-field pre-release.
+
+Verified by execution: macOS on Apple Silicon. The Intel macOS binary cross-compiles and runs under Rosetta 2, which is execution but not Intel hardware. Linux and Windows are built and tested natively in CI, and each runner smoke-tests its own packaged binary, but the Phase 12 collectors have not been executed on those platforms; WSL and distributions other than Ubuntu are untested. See the [compatibility matrix](docs/compatibility.md) for the per-module evidence.
 
 ## Features
 
@@ -24,7 +26,7 @@ This list describes the current source. The published v0.1.0 archive is older an
 
 ## Example
 
-Captured from a real `--no-color` invocation of the current source on Apple M3 / macOS 26.6.2; the v0.1.0 archive renders seven rows, not the sixteen a default run now shows. `display` is not in the default list, so it has no row here. The user and host identity and the home path are replaced by shorter placeholders; the divider tracks the title's width, so it is shorter here than in the original. Memory, swap, disk and uptime naturally change. This is plain output; a compatible TTY adds colors automatically.
+Captured from a real `--no-color` invocation of the current source on Apple M3 / macOS 26.6.2; the v0.1.0 archive renders seven rows, not the fifteen a default run shows on macOS. `display` is not in the default list on any platform, and `desktop` is in it only on Linux, where the concept exists. The user and host identity and the home path are replaced by shorter placeholders; the divider tracks the title's width, so it is shorter here than in the original. Memory, swap, disk and uptime naturally change. This is plain output; a compatible TTY adds colors automatically.
 
 ```text
          .'       ~ [user]@[host]
@@ -32,15 +34,14 @@ Captured from a real `--no-color` invocation of the current source on Apple M3 /
    .--.  .--.     OS        macOS 26.6.2
   /          \    Host      Mac15,12
  |            |   Kernel    Darwin 25.6.0
- |            |   Uptime    6d 1h 20m
+ |            |   Uptime    6d 4h 25m
   \          /    CPU       Apple M3 (8 logical)
    `--.  .--'     GPU       Apple M3
-                  Memory    12.60 / 16.00 GiB (79%)
-                  Swap      8.35 / 9.00 GiB (93%)
-                  Disk      342.62 / 460.43 GiB (74%) on /home/user
+                  Memory    12.67 / 16.00 GiB (79%)
+                  Swap      5.72 / 7.00 GiB (82%)
+                  Disk      345.36 / 460.43 GiB (75%) on /home/user
                   Battery   100% (full)
                   Packages  homebrew formulae 883, homebrew casks 44
-                  Desktop   Unsupported
                   Locale    zh_CN.UTF-8 (LANG), system zh_CN
                   Shell     zsh
                   Term      iTerm.app 3.7.1beta1
@@ -56,12 +57,18 @@ Captured from a real `--no-color` invocation of the current source on Apple M3 /
 Requires **stable Rust 1.95 or newer** and Cargo. From this source checkout:
 
 ```sh
-cargo build --release --locked
-./target/release/justfetch
 cargo install --path . --locked
 ```
 
-On Windows the built executable is `target\release\justfetch.exe`. Cargo installs into its configured bin directory; ensure that directory is on PATH. Prebuilt archives for five platforms are attached to the [v0.1.0 pre-release](https://github.com/LightYourJourney/justfetch/releases); they are unsigned, and no crates.io package, Homebrew formula or Scoop manifest exists for this version. No Rust nightly or special fonts are needed.
+Or take a prebuilt archive from the release: each holds the binary, `LICENSE` and `README.md`, and `SHA256SUMS` covers every archive. Verify it before running:
+
+```sh
+shasum -a 256 -c SHA256SUMS   # macOS; sha256sum on Linux
+```
+
+On Windows the built executable is `justfetch.exe`. Cargo installs into its configured bin directory; ensure that directory is on PATH. The archives are unsigned; macOS may require allowing the binary in System Settings after download. No Rust nightly, special fonts or administrator access are needed.
+
+Draft Homebrew and Scoop manifests live in `packaging/` and are **not published**; their checksums must be filled from the real release assets first.
 
 ## Usage
 
@@ -115,6 +122,16 @@ For example, an available memory field has this structure (numbers here illustra
 
 The full document has `schema_version: 1`, identity/environment metadata and seventeen field objects. Missing values have status/reason rather than fake N/A values; errors carry source/code/message. Consumers should ignore new additive fields. See [architecture](docs/architecture.md) and [accounting definitions](docs/compatibility.md).
 
+## Stability for 1.x
+
+What 1.x promises, and what it does not:
+
+- **JSON is the interface.** Existing keys keep their meaning and their units; new fields may be added, and a module that is not selected reports `status: "deselected"` rather than being omitted. `schema_version` stays `1` for additive changes and is only raised for a breaking one.
+- **The command line is stable.** Flags, their values and the meaning of `--no-color`, `--privacy`, `--format` and the precedence order will not change within 1.x. New flags may appear.
+- **Exit codes:** `0` for a successful run even when a field is unavailable, non-zero for invalid arguments, a broken configuration or a failed write.
+- **The configuration file is strict.** An unknown key is an error rather than being ignored, so a file written for a newer version can fail on an older one. Additions within 1.x only add keys; removing or renaming one would be a breaking change.
+- **Human-readable text is not an interface.** Columns, spacing, colours and the exact wording are presentation and may change in any release. Parse the JSON instead.
+
 ## Platforms and accuracy
 
 Linux reads os-release, proc and sysfs without assuming systemd or a package manager. macOS uses sysctl/Mach/uname and reports the exact CPU name. Windows uses native interfaces and a clearly labeled hostname rather than a slow WMI hardware query. WSL reports the Linux environment separately and never fabricates Windows host hardware; version is left unknown when evidence is insufficient.
@@ -132,14 +149,17 @@ cargo test --locked
 cargo build --release --locked
 ```
 
-Tests cover pure parsers, status/units, fixed rendering fixtures, long/wide/combining text, hostile terminal sequences, real CLI exits/streams and Unix pseudo-terminal color/width behavior. [CI](.github/workflows/ci.yml) runs format, lint, tests, a release build and a live JSON invocation on Ubuntu, macOS and Windows, plus a Rust 1.95 MSRV job; all four jobs pass. A passing runner is one configuration per platform, not a distribution matrix — see the [validation record](docs/validation.md).
+Tests cover pure parsers, status/units, fixed rendering fixtures, long/wide/combining text, hostile terminal sequences, real CLI exits/streams and Unix pseudo-terminal color/width behavior. [CI](.github/workflows/ci.yml) runs format, lint, tests, a release build and a live JSON invocation on Ubuntu, macOS and Windows, plus a Rust 1.95 MSRV job and a packaging job; all five pass. A passing runner is one configuration per platform, not a distribution matrix — see the [validation record](docs/validation.md).
 
 The package has a small library for deterministic tests and a thin binary. Detection never draws, renderers never call system APIs, and every field keeps its provenance. Read [AGENTS.md](AGENTS.md) and [CONTRIBUTING.md](CONTRIBUTING.md) before contributing.
 
 - [Research, source evidence and dependency choices](docs/research.md)
+- [Development guide](docs/development.md)
+- [简体中文摘要](README.zh-CN.md)
+- [Security policy](SECURITY.md)
 - [Architecture and implementation plan](docs/architecture.md)
 - [Validation record](docs/validation.md)
-- [Measured performance and reproducible commands](docs/performance.md)
+- [Measured performance and reproducible commands](docs/benchmark.md)
 - [Configuration reference](docs/configuration.md)
 - [Themes, layouts and logos](docs/themes.md)
 - [Version roadmap](docs/roadmap.md)

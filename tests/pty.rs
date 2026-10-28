@@ -82,8 +82,9 @@ fn run(columns: u16, args: &[&str], no_color: Option<&OsStr>, term: &str) -> Str
         .unwrap()
 }
 
-#[test]
-fn a_stdout_with_no_reader_exits_successfully() {
+/// Run the binary with a stdout whose reader is already gone, so the first
+/// write gets EPIPE instead of fitting into a pipe buffer.
+fn run_with_closed_stdout(args: &[&str]) -> std::process::ExitStatus {
     use std::os::fd::FromRawFd;
     let mut fds = [0 as libc::c_int; 2];
     // SAFETY: pipe() fills both descriptors on success and we take ownership of
@@ -96,14 +97,42 @@ fn a_stdout_with_no_reader_exits_successfully() {
     // Closing the only reader first guarantees the child's write gets EPIPE
     // rather than fitting into a pipe buffer.
     drop(read);
-    let status = Command::new(env!("CARGO_BIN_EXE_justfetch"))
+    Command::new(env!("CARGO_BIN_EXE_justfetch"))
+        .args(args)
         .stdout(Stdio::from(write))
         .status()
-        .unwrap();
+        .unwrap()
+}
+
+#[test]
+fn a_stdout_with_no_reader_exits_successfully() {
     assert!(
-        status.success(),
-        "a closed pipe should be a quiet success, got {status:?}"
+        run_with_closed_stdout(&[]).success(),
+        "a closed pipe should be a quiet success"
     );
+}
+
+/// The subcommands used `println!`, which panics when the write gets EPIPE.
+/// They go through the same fallible write path as the main output now.
+#[test]
+fn subcommands_exit_quietly_when_stdout_has_no_reader() {
+    let dir = std::env::temp_dir().join("jf-pty-subcommands");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("config.toml");
+    let path = path.to_str().unwrap();
+    for args in [
+        vec!["doctor"],
+        vec!["themes"],
+        vec!["init", "--config", path],
+        vec!["--version"],
+    ] {
+        let status = run_with_closed_stdout(&args);
+        assert!(
+            status.success(),
+            "{args:?} should be a quiet success, got {status:?}"
+        );
+    }
 }
 
 #[test]

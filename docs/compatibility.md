@@ -7,7 +7,7 @@ The support contract is conservative: a platform adapter is implemented, but onl
 | Platform | Implementation | Local compile check | Actual detector run | Native CI |
 | --- | --- | --- | --- | --- |
 | macOS ARM64 | Complete | Native build/test/release | Apple M3 / Mac15,12 / macOS 26.6.2 locally; Apple M1 (Virtual) / VirtualMac2,1 on the macOS runner. All fields available at the time of that run; `battery` was added later and verified locally (below) | Executed: run 40301536939 |
-| macOS Intel | Complete | Passed cargo check (Rust 1.98.1; no cross link/run) | Not tested on Intel hardware | macOS runner is ARM64; no Intel runner |
+| macOS Intel | Complete | Cross-compiled locally and executed under Rosetta 2 on Apple Silicon; not run on Intel hardware | Not tested on Intel hardware | macOS runner is ARM64; no Intel runner |
 | Linux ARM64 | Complete | Passed cargo check (Rust 1.98.1; no cross link/run) | Executed in the release workflow: the packaged archive ran on an ARM64 runner and reported `os` and `memory` available. Not exercised interactively, and no distribution was tested | Release workflow run 40304542365 |
 | Linux x86-64 | Complete | Passed cargo check (Rust 1.98.1; no link/run) | Executed on Ubuntu 24.04 (Azure VM, kernel 6.17.0-1022-azure), then re-run in CI with the eleven-field build: all eleven fields then available, os-release and proc parsers live, parent-shell path exercised. `battery` added later and not yet run on Linux | Executed: run 38604699769, then 40301536939 |
 | Windows x86-64 | Complete | GNU-target cargo check (Rust 1.98.1; no link/run) | Executed on Windows Server 2025 Datacenter build 26100, MSVC toolchain, then re-run in CI with the eleven-field build: nine fields available, `swap` unsupported, and `terminal` unavailable because a CI job has no terminal environment; registry OS name, GlobalMemoryStatusEx and ToolHelp parent snapshot live | Executed: run 38604699769, then 40301536939 |
@@ -44,7 +44,8 @@ logical size (1470x956), while `system_profiler` shows the panel (2560x1664).
 | Windows | Implemented with a documented limitation, untested | `EnumDisplayDevicesW`. Lists adapters attached to a display; an adapter with no display attached is not listed. `windows-sys` ships no DXGI bindings and a second binding crate was not added for one module |
 
 An adapter the platform does not name is reported by vendor and id rather than
-by a guessed model name: no PCI-id-to-marketing-name table is used.
+by a guessed model name: no PCI-id-to-marketing-name table is used. On macOS
+the accelerator class name goes in `driver`, because that is what it is.
 
 ### Battery (Phase 12)
 

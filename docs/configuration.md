@@ -58,7 +58,7 @@ Running `justfetch init` writes this shape with every key at its default, so you
 
 | Key | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `modules` | array of strings | sixteen, in display order, without `display` | Which rows to show, in the order given. The same list decides what is collected. `display` is not in the default list because its platform query costs tens of milliseconds (see [validation](validation.md)); name it here or on `--modules` to show it. |
+| `modules` | array of strings | fifteen on macOS and Windows, sixteen on Linux, in display order | Which rows to show, in the order given. The same list decides what is collected. `display` is never in the default list because its platform query costs tens of milliseconds (see [validation](validation.md)); `desktop` is in it only on Linux, where the concept exists. Name either on `--modules` or here to show it. |
 | `theme.name` | theme identifier | `"default"` | A built-in theme: `default`, `catppuccin-mocha`, `nord`, `tokyo-night`, `gruvbox`, `monochrome`. |
 | `theme.file` | path | none | A custom theme file, relative to the configuration file. Cannot be combined with `theme.name`; `--theme-file PATH` sets the same thing. |
 | `layout.name` | `"classic"`, `"compact"`, `"minimal"` or `"vertical"` | `"classic"` | Where the pieces go. See [themes and layouts](themes.md). |

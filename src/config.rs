@@ -23,6 +23,9 @@ pub const DEFAULT_SEPARATOR: &str = "  ";
 
 /// A theme file is user input; it is bounded before it can be parsed.
 pub const MAX_THEME_BYTES: usize = 16 * 1024;
+/// The configuration file is bounded too. It is read by every run, so a huge
+/// file must be refused rather than loaded.
+pub const MAX_CONFIG_BYTES: usize = 1024 * 1024;
 
 /// Which artwork to draw. `Auto` follows the detected distribution; `Named`
 /// pins a built-in one; a custom file is carried separately because its art
@@ -68,7 +71,7 @@ impl Default for Config {
         Self {
             format: Format::Text,
             privacy: false,
-            modules: ModuleId::DEFAULT.to_vec(),
+            modules: ModuleId::default_selection(),
             logo: LogoChoice::Auto,
             logo_art: None,
             layout: Layout::Classic,
@@ -210,8 +213,7 @@ pub fn user_config_path() -> Option<PathBuf> {
 }
 
 fn read_file(path: &Path) -> Result<FileConfig, ConfigError> {
-    let text = std::fs::read_to_string(path)
-        .map_err(|error| ConfigError::at(path, format!("cannot be read: {error}")))?;
+    let text = read_limited(path, MAX_CONFIG_BYTES)?;
     toml::from_str(&text).map_err(|error| ConfigError::parser_at(path, error.to_string()))
 }
 
@@ -365,6 +367,18 @@ fn beside(config: &Path, name: &str) -> PathBuf {
 }
 
 fn read_limited(path: &Path, limit: usize) -> Result<String, ConfigError> {
+    // Check the size before reading, so a huge file is refused rather than
+    // loaded and then rejected. The length is checked again after the read in
+    // case the file grew in between.
+    let size = std::fs::metadata(path)
+        .map_err(|error| ConfigError::at(path, format!("cannot read: {error}")))?
+        .len();
+    if size > limit as u64 {
+        return Err(ConfigError::at(
+            path,
+            format!("file is {size} bytes; the limit is {limit}"),
+        ));
+    }
     let bytes = std::fs::read(path)
         .map_err(|error| ConfigError::at(path, format!("cannot read: {error}")))?;
     if bytes.len() > limit {
@@ -597,7 +611,7 @@ mod tests {
     #[test]
     fn defaults_are_every_module_in_canonical_order() {
         let config = resolve_with(&cli(), None).unwrap();
-        assert_eq!(config.modules, ModuleId::DEFAULT.to_vec());
+        assert_eq!(config.modules, ModuleId::default_selection());
         assert_eq!(config.logo, LogoChoice::Auto);
         assert!(config.color);
         assert_eq!(config.separator, DEFAULT_SEPARATOR);
@@ -722,7 +736,7 @@ mod tests {
         // A path that does not exist is only an error when it was asked for
         // explicitly.
         let config = resolve_with(&cli(), Some(Path::new("/nonexistent/justfetch.toml"))).unwrap();
-        assert_eq!(config.modules, ModuleId::DEFAULT.to_vec());
+        assert_eq!(config.modules, ModuleId::default_selection());
     }
 
     #[test]

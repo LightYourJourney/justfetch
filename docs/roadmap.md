@@ -4,7 +4,7 @@
 
 Implemented: single-package Rust CLI; eleven real detection fields; Linux/macOS/Windows adapters and conservative WSL detection; original ASCII logos for macOS, Windows, Linux, Arch, Debian, Ubuntu, Fedora, Gentoo, openSUSE, NixOS and fallback; width-aware terminal output, ANSI capability policy, no-color/no-logo, `--privacy`; tagged JSON with raw numeric units/source/confidence; independent field errors; deterministic parser/render tests and real CLI tests; three-OS CI; GPLv3-preserving documentation.
 
-Release gate still external: exercise WSL, Intel macOS and distributions other than Ubuntu on real hardware (ARM64 Linux has had one non-interactive packaged-binary run in the release workflow, which is not an interactive check) (native CI has run and passed on Ubuntu 24.04, Windows Server 2025 and an ARM64 macOS runner, and has verified the 1.95 MSRV); take any published timing claim from a quiesced machine, since the instruction-count baseline is reproducible on a loaded host but wall clock is not (see performance.md); review package/name availability before publication. Evidence is in validation.md. v0.1.0 is published only as a pre-release, and nothing in it is a claim that every target device has been tested.
+Release gate still external: exercise WSL, Intel macOS and distributions other than Ubuntu on real hardware (ARM64 Linux has had one non-interactive packaged-binary run in the release workflow, which is not an interactive check) (native CI has run and passed on Ubuntu 24.04, Windows Server 2025 and an ARM64 macOS runner, and has verified the 1.95 MSRV); take any published timing claim from a quiesced machine, since the instruction-count baseline is reproducible on a loaded host but wall clock is not (see benchmark.md); review package/name availability before publication. Evidence is in validation.md. v0.1.0 is published only as a pre-release, and nothing in it is a claim that every target device has been tested.
 
 ## v0.2 — Personalization
 
@@ -42,4 +42,21 @@ Broaden device/distro/WSL coverage, improve terminal heuristics and visual asset
 
 ## v1.0 — Stable
 
-Stable CLI/schema commitments, platform binaries and checksums, Cargo distribution, Homebrew/Scoop/winget packaging, automated verifiable releases and comprehensive security/license checks. These are not v0.1 implementation requirements.
+**State: v1.0.0-rc.1, release candidate.** Done: the CLI and JSON stability policy
+(README), five-target release automation with packaged-binary smoke tests and a
+counted `SHA256SUMS`, `cargo package` verification, the RustSec advisory check,
+`SECURITY.md`, and draft Homebrew and Scoop manifests in `packaging/`.
+
+Still open, and each one blocks turning the candidate into a release:
+
+1. Execute the newer collectors on real Linux and Windows machines and record
+   the output beside the native tools, as was done on macOS.
+2. Exercise Intel macOS on real hardware; the candidate binary has only run
+   under Rosetta 2.
+3. Publish to crates.io, or state that cargo distribution stays
+   `cargo install --path .` from a checkout. The name `justfetch` is absent from
+   the crates.io index as of 2026-10-28, which is a point-in-time observation,
+   not a reservation.
+4. Fill the Homebrew and Scoop manifests with checksums from the real assets and
+   submit them; nothing is submitted.
+5. Remove `--draft --prerelease` from the release workflow — two words — after 1–4.

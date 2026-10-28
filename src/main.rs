@@ -24,10 +24,14 @@ fn run(cli: &Cli) -> io::Result<ExitCode> {
     match &cli.command {
         Some(Command::Init) => match commands::init(cli) {
             Ok(path) => {
-                println!(
+                // Written through the same path as the main output, so a closed
+                // stdout is a quiet success rather than a panic.
+                let mut out = io::stdout().lock();
+                writeln!(
+                    out,
                     "wrote {}",
                     render::layout::sanitize(&path.display().to_string())
-                );
+                )?;
                 Ok(ExitCode::SUCCESS)
             }
             Err(error) => {
@@ -37,17 +41,19 @@ fn run(cli: &Cli) -> io::Result<ExitCode> {
         },
         Some(Command::Doctor) => {
             let mut problems = 0;
+            let mut out = io::stdout().lock();
             for finding in commands::diagnose(cli) {
                 if finding.problem {
                     problems += 1;
-                    println!("problem: {}", finding.text);
+                    writeln!(out, "problem: {}", finding.text)?;
                 } else {
-                    println!("{}", finding.text);
+                    writeln!(out, "{}", finding.text)?;
                 }
             }
             if problems == 0 {
-                println!("no problems found");
+                writeln!(out, "no problems found")?;
             }
+            drop(out);
             Ok(if problems == 0 {
                 ExitCode::SUCCESS
             } else {

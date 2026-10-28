@@ -49,10 +49,11 @@ impl ModuleId {
         ModuleId::LocalIp,
     ];
 
-    /// The modules a default run shows. `Display` is not among them: its
-    /// platform query connects to the window server and was measured at ~60 ms
-    /// on macOS, which would dominate a run that otherwise takes ~12 ms.
-    /// Selecting it explicitly costs that, which is the user's choice to make.
+    /// Every module a default run could show, platform-independently. `Display`
+    /// is not among them: its query connects to the window server and was
+    /// measured at ~60 ms on macOS, which would dominate the whole run.
+    /// `default_selection` is what a run actually uses; it drops `desktop` where
+    /// the concept does not exist.
     pub const DEFAULT: [ModuleId; 16] = [
         ModuleId::Os,
         ModuleId::Host,
@@ -71,6 +72,18 @@ impl ModuleId {
         ModuleId::Terminal,
         ModuleId::LocalIp,
     ];
+
+    /// The modules a default run shows on this platform, derived from `DEFAULT`
+    /// rather than hand-copied. `display` is never in
+    /// it: its query costs tens of milliseconds. `desktop` is in it only where
+    /// the concept exists — macOS and Windows report it as unsupported, and a
+    /// permanently unsupported row is noise, not information.
+    pub fn default_selection() -> Vec<ModuleId> {
+        ModuleId::DEFAULT
+            .into_iter()
+            .filter(|module| cfg!(target_os = "linux") || *module != ModuleId::Desktop)
+            .collect()
+    }
 
     /// The identifier used in `--modules`, config files and diagnostics.
     pub fn id(self) -> &'static str {
@@ -200,5 +213,21 @@ mod default_tests {
             .filter(|module| *module != ModuleId::Display)
             .collect();
         assert_eq!(ModuleId::DEFAULT.to_vec(), expected);
+    }
+}
+
+#[cfg(test)]
+mod selection_tests {
+    use super::*;
+
+    #[test]
+    fn the_default_selection_drops_desktop_where_it_does_not_exist() {
+        let selection = ModuleId::default_selection();
+        assert!(!selection.contains(&ModuleId::Display));
+        if cfg!(target_os = "linux") {
+            assert!(selection.contains(&ModuleId::Desktop));
+        } else {
+            assert!(!selection.contains(&ModuleId::Desktop));
+        }
     }
 }
