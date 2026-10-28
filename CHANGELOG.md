@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Advanced detection
+
+- Add **GPU**, the second Phase 12 module. macOS enumerates `IOAccelerator` services through IOKit and reports the model and class; the class names the vendor and whether the adapter is on the package (AGX and Intel accelerators are integrated, AMD accelerators on Intel Macs are discrete), and anything else keeps `unknown` rather than being guessed. Linux reads DRM sysfs and reports PCI ids plus the driver, with a model name only when NVIDIA publishes one in procfs. Windows uses `EnumDisplayDevicesW`, because `windows-sys` ships no DXGI bindings; that lists adapters attached to a display, which the compatibility matrix records as a limitation. Every adapter is its own entry.
+- Add **Battery**, the first Phase 12 module. macOS reads IOKit power-source descriptions, Linux reads `/sys/class/power_supply`, and Windows reads `GetSystemPowerStatus`. Every battery is reported as its own unit with its own percentage and state, so a machine with two packs does not have them averaged; a unit the platform exposes without a charge figure reports no percentage rather than zero. A desktop, container or cloud VM reports `unsupported` with a reason instead of `0%`. macOS was compared against `pmset -g batt` on a MacBook Air; Linux and Windows are implemented and cross-compiled but have not been run.
+
 ### More fields
 
 - Add **Swap**, **Disk**, **Terminal** and **Local IP**, taking the field set from seven to eleven. These are the four fields every major fetch tool shows that could be collected on all three platforms without a subprocess, administrator access, a directory scan or a private-file read. Each keeps the existing provenance contract: a source string, a confidence level and a stated reason when unavailable.
@@ -47,7 +52,7 @@
 - Bound and clean user artwork: 32 KiB, 40 lines and 160 columns per line, escape sequences stripped, trailing spaces removed, empty refused. Custom theme files are limited to 16 KiB and validated key by key.
 - The artwork is shaded between the theme's two logo colours when both are set and the terminal can express the intermediate shades; named colours are not blended into invented ones.
 - JSON output is untouched by any of these settings. `schema_version` stays 1.
-- 138 tests, up from 87.
+- 144 tests, up from 87.
 
 ## 0.1.0 — pre-release
 

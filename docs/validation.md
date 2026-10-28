@@ -386,4 +386,74 @@ The tests that pinned the old behaviour were rewritten rather than kept: one ass
 
 **CI caught another test defect.** The first CI run of this pass failed on Ubuntu only: a test asserted that the output does not contain `"CPU "` to prove a custom label replaced the default. The GitHub runner's processor is an `Intel(R) Xeon(R) ... CPU @ 2.80GHz`, so the *value* contains the substring the test forbade. The assertion now checks that no line starts with the label, which is what "the row's label" means; a value that merely mentions the word cannot satisfy or break it. This is the second time this round that a test, not the product, was tied to one machine's data.
 
-**Test count:** 138, up from 87.
+**Test count:** 144, up from 87.
+
+## Advanced detection round (2026-10-28)
+
+Phase 12 adds collectors one at a time, each with its own platform evidence.
+
+### GPU
+
+**Implementation.** macOS enumerates IOKit `IOAccelerator` services; Linux reads
+DRM sysfs; Windows uses GDI `EnumDisplayDevicesW`. Each adapter is its own entry,
+and an adapter the platform does not name is reported by vendor and id instead of
+a name invented from a table.
+
+**macOS evidence.** Executed on a MacBook Air (Apple M3) and compared with the
+system's own report:
+
+```
+system_profiler: Chipset Model: Apple M3
+justfetch:       Apple M3   vendor=Apple   kind=integrated   id=AGXAcceleratorG15G
+```
+
+**Performance.** 30 runs, instruction medians, raw data in
+[benchmarks/gpu-2026-10-28.json](benchmarks/gpu-2026-10-28.json): see the
+table below with the other modules.
+
+**Not verified.** Linux and Windows paths are cross-compiled only. Windows has a
+known limitation: `EnumDisplayDevicesW` lists adapters attached to a display, so
+a headless compute GPU is not enumerated.
+
+### Battery
+
+**Implementation.** macOS reads IOKit power-source descriptions; Linux reads
+`/sys/class/power_supply`; Windows reads `GetSystemPowerStatus`. Each reports
+every battery as its own unit with its own percentage and state, so two packs
+are not averaged, and a unit the platform exposes without a charge figure
+reports no percentage rather than zero.
+
+**macOS evidence.** Executed on a MacBook Air (Mac15,12, macOS 26.6.2) and
+compared with the system's own report:
+
+```
+pmset:     InternalBattery-0  100%; charged; 0:00 remaining present: true
+justfetch: InternalBattery-0  100%  full   power=ac
+```
+
+**No battery.** A machine with no battery reports `unsupported` with a reason
+rather than `0%`. That path is covered by a fixture test; the desktop, container
+and cloud-VM cases are the same code path but were not exercised on such a
+machine here.
+
+**Performance.** 30 runs each, instruction counts (load-resistant; wall clock on
+this host is not, see performance.md), raw data in
+[benchmarks/battery-2026-10-28.json](benchmarks/battery-2026-10-28.json):
+
+| Selection | Median instructions | vs `--modules os` |
+| --- | --- | --- |
+| `--modules os` | 27.52 M | — |
+| `--modules battery` | 27.87 M | +1.29% |
+| `--modules os,battery` | 28.03 M | +1.88% |
+| `--modules os` (GPU run) | 27.69 M | — |
+| `--modules gpu` | 27.94 M | +0.90% |
+| `--modules os,gpu` | 27.92 M | +0.82% |
+
+The marginal cost of each collector is a few hundred thousand instructions —
+under one percent of the process — so startup still dominates. The GPU figures
+come from a second run on a busier host; the two `--modules os` baselines differ
+by 0.6%, which is the run-to-run drift to compare against.
+
+**Not verified.** Linux and Windows are implemented and cross-compiled but have
+not been run: no Linux or Windows machine was available. Their sysfs and
+`GetSystemPowerStatus` paths are covered by cross-target compilation only.

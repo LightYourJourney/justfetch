@@ -82,6 +82,29 @@ fn fixture() -> SystemSnapshot {
             },
             "fixture",
         ),
+        gpu: Detection::available(
+            GpuInfo {
+                devices: vec![GpuDevice {
+                    name: Some("Test GPU".to_owned()),
+                    vendor: Some("Test Vendor".to_owned()),
+                    id: Some("0000:01:00.0".to_owned()),
+                    driver: Some("testdrv".to_owned()),
+                    kind: GpuKind::Integrated,
+                }],
+            },
+            "fixture",
+        ),
+        battery: Detection::available(
+            BatteryInfo {
+                units: vec![BatteryUnit {
+                    name: "InternalBattery-0".to_owned(),
+                    percent: Some(82),
+                    state: BatteryState::Charging,
+                }],
+                power: PowerSource::Ac,
+            },
+            "fixture",
+        ),
         shell: Detection::available(
             ShellInfo {
                 name: "zsh".into(),
@@ -125,6 +148,16 @@ fn options(columns: usize) -> Options<'static> {
     }
 }
 
+/// The value of a row, found by its label. Tests ask for the row rather than
+/// counting spaces, because the label column widens when a module is added.
+fn row_value(text: &str, label: &str) -> Option<String> {
+    let line = text
+        .lines()
+        .map(layout::sanitize)
+        .find(|line| line.starts_with(&format!("{label} ")))?;
+    Some(line[label.len()..].trim_start().to_owned())
+}
+
 #[test]
 fn fixed_plain_render_is_aligned() {
     let output = terminal::render(
@@ -140,19 +173,20 @@ fn fixed_plain_render_is_aligned() {
         concat!(
             "tester@host\n",
             "------------\n",
-            "OS      Example Linux 42\n",
-            "Host    Test Machine\n",
-            "Kernel  Linux 6.8\n",
-            "Uptime  1d 1h 1m\n",
-            "CPU     Test CPU (8 logical)\n",
-            "Memory  2.00 / 8.00 GiB (25%)\n",
-            "Swap    1.00 / 4.00 GiB (25%)\n",
-            "Disk    100.00 / 500.00 GiB (20%) on /home/tester\n",
-            "Shell   zsh\n",
-            "Term    Test Terminal 1.2\n",
-            "IP      192.0.2.10 (eth0)\n",
+            "OS       Example Linux 42\n",
+            "Host     Test Machine\n",
+            "Kernel   Linux 6.8\n",
+            "Uptime   1d 1h 1m\n",
+            "CPU      Test CPU (8 logical)\n",
+            "Memory   2.00 / 8.00 GiB (25%)\n",
+            "Swap     1.00 / 4.00 GiB (25%)\n",
+            "Disk     100.00 / 500.00 GiB (20%) on /home/tester\n",
+            "Battery  82% (charging)\n",
+            "Shell    zsh\n",
+            "Term     Test Terminal 1.2\n",
+            "IP       192.0.2.10 (eth0)\n",
             "------------\n",
-            "o o o o o o o o\n"
+            "o o o o o o o o\n",
         )
     );
 }
@@ -190,9 +224,9 @@ fn no_swap_reads_as_none_and_every_address_is_listed() {
             ..options(80)
         },
     );
-    assert!(output.contains("Swap    none"), "{output}");
+    assert_eq!(row_value(&output, "Swap").as_deref(), Some("none"));
     assert!(
-        output.contains("IP      192.0.2.10 (eth0), 172.17.0.1 (docker0)"),
+        row_value(&output, "IP").as_deref() == Some("192.0.2.10 (eth0), 172.17.0.1 (docker0)"),
         "{output}"
     );
 }
@@ -209,7 +243,7 @@ fn an_unsupported_field_states_that_rather_than_a_number() {
             ..options(80)
         },
     );
-    assert!(output.contains("Swap    Unsupported\n"), "{output}");
+    assert_eq!(row_value(&output, "Swap").as_deref(), Some("Unsupported"));
 }
 
 #[test]
@@ -232,7 +266,7 @@ fn an_unnamed_interface_does_not_render_empty_parentheses() {
             ..options(80)
         },
     );
-    assert!(output.contains("IP      203.0.113.7\n"), "{output}");
+    assert_eq!(row_value(&output, "IP").as_deref(), Some("203.0.113.7"));
     assert!(!output.contains("()"), "{output}");
 
     // The interface is omitted from JSON rather than sent as an empty string,
@@ -275,8 +309,9 @@ fn privacy_withholds_identity_but_keeps_the_counters() {
         },
     );
     assert_eq!(text.lines().next(), Some("redacted@redacted"), "{text}");
-    assert!(
-        text.contains("Disk    100.00 / 500.00 GiB (20%) on ~"),
+    assert_eq!(
+        row_value(&text, "Disk").as_deref(),
+        Some("100.00 / 500.00 GiB (20%) on ~"),
         "{text}"
     );
     assert!(!text.contains("tester"), "{text}");
@@ -305,7 +340,11 @@ fn privacy_also_withholds_a_host_row_that_is_the_hostname() {
         },
     );
     assert!(!text.contains("host (hostname)"), "{text}");
-    assert!(text.contains("Host    redacted"), "{text}");
+    assert_eq!(
+        row_value(&text, "Host").as_deref(),
+        Some("redacted"),
+        "{text}"
+    );
 }
 
 #[test]
@@ -359,8 +398,10 @@ fn logo_height_does_not_drop_information() {
             color: Some(Colour::Ansi(anstyle::AnsiColor::Cyan)),
         };
         let text = terminal::render_with_logo(&fixture(), options(80), &logo);
-        assert!(text.contains("Shell   zsh"));
-        assert!(text.contains("Memory  2.00 / 8.00 GiB (25%)"));
+        // The information column sits beside the artwork, so its rows are not
+        // at the start of a line; what matters is that they survived.
+        assert!(text.contains("zsh"), "{text}");
+        assert!(text.contains("2.00 / 8.00 GiB (25%)"), "{text}");
         assert!(text.contains(art.lines().last().unwrap()));
         assert!(text.lines().all(|line| layout::width(line) <= 80));
     }
@@ -586,11 +627,20 @@ fn all_detection_states_remain_distinct() {
             ..options(120)
         },
     );
-    assert!(text.contains("Host    Unavailable"));
-    assert!(text.contains("Kernel  Unsupported"));
-    assert!(text.contains("CPU     ~ Approximate"));
-    assert!(text.contains("Shell   Error (fixture shell: Permission denied)"));
-    assert!(text.contains("Memory  2.00 / 8.00 GiB (25%)"));
+    assert_eq!(row_value(&text, "Host").as_deref(), Some("Unavailable"));
+    assert_eq!(row_value(&text, "Kernel").as_deref(), Some("Unsupported"));
+    assert_eq!(
+        row_value(&text, "CPU").as_deref(),
+        Some("~ Approximate (4 logical)")
+    );
+    assert!(
+        row_value(&text, "Shell")
+            .is_some_and(|value| value.starts_with("Error (fixture shell: Permission denied)"))
+    );
+    assert_eq!(
+        row_value(&text, "Memory").as_deref(),
+        Some("2.00 / 8.00 GiB (25%)")
+    );
     let value: serde_json::Value = serde_json::from_str(&json::render(&snapshot).unwrap()).unwrap();
     assert_eq!(value["host"]["status"], "unavailable");
     assert!(value["host"].get("value").is_none());
@@ -929,7 +979,10 @@ fn the_layouts_differ_in_the_way_they_describe() {
 
     let compact = render(Layout::Compact);
     assert!(!compact.contains('─') && !compact.contains('●'));
-    assert!(compact.contains("OS      Example Linux 42"), "{compact}");
+    assert_eq!(
+        row_value(&compact, "OS").as_deref(),
+        Some("Example Linux 42")
+    );
 
     let minimal = render(Layout::Minimal);
     assert!(minimal.contains("OS: Example Linux 42"), "{minimal}");
@@ -1028,7 +1081,12 @@ fn a_wide_or_emoji_label_keeps_every_value_in_one_column() {
                 ..options(80)
             },
         );
-        let expected = layout::width(label).max(6) + 2;
+        let built_in = ModuleId::ALL
+            .iter()
+            .map(|module| layout::width(module.label()))
+            .max()
+            .unwrap_or(0);
+        let expected = layout::width(label).max(built_in) + 2;
         for value in ["Example Linux 42", "Linux 6.8", "2.00 / 8.00", "zsh"] {
             let line = output
                 .lines()
@@ -1152,4 +1210,196 @@ fn a_separator_split_across_lines_does_not_leave_the_value_plain() {
         continuation.starts_with("\u{1b}[38;2;"),
         "the continuation lost its colour: {continuation:?}"
     );
+}
+
+#[test]
+fn a_machine_with_no_battery_is_unsupported_rather_than_zero_percent() {
+    let mut snapshot = fixture();
+    snapshot.battery = Detection::unsupported("This machine reports no internal battery");
+    let text = terminal::render(
+        &snapshot,
+        Options {
+            logo: false,
+            unicode: false,
+            ..options(80)
+        },
+    );
+    assert_eq!(row_value(&text, "Battery").as_deref(), Some("Unsupported"));
+    let value: serde_json::Value = serde_json::from_str(&json::render(&snapshot).unwrap()).unwrap();
+    assert_eq!(value["battery"]["status"], "unsupported");
+    assert!(value["battery"].get("value").is_none());
+}
+
+#[test]
+fn several_batteries_are_listed_and_their_states_not_collapsed() {
+    let mut snapshot = fixture();
+    snapshot.battery = Detection::available(
+        BatteryInfo {
+            units: vec![
+                BatteryUnit {
+                    name: "BAT0".to_owned(),
+                    percent: Some(82),
+                    state: BatteryState::Charging,
+                },
+                BatteryUnit {
+                    name: "BAT1".to_owned(),
+                    percent: Some(76),
+                    state: BatteryState::Discharging,
+                },
+            ],
+            power: PowerSource::Unknown,
+        },
+        "fixture",
+    );
+    let text = terminal::render(
+        &snapshot,
+        Options {
+            logo: false,
+            unicode: false,
+            ..options(80)
+        },
+    );
+    assert_eq!(
+        row_value(&text, "Battery").as_deref(),
+        Some("82% / 76% (charging, discharging)")
+    );
+    let value: serde_json::Value = serde_json::from_str(&json::render(&snapshot).unwrap()).unwrap();
+    let units = value["battery"]["value"]["units"].as_array().unwrap();
+    assert_eq!(units.len(), 2);
+    assert_eq!(units[0]["name"], "BAT0");
+    assert_eq!(units[1]["state"], "discharging");
+    assert_eq!(value["battery"]["value"]["power"], "unknown");
+}
+
+#[test]
+fn a_battery_without_a_charge_figure_says_so_instead_of_zero() {
+    let mut snapshot = fixture();
+    snapshot.battery = Detection::available(
+        BatteryInfo {
+            units: vec![BatteryUnit {
+                name: "BAT0".to_owned(),
+                percent: None,
+                state: BatteryState::Unknown,
+            }],
+            power: PowerSource::Battery,
+        },
+        "fixture",
+    );
+    let text = terminal::render(
+        &snapshot,
+        Options {
+            logo: false,
+            unicode: false,
+            ..options(80)
+        },
+    );
+    assert_eq!(row_value(&text, "Battery").as_deref(), Some("? (unknown)"));
+}
+
+#[test]
+fn the_battery_module_can_be_left_out() {
+    let modules = [ModuleId::Os];
+    let text = terminal::render(
+        &fixture(),
+        Options {
+            logo: false,
+            unicode: false,
+            modules: &modules,
+            ..options(80)
+        },
+    );
+    assert!(!text.contains("Battery"), "{text}");
+    let value: serde_json::Value =
+        serde_json::from_str(&json::render(&fixture()).unwrap()).unwrap();
+    // Collecting everything still serialises a battery object; a run that did
+    // not collect it reports the state rather than omitting the key.
+    assert!(value.get("battery").is_some());
+}
+
+#[test]
+fn a_gpu_without_a_name_reports_what_the_platform_did_say() {
+    let mut snapshot = fixture();
+    snapshot.gpu = Detection::available(
+        GpuInfo {
+            devices: vec![GpuDevice {
+                name: None,
+                vendor: Some("AMD".to_owned()),
+                id: Some("1002:73ff".to_owned()),
+                driver: Some("amdgpu".to_owned()),
+                kind: GpuKind::Unknown,
+            }],
+        },
+        "fixture",
+    );
+    let text = terminal::render(
+        &snapshot,
+        Options {
+            logo: false,
+            unicode: false,
+            ..options(80)
+        },
+    );
+    assert_eq!(row_value(&text, "GPU").as_deref(), Some("AMD (1002:73ff)"));
+}
+
+#[test]
+fn several_adapters_are_listed_separately() {
+    let mut snapshot = fixture();
+    snapshot.gpu = Detection::available(
+        GpuInfo {
+            devices: vec![
+                GpuDevice {
+                    name: Some("Apple M3".to_owned()),
+                    vendor: Some("Apple".to_owned()),
+                    id: Some("AGXAcceleratorG15G".to_owned()),
+                    driver: None,
+                    kind: GpuKind::Integrated,
+                },
+                GpuDevice {
+                    name: Some("Radeon Pro".to_owned()),
+                    vendor: Some("AMD".to_owned()),
+                    id: None,
+                    driver: None,
+                    kind: GpuKind::Discrete,
+                },
+            ],
+        },
+        "fixture",
+    );
+    let text = terminal::render(
+        &snapshot,
+        Options {
+            logo: false,
+            unicode: false,
+            ..options(80)
+        },
+    );
+    assert_eq!(
+        row_value(&text, "GPU").as_deref(),
+        Some("Apple M3, Radeon Pro")
+    );
+    let value: serde_json::Value = serde_json::from_str(&json::render(&snapshot).unwrap()).unwrap();
+    let devices = value["gpu"]["value"]["devices"].as_array().unwrap();
+    assert_eq!(devices.len(), 2);
+    assert_eq!(devices[0]["kind"], "integrated");
+    assert_eq!(devices[1]["vendor"], "AMD");
+    assert!(devices[1]["id"].is_null());
+}
+
+#[test]
+fn a_gpu_that_cannot_be_enumerated_is_unavailable_not_invented() {
+    let mut snapshot = fixture();
+    snapshot.gpu = Detection::unavailable("No DRM adapter exposes a device node in sysfs");
+    let text = terminal::render(
+        &snapshot,
+        Options {
+            logo: false,
+            unicode: false,
+            ..options(80)
+        },
+    );
+    assert_eq!(row_value(&text, "GPU").as_deref(), Some("Unavailable"));
+    let value: serde_json::Value = serde_json::from_str(&json::render(&snapshot).unwrap()).unwrap();
+    assert_eq!(value["gpu"]["status"], "unavailable");
+    assert!(value["gpu"].get("value").is_none());
 }

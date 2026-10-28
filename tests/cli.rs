@@ -154,7 +154,13 @@ fn privacy_withholds_identity_and_addresses() {
     assert!(text.status.success());
     let text = String::from_utf8(text.stdout).unwrap();
     assert_eq!(text.lines().next(), Some("redacted@redacted"), "{text}");
-    assert!(text.contains("IP      redacted"), "{text}");
+    // The label column width depends on the widest label, so this checks the
+    // row rather than a fixed number of spaces.
+    assert!(
+        text.lines()
+            .any(|line| line.starts_with("IP ") && line.contains("redacted")),
+        "{text}"
+    );
     if let Ok(user) = std::env::var("USER").or_else(|_| std::env::var("USERNAME")) {
         assert!(
             !text.contains(&format!("{user}@")),
@@ -316,7 +322,7 @@ fn doctor_distinguishes_a_good_configuration_from_a_broken_one() {
     assert!(String::from_utf8_lossy(&ok.stdout).contains("no problems found"));
 
     let bad = dir.join("bad.toml");
-    std::fs::write(&bad, "modules = [\"gpu\"]\n").unwrap();
+    std::fs::write(&bad, "modules = [\"bogus\"]\n").unwrap();
     let broken = run(&["--config", bad.to_str().unwrap(), "doctor"]);
     assert!(!broken.status.success());
     let report = String::from_utf8_lossy(&broken.stdout);
@@ -341,7 +347,7 @@ fn doctor_reports_a_missing_config_file_once() {
 #[test]
 fn configuration_errors_reach_stderr_without_stdout() {
     for (args, expected) in [
-        (&["--modules", "gpu"][..], "not a module id"),
+        (&["--modules", "bogus"][..], "not a module id"),
         (&["--modules", "os,os"], "listed twice"),
         (
             &["--config", "/nonexistent/justfetch.toml"],

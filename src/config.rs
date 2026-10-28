@@ -731,7 +731,7 @@ mod tests {
         for (name, body, expected) in [
             (
                 "unknown-module.toml",
-                "modules = [\"gpu\"]\n",
+                "modules = [\"bogus\"]\n",
                 "not a module id",
             ),
             (
@@ -752,7 +752,7 @@ mod tests {
             ),
             (
                 "bad-label.toml",
-                "[labels]\ngpu = \"x\"\n",
+                "[labels]\nbogus = \"x\"\n",
                 "not a module id",
             ),
             ("empty-label.toml", "[labels]\ncpu = \"  \"\n", "is empty"),
@@ -948,7 +948,7 @@ mod tests {
         .unwrap();
         assert_eq!(config.modules, vec![ModuleId::Cpu, ModuleId::Os]);
 
-        let path = write(&dir, "future.toml", "modules = [\"cpu\", \"gpu\"]\n");
+        let path = write(&dir, "future.toml", "modules = [\"cpu\", \"bogus\"]\n");
         assert!(
             resolve_with(
                 &Cli {
@@ -1010,7 +1010,7 @@ mod tests {
     #[test]
     fn the_module_argument_is_validated_the_same_way() {
         for (argument, expected) in [
-            ("gpu", "not a module id"),
+            ("bogus", "not a module id"),
             ("os,os", "listed twice"),
             (" , ", "empty"),
         ] {

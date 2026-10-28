@@ -110,6 +110,149 @@ fn host(hostname: Detection<String>, environment: &Environment) -> Detection<Hos
     })
 }
 
+/// Batteries and the AC adapter, from sysfs. This reads one fixed system
+/// directory and nothing else; a container or a desktop simply has no
+/// `Battery` entries there.
+fn battery() -> Detection<BatteryInfo> {
+    let root = std::path::Path::new("/sys/class/power_supply");
+    let entries = match std::fs::read_dir(root) {
+        Ok(entries) => entries,
+        Err(error) => {
+            return Detection::unavailable(format!("{} cannot be read: {error}", root.display()));
+        }
+    };
+    let text = |path: &std::path::Path| {
+        std::fs::read_to_string(path)
+            .ok()
+            .map(|value| value.trim().to_owned())
+            .filter(|value| !value.is_empty())
+    };
+    let mut units = Vec::new();
+    let mut ac_online = None;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let kind = text(&path.join("type")).unwrap_or_default();
+        match kind.as_str() {
+            "Battery" => {
+                let state = match text(&path.join("status")).as_deref() {
+                    Some("Charging") => BatteryState::Charging,
+                    Some("Discharging") => BatteryState::Discharging,
+                    Some("Full") => BatteryState::Full,
+                    _ => BatteryState::Unknown,
+                };
+                units.push(BatteryUnit {
+                    name: entry.file_name().to_string_lossy().into_owned(),
+                    // A unit with no capacity file reports `None`, not zero.
+                    percent: text(&path.join("capacity")).and_then(|v| v.parse::<u8>().ok()),
+                    state,
+                });
+            }
+            // The adapter, not a battery: it only says whether mains is live.
+            "Mains" | "USB" | "USB_C" | "AC" | "ACAD" => {
+                if let Some(online) = text(&path.join("online")) {
+                    ac_online = Some(online == "1");
+                }
+            }
+            _ => {}
+        }
+    }
+    if units.is_empty() {
+        return Detection::unsupported(
+            "No battery is present; sysfs lists no power supply of type Battery",
+        );
+    }
+    let power = match ac_online {
+        Some(true) => PowerSource::Ac,
+        Some(false) => PowerSource::Battery,
+        None => {
+            let charging = units
+                .iter()
+                .any(|unit| matches!(unit.state, BatteryState::Charging | BatteryState::Full));
+            if charging {
+                PowerSource::Ac
+            } else if units
+                .iter()
+                .all(|unit| unit.state == BatteryState::Discharging)
+            {
+                PowerSource::Battery
+            } else {
+                PowerSource::Unknown
+            }
+        }
+    };
+    Detection::available(BatteryInfo { units, power }, "/sys/class/power_supply")
+}
+
+/// Graphics adapters from DRM sysfs. Names are only reported when the kernel
+/// or the driver exposes one: PCI ids without a name database are reported as
+/// ids, because inventing a marketing name from a numeric table is a guess.
+fn gpu() -> Detection<GpuInfo> {
+    let root = std::path::Path::new("/sys/class/drm");
+    let entries = match std::fs::read_dir(root) {
+        Ok(entries) => entries,
+        Err(error) => {
+            return Detection::unavailable(format!("{} cannot be read: {error}", root.display()));
+        }
+    };
+    let mut devices = Vec::new();
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        // `card0` is an adapter; `card0-DP-1` is a connector on it.
+        if !name.starts_with("card") || name.contains('-') {
+            continue;
+        }
+        let Ok(uevent) = std::fs::read_to_string(entry.path().join("device/uevent")) else {
+            // A card with no device node is a virtual framebuffer or a
+            // connector-only stub; it is not evidence of an adapter.
+            continue;
+        };
+        let field = |key: &str| {
+            uevent
+                .lines()
+                .find_map(|line| line.strip_prefix(key)?.strip_prefix('='))
+                .map(|value| value.trim().to_owned())
+                .filter(|value| !value.is_empty())
+        };
+        let pci_id = field("PCI_ID");
+        let driver = field("DRIVER");
+        let vendor = pci_id.as_deref().and_then(|id| {
+            let vendor_id = id.split(':').next()?.to_ascii_lowercase();
+            match vendor_id.as_str() {
+                "10de" => Some("NVIDIA"),
+                "1002" => Some("AMD"),
+                "8086" => Some("Intel"),
+                "1af4" => Some("Red Hat"),
+                "15ad" => Some("VMware"),
+                "1b36" => Some("Red Hat"),
+                _ => None,
+            }
+        });
+        // NVIDIA publishes a model name in procfs; others do not, and the
+        // sysfs PCI id is not a name.
+        let display_name = field("PCI_SLOT_NAME")
+            .and_then(|slot| {
+                std::fs::read_to_string(format!("/proc/driver/nvidia/gpus/{slot}/information")).ok()
+            })
+            .and_then(|info| {
+                info.lines()
+                    .find_map(|line| line.strip_prefix("Model:"))
+                    .map(|model| model.trim().to_owned())
+            });
+        devices.push(GpuDevice {
+            name: display_name,
+            vendor: vendor.map(str::to_owned),
+            id: pci_id,
+            driver,
+            // Integrated versus discrete cannot be told from these files.
+            kind: GpuKind::Unknown,
+        });
+    }
+    if devices.is_empty() {
+        return Detection::unavailable("No DRM adapter exposes a device node in sysfs");
+    }
+    Detection::available(GpuInfo { devices }, "/sys/class/drm")
+}
+
 pub fn collect(selection: &[ModuleId]) -> PlatformData {
     let uname = uname();
     // The hostname is needed for the title even when no module asks for it.
@@ -183,6 +326,8 @@ pub fn collect(selection: &[ModuleId]) -> PlatformData {
         memory,
         swap,
         disk: if_selected(selection, ModuleId::Disk, disk),
+        gpu: if_selected(selection, ModuleId::Gpu, gpu),
+        battery: if_selected(selection, ModuleId::Battery, battery),
         local_ip: if_selected(selection, ModuleId::LocalIp, local_ip),
     }
 }

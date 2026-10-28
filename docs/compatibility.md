@@ -6,16 +6,41 @@ The support contract is conservative: a platform adapter is implemented, but onl
 
 | Platform | Implementation | Local compile check | Actual detector run | Native CI |
 | --- | --- | --- | --- | --- |
-| macOS ARM64 | Complete | Native build/test/release | Apple M3 / Mac15,12 / macOS 26.6.2 locally; Apple M1 (Virtual) / VirtualMac2,1 on the macOS runner. All eleven fields available in both | Executed: run 40301536939 |
+| macOS ARM64 | Complete | Native build/test/release | Apple M3 / Mac15,12 / macOS 26.6.2 locally; Apple M1 (Virtual) / VirtualMac2,1 on the macOS runner. All eleven fields available in both; `battery` was added later and verified locally (below) | Executed: run 40301536939 |
 | macOS Intel | Complete | Passed cargo check (Rust 1.98.1; no cross link/run) | Not tested on Intel hardware | macOS runner is ARM64; no Intel runner |
 | Linux ARM64 | Complete | Passed cargo check (Rust 1.98.1; no cross link/run) | Executed in the release workflow: the packaged archive ran on an ARM64 runner and reported `os` and `memory` available. Not exercised interactively, and no distribution was tested | Release workflow run 40304542365 |
-| Linux x86-64 | Complete | Passed cargo check (Rust 1.98.1; no link/run) | Executed on Ubuntu 24.04 (Azure VM, kernel 6.17.0-1022-azure), then re-run in CI with the eleven-field build: all eleven fields available, os-release and proc parsers live, parent-shell path exercised | Executed: run 38604699769, then 40301536939 |
+| Linux x86-64 | Complete | Passed cargo check (Rust 1.98.1; no link/run) | Executed on Ubuntu 24.04 (Azure VM, kernel 6.17.0-1022-azure), then re-run in CI with the eleven-field build: all eleven fields then available, os-release and proc parsers live, parent-shell path exercised. `battery` added later and not yet run on Linux | Executed: run 38604699769, then 40301536939 |
 | Windows x86-64 | Complete | GNU-target cargo check (Rust 1.98.1; no link/run) | Executed on Windows Server 2025 Datacenter build 26100, MSVC toolchain, then re-run in CI with the eleven-field build: nine fields available, `swap` unsupported, and `terminal` unavailable because a CI job has no terminal environment; registry OS name, GlobalMemoryStatusEx and ToolHelp parent snapshot live | Executed: run 38604699769, then 40301536939 |
 | WSL1 | Linux adapter, WSL detection/semantic safeguards | Pure parser fixtures only | Not tested in WSL1 | No WSL runner |
 | WSL2 | Linux adapter, explicit WSL2 marker detection | Pure parser fixtures only | Not tested in WSL2 | No WSL runner |
 | BSD and other OS | Out of v0.1 scope | Compile-time unsupported | Not tested | None |
 
 "Executed" means the release binary ran on a real kernel of that platform and returned the JSON above; it does not mean every distribution, device or hardware configuration has been tried. What the runners establish is that the Linux `os-release`/`proc`/sysfs and parent-shell paths and the Windows registry/memory/ToolHelp paths work on at least one real system each. Arch, Debian, Fedora, Gentoo, openSUSE, NixOS, Intel Macs, WSL and container guests remain unexercised. ARM64 Linux has had one non-interactive run, described in its row, which is not a distribution or interactive check.
+
+### GPU (Phase 12)
+
+| Platform | Status | Evidence |
+| --- | --- | --- |
+| macOS ARM64 | Supported and tested | IOKit `IOAccelerator`; reports `Apple M3`, vendor Apple, class `AGXAcceleratorG15G`, kind `integrated`; matches `system_profiler SPDisplaysDataType` (`Chipset Model: Apple M3`) |
+| macOS Intel | Implemented, untested | Same API; Intel and AMD accelerator class names give the vendor and kind |
+| Linux | Implemented, untested | DRM sysfs: PCI id, driver, and a model name only where the NVIDIA driver publishes one. No Linux machine available |
+| Windows | Implemented with a documented limitation, untested | `EnumDisplayDevicesW`. Lists adapters attached to a display; an adapter with no display attached is not listed. `windows-sys` ships no DXGI bindings and a second binding crate was not added for one module |
+
+An adapter the platform does not name is reported by vendor and id rather than
+by a guessed model name: no PCI-id-to-marketing-name table is used.
+
+### Battery (Phase 12)
+
+| Platform | Status | Evidence |
+| --- | --- | --- |
+| macOS ARM64 | Supported and tested | IOKit power-source descriptions; compared against `pmset -g batt` on Mac15,12 (100%, charged, drawing from AC), which matched |
+| macOS Intel | Implemented, untested | Same API; no Intel hardware available |
+| Linux | Implemented, untested | `/sys/class/power_supply` (`type`, `capacity`, `status`, adapter `online`); no Linux machine available |
+| Windows | Implemented, untested | `GetSystemPowerStatus`; one aggregate reading, not per-pack |
+
+A machine with no battery — a desktop, a container, most cloud VMs — reports
+`unsupported` with a reason, never `0%`. A unit whose charge figure is absent
+reports no percentage rather than zero.
 
 One behaviour the Windows runner made concrete: `cargo run` is the parent there, because Cargo replaces itself with `exec` on Unix but must spawn a child on Windows. Shell detection therefore resolved to `bash` as `current_parent` on Linux and fell back to `cmd` as `configured_default` on Windows, which is the documented immediate-parent-only semantics working as intended rather than a platform defect.
 

@@ -121,6 +121,8 @@ pub fn collect(selection: &[ModuleId]) -> SystemSnapshot {
         memory: data.memory,
         swap: data.swap,
         disk: data.disk,
+        gpu: data.gpu,
+        battery: data.battery,
         shell,
         terminal: if_selected(selection, ModuleId::Terminal, terminal),
         local_ip: data.local_ip,

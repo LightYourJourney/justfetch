@@ -605,6 +605,25 @@ fn value_for(snapshot: &SystemSnapshot, module: ModuleId) -> String {
         ModuleId::Cpu => display(&snapshot.cpu, |cpu| {
             format!("{} ({} logical)", cpu.name, cpu.logical_cores)
         }),
+        ModuleId::Gpu => display(&snapshot.gpu, |gpu| {
+            gpu.devices
+                .iter()
+                .map(|device| match (&device.name, &device.vendor) {
+                    (Some(name), _) => name.clone(),
+                    // Without a model name, the vendor and the platform id are
+                    // what the platform actually said.
+                    (None, Some(vendor)) => match &device.id {
+                        Some(id) => format!("{vendor} ({id})"),
+                        None => vendor.clone(),
+                    },
+                    (None, None) => device
+                        .id
+                        .clone()
+                        .unwrap_or_else(|| "unknown adapter".to_owned()),
+                })
+                .collect::<Vec<_>>()
+                .join(", ")
+        }),
         ModuleId::Memory => display(&snapshot.memory, |mem| {
             capacity(mem.used_bytes, mem.total_bytes)
         }),
@@ -621,6 +640,32 @@ fn value_for(snapshot: &SystemSnapshot, module: ModuleId) -> String {
                 capacity(disk.used_bytes, disk.total_bytes),
                 disk.path
             )
+        }),
+        ModuleId::Battery => display(&snapshot.battery, |battery| {
+            let percents = battery
+                .units
+                .iter()
+                .map(|unit| match unit.percent {
+                    Some(percent) => format!("{percent}%"),
+                    None => "?".to_owned(),
+                })
+                .collect::<Vec<_>>()
+                .join(" / ");
+            // States that agree are named once; a machine whose batteries
+            // disagree says so rather than picking one.
+            let mut states: Vec<&str> = Vec::new();
+            for unit in &battery.units {
+                let state = match unit.state {
+                    BatteryState::Charging => "charging",
+                    BatteryState::Discharging => "discharging",
+                    BatteryState::Full => "full",
+                    BatteryState::Unknown => "unknown",
+                };
+                if !states.contains(&state) {
+                    states.push(state);
+                }
+            }
+            format!("{percents} ({})", states.join(", "))
         }),
         ModuleId::Shell => display(&snapshot.shell, |shell| match shell.kind {
             ShellKind::CurrentParent => shell.name.clone(),

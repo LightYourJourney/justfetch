@@ -20,6 +20,323 @@ unsafe extern "C" {
     fn host_page_size(host: libc::host_t, out: *mut libc::vm_size_t) -> libc::kern_return_t;
 }
 
+// --- Power sources -------------------------------------------------------
+//
+// IOKit is the only supported source for battery state on macOS. There is no
+// sysctl for it and the alternative, `pmset`, is a subprocess.
+
+type CFTypeRef = *const std::ffi::c_void;
+type CFArrayRef = *const std::ffi::c_void;
+type CFDictionaryRef = *const std::ffi::c_void;
+type CFStringRef = *const std::ffi::c_void;
+
+/// kCFStringEncodingUTF8
+const CF_UTF8: u32 = 0x0800_0100;
+/// kCFNumberSInt32Type
+const CF_SINT32: i32 = 3;
+
+#[link(name = "CoreFoundation", kind = "framework")]
+unsafe extern "C" {
+    fn CFArrayGetCount(array: CFArrayRef) -> libc::c_long;
+    fn CFArrayGetValueAtIndex(array: CFArrayRef, index: libc::c_long) -> CFTypeRef;
+    fn CFDictionaryGetValue(dict: CFDictionaryRef, key: CFTypeRef) -> CFTypeRef;
+    fn CFStringCreateWithCString(
+        allocator: CFTypeRef,
+        text: *const libc::c_char,
+        encoding: u32,
+    ) -> CFStringRef;
+    fn CFStringGetCString(
+        string: CFStringRef,
+        buffer: *mut libc::c_char,
+        size: libc::c_long,
+        encoding: u32,
+    ) -> u8;
+    fn CFNumberGetValue(number: CFTypeRef, kind: i32, out: *mut std::ffi::c_void) -> u8;
+    fn CFBooleanGetValue(value: CFTypeRef) -> u8;
+    fn CFRelease(value: CFTypeRef);
+}
+
+#[link(name = "IOKit", kind = "framework")]
+unsafe extern "C" {
+    fn IOPSCopyPowerSourcesInfo() -> CFTypeRef;
+    fn IOPSCopyPowerSourcesList(blob: CFTypeRef) -> CFArrayRef;
+    fn IOPSGetPowerSourceDescription(blob: CFTypeRef, source: CFTypeRef) -> CFDictionaryRef;
+}
+
+/// Read one value from an IOKit power-source description. The key is created
+/// and released here; the description belongs to the caller's blob.
+fn power_value(description: CFDictionaryRef, key: &CStr) -> Option<CFTypeRef> {
+    // SAFETY: the key is a valid NUL-terminated string and `key` is only used
+    // for the duration of the call. A null result is checked by the caller.
+    let key_ref = unsafe { CFStringCreateWithCString(ptr::null(), key.as_ptr(), CF_UTF8) };
+    if key_ref.is_null() {
+        return None;
+    }
+    // SAFETY: both references come from successful calls and outlive this call.
+    let value = unsafe { CFDictionaryGetValue(description, key_ref) };
+    // SAFETY: `key_ref` is an owned copy created above and must be released.
+    unsafe { CFRelease(key_ref) };
+    (!value.is_null()).then_some(value)
+}
+
+fn power_string(description: CFDictionaryRef, key: &CStr) -> Option<String> {
+    let value = power_value(description, key)?;
+    let mut buffer = [0_i8; 128];
+    // SAFETY: the buffer size matches the capacity passed, and the value is a
+    // CFString as its key documents. A non-zero return means the text fitted.
+    let ok = unsafe {
+        CFStringGetCString(
+            value,
+            buffer.as_mut_ptr(),
+            buffer.len() as libc::c_long,
+            CF_UTF8,
+        )
+    };
+    if ok == 0 {
+        return None;
+    }
+    // SAFETY: the call above wrote a NUL-terminated string into the buffer.
+    Some(
+        unsafe { CStr::from_ptr(buffer.as_ptr()) }
+            .to_string_lossy()
+            .into_owned(),
+    )
+}
+
+fn power_int(description: CFDictionaryRef, key: &CStr) -> Option<i32> {
+    let value = power_value(description, key)?;
+    let mut out = 0_i32;
+    // SAFETY: the output pointer is valid for the write the call performs, and
+    // the value is a CFNumber as its key documents.
+    let ok = unsafe { CFNumberGetValue(value, CF_SINT32, (&raw mut out).cast()) };
+    (ok != 0).then_some(out)
+}
+
+fn power_bool(description: CFDictionaryRef, key: &CStr) -> Option<bool> {
+    let value = power_value(description, key)?;
+    // SAFETY: the value is a CFBoolean as its key documents.
+    Some(unsafe { CFBooleanGetValue(value) } != 0)
+}
+
+fn battery() -> Detection<BatteryInfo> {
+    let source = "IOKit power sources";
+    // SAFETY: the copy functions return owned references; both are released
+    // before returning, including on the early paths below.
+    let blob = unsafe { IOPSCopyPowerSourcesInfo() };
+    if blob.is_null() {
+        return Detection::error(
+            source,
+            ErrorCode::ApiFailed,
+            "IOPSCopyPowerSourcesInfo failed",
+        );
+    }
+    // SAFETY: `blob` is a live reference from the call above.
+    let list = unsafe { IOPSCopyPowerSourcesList(blob) };
+    if list.is_null() {
+        // SAFETY: `blob` is an owned copy and has not been released yet.
+        unsafe { CFRelease(blob) };
+        return Detection::error(
+            source,
+            ErrorCode::ApiFailed,
+            "IOPSCopyPowerSourcesList failed",
+        );
+    }
+    // SAFETY: `list` is a live array reference from the call above.
+    let count = unsafe { CFArrayGetCount(list) };
+    let mut units = Vec::new();
+    let mut power = PowerSource::Unknown;
+    for index in 0..count {
+        // SAFETY: index is within the array's count; the borrowed description
+        // is valid while the blob lives.
+        let item = unsafe { CFArrayGetValueAtIndex(list, index) };
+        if item.is_null() {
+            continue;
+        }
+        // SAFETY: `item` came from `list`, which belongs to `blob`, so the
+        // description borrows from the same live blob.
+        let description = unsafe { IOPSGetPowerSourceDescription(blob, item) };
+        if description.is_null() {
+            continue;
+        }
+        // A UPS is a power source but not the machine's battery.
+        if power_string(description, c"Transport Type").as_deref() != Some("Internal") {
+            continue;
+        }
+        if let Some(state) = power_string(description, c"Power Source State") {
+            power = match state.as_str() {
+                "AC Power" => PowerSource::Ac,
+                "Battery Power" => PowerSource::Battery,
+                _ => PowerSource::Unknown,
+            };
+        }
+        let current = power_int(description, c"Current Capacity");
+        let maximum = power_int(description, c"Max Capacity").filter(|max| *max > 0);
+        let percent = match (current, maximum) {
+            (Some(current), Some(maximum)) => Some(
+                ((f64::from(current) / f64::from(maximum)) * 100.0)
+                    .round()
+                    .clamp(0.0, 100.0) as u8,
+            ),
+            _ => None,
+        };
+        let charging = power_bool(description, c"Is Charging").unwrap_or(false);
+        let charged = power_bool(description, c"Is Charged").unwrap_or(false);
+        let state = if charged || percent == Some(100) {
+            BatteryState::Full
+        } else if charging {
+            BatteryState::Charging
+        } else if power == PowerSource::Battery {
+            BatteryState::Discharging
+        } else {
+            BatteryState::Unknown
+        };
+        units.push(BatteryUnit {
+            name: power_string(description, c"Name").unwrap_or_else(|| "Battery".to_owned()),
+            percent,
+            state,
+        });
+    }
+    // SAFETY: both references were created by the copy functions above and are
+    // released exactly once here.
+    unsafe {
+        CFRelease(list);
+        CFRelease(blob);
+    }
+    if units.is_empty() {
+        return Detection::unsupported(
+            "This machine reports no internal battery; macOS desktops have none",
+        );
+    }
+    Detection::available(BatteryInfo { units, power }, source)
+}
+
+// --- Graphics adapters ---------------------------------------------------
+
+/// IOKit objects are Mach ports; libc does not name `io_object_t`.
+type IoObject = libc::mach_port_t;
+
+#[link(name = "IOKit", kind = "framework")]
+unsafe extern "C" {
+    fn IOServiceMatching(name: *const libc::c_char) -> CFDictionaryRef;
+    fn IOServiceGetMatchingServices(
+        port: libc::mach_port_t,
+        matching: CFDictionaryRef,
+        existing: *mut IoObject,
+    ) -> libc::kern_return_t;
+    fn IOIteratorNext(iterator: IoObject) -> IoObject;
+    fn IOObjectRelease(object: IoObject) -> libc::kern_return_t;
+    fn IORegistryEntryCreateCFProperty(
+        entry: IoObject,
+        key: CFStringRef,
+        allocator: CFTypeRef,
+        options: u32,
+    ) -> CFTypeRef;
+}
+
+/// kIOMainPortDefault
+const IO_MAIN_PORT: libc::mach_port_t = 0;
+
+/// One string property of an IOKit registry entry. The returned value is an
+/// owned copy and is released here.
+fn registry_string(entry: IoObject, key: &CStr) -> Option<String> {
+    // SAFETY: the key is a valid NUL-terminated string used only for this call.
+    let key_ref = unsafe { CFStringCreateWithCString(ptr::null(), key.as_ptr(), CF_UTF8) };
+    if key_ref.is_null() {
+        return None;
+    }
+    // SAFETY: the entry is a live object from the iterator and the key is an
+    // owned CFString; the property returned is an owned copy we release below.
+    let value = unsafe { IORegistryEntryCreateCFProperty(entry, key_ref, ptr::null(), 0) };
+    // SAFETY: `key_ref` is an owned copy created above.
+    unsafe { CFRelease(key_ref) };
+    if value.is_null() {
+        return None;
+    }
+    let mut buffer = [0_i8; 128];
+    // SAFETY: the buffer size matches the capacity passed; the model property is
+    // a CFString. A non-zero return means it fitted.
+    let ok = unsafe {
+        CFStringGetCString(
+            value,
+            buffer.as_mut_ptr(),
+            buffer.len() as libc::c_long,
+            CF_UTF8,
+        )
+    };
+    // SAFETY: the property reference is an owned copy and is released once.
+    unsafe { CFRelease(value) };
+    if ok == 0 {
+        return None;
+    }
+    // SAFETY: the call above wrote a NUL-terminated string into the buffer.
+    Some(
+        unsafe { CStr::from_ptr(buffer.as_ptr()) }
+            .to_string_lossy()
+            .into_owned(),
+    )
+}
+
+/// Every IOAccelerator, which is how macOS exposes the graphics adapters.
+fn gpu() -> Detection<GpuInfo> {
+    let source = "IOKit IOAccelerator";
+    // SAFETY: IOServiceMatching returns a dictionary owned by the matching
+    // machinery, consumed by IOServiceGetMatchingServices.
+    let matching = unsafe { IOServiceMatching(c"IOAccelerator".as_ptr()) };
+    if matching.is_null() {
+        return Detection::error(source, ErrorCode::ApiFailed, "IOServiceMatching failed");
+    }
+    let mut iterator: IoObject = 0;
+    // SAFETY: the matching dictionary is consumed by this call, and the out
+    // pointer is valid for the iterator it writes.
+    let result = unsafe { IOServiceGetMatchingServices(IO_MAIN_PORT, matching, &raw mut iterator) };
+    if result != 0 {
+        return Detection::error(
+            source,
+            ErrorCode::ApiFailed,
+            format!("IOServiceGetMatchingServices returned {result}"),
+        );
+    }
+    let mut devices = Vec::new();
+    loop {
+        // SAFETY: the iterator is live; the call returns the next object or 0.
+        let entry = unsafe { IOIteratorNext(iterator) };
+        if entry == 0 {
+            break;
+        }
+        let model = registry_string(entry, c"model");
+        let class = registry_string(entry, c"IOClass").unwrap_or_default();
+        // SAFETY: the entry is live and was returned by the iterator; releasing
+        // it once is the documented ownership rule.
+        unsafe { IOObjectRelease(entry) };
+        // The accelerator class names the vendor and whether the adapter is on
+        // the package: AGX is Apple Silicon, IntelAccelerator is an Intel
+        // integrated GPU, AMDAccelerator is a discrete card on Intel Macs.
+        // Anything else keeps Unknown rather than guessing.
+        let (vendor, kind) = if class.starts_with("AGX") {
+            (Some("Apple".to_owned()), GpuKind::Integrated)
+        } else if class.starts_with("Intel") {
+            (Some("Intel".to_owned()), GpuKind::Integrated)
+        } else if class.starts_with("AMD") {
+            (Some("AMD".to_owned()), GpuKind::Discrete)
+        } else {
+            (None, GpuKind::Unknown)
+        };
+        devices.push(GpuDevice {
+            name: model,
+            vendor,
+            id: (!class.is_empty()).then(|| class.clone()),
+            driver: None,
+            kind,
+        });
+    }
+    // SAFETY: the iterator is an owned object and is released exactly once.
+    unsafe { IOObjectRelease(iterator) };
+    if devices.is_empty() {
+        return Detection::unavailable("No IOAccelerator service is registered");
+    }
+    Detection::available(GpuInfo { devices }, source)
+}
+
 pub fn parent_executable() -> io::Result<String> {
     let mut buffer = [0_u8; libc::PROC_PIDPATHINFO_MAXSIZE as usize];
     // SAFETY: getppid is a read-only operation with no pointer arguments.
@@ -274,6 +591,8 @@ pub fn collect(selection: &[ModuleId]) -> PlatformData {
         memory: if_selected(selection, ModuleId::Memory, memory),
         swap: if_selected(selection, ModuleId::Swap, swap),
         disk: if_selected(selection, ModuleId::Disk, disk),
+        gpu: if_selected(selection, ModuleId::Gpu, gpu),
+        battery: if_selected(selection, ModuleId::Battery, battery),
         local_ip: if_selected(selection, ModuleId::LocalIp, local_ip),
     }
 }

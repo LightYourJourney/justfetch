@@ -13,9 +13,11 @@ pub enum ModuleId {
     Kernel,
     Uptime,
     Cpu,
+    Gpu,
     Memory,
     Swap,
     Disk,
+    Battery,
     Shell,
     Terminal,
     LocalIp,
@@ -23,15 +25,17 @@ pub enum ModuleId {
 
 impl ModuleId {
     /// Every module, in the order a default run shows them.
-    pub const ALL: [ModuleId; 11] = [
+    pub const ALL: [ModuleId; 13] = [
         ModuleId::Os,
         ModuleId::Host,
         ModuleId::Kernel,
         ModuleId::Uptime,
         ModuleId::Cpu,
+        ModuleId::Gpu,
         ModuleId::Memory,
         ModuleId::Swap,
         ModuleId::Disk,
+        ModuleId::Battery,
         ModuleId::Shell,
         ModuleId::Terminal,
         ModuleId::LocalIp,
@@ -45,9 +49,11 @@ impl ModuleId {
             ModuleId::Kernel => "kernel",
             ModuleId::Uptime => "uptime",
             ModuleId::Cpu => "cpu",
+            ModuleId::Gpu => "gpu",
             ModuleId::Memory => "memory",
             ModuleId::Swap => "swap",
             ModuleId::Disk => "disk",
+            ModuleId::Battery => "battery",
             ModuleId::Shell => "shell",
             ModuleId::Terminal => "terminal",
             ModuleId::LocalIp => "local_ip",
@@ -63,9 +69,11 @@ impl ModuleId {
             ModuleId::Kernel => "Kernel",
             ModuleId::Uptime => "Uptime",
             ModuleId::Cpu => "CPU",
+            ModuleId::Gpu => "GPU",
             ModuleId::Memory => "Memory",
             ModuleId::Swap => "Swap",
             ModuleId::Disk => "Disk",
+            ModuleId::Battery => "Battery",
             ModuleId::Shell => "Shell",
             ModuleId::Terminal => "Term",
             ModuleId::LocalIp => "IP",
@@ -126,7 +134,7 @@ mod tests {
 
     #[test]
     fn unknown_and_malformed_identifiers_are_rejected() {
-        for text in ["", "cpu ", "gpu", "os,cpu", "lcoal_ip"] {
+        for text in ["", "cpu ", "bogus", "os,cpu", "lcoal_ip"] {
             let parsed = ModuleId::parse(text);
             // `"cpu "` trims to a valid id; everything else must fail.
             if text.trim().eq_ignore_ascii_case("cpu") {

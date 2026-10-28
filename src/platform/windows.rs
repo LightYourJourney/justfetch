@@ -291,6 +291,134 @@ fn ipv4_of(
     reportable(parsed).then_some(parsed)
 }
 
+/// Windows reports one aggregate battery through `GetSystemPowerStatus`, not
+/// per-unit detail, so this is one entry even on a machine with two packs.
+fn battery() -> Detection<BatteryInfo> {
+    use windows_sys::Win32::System::Power::{GetSystemPowerStatus, SYSTEM_POWER_STATUS};
+
+    let mut status = std::mem::MaybeUninit::<SYSTEM_POWER_STATUS>::uninit();
+    // SAFETY: the call writes one SYSTEM_POWER_STATUS into the pointer it is
+    // given, which is valid and correctly aligned for that type.
+    if unsafe { GetSystemPowerStatus(status.as_mut_ptr()) } == 0 {
+        return Detection::error(
+            "GetSystemPowerStatus",
+            ErrorCode::ApiFailed,
+            io::Error::last_os_error(),
+        );
+    }
+    // SAFETY: the call succeeded, so the struct is fully initialized.
+    let status = unsafe { status.assume_init() };
+    // BatteryFlag 128 means no system battery; 255 means the value is unknown,
+    // which must not be reported as no battery.
+    if status.BatteryFlag != 255 && status.BatteryFlag & 128 != 0 {
+        return Detection::unsupported("Windows reports no system battery on this machine");
+    }
+    let percent = (status.BatteryLifePercent != 255).then_some(status.BatteryLifePercent);
+    let state = if status.BatteryFlag == 255 {
+        BatteryState::Unknown
+    } else if status.BatteryFlag & 8 != 0 {
+        // Bit 3 is "charging"; a full pack also clears it.
+        BatteryState::Charging
+    } else if percent == Some(100) {
+        BatteryState::Full
+    } else if status.ACLineStatus == 0 {
+        BatteryState::Discharging
+    } else {
+        BatteryState::Unknown
+    };
+    let power = match status.ACLineStatus {
+        0 => PowerSource::Battery,
+        1 => PowerSource::Ac,
+        _ => PowerSource::Unknown,
+    };
+    Detection::available(
+        BatteryInfo {
+            units: vec![BatteryUnit {
+                name: "System battery".to_owned(),
+                percent,
+                state,
+            }],
+            power,
+        },
+        "GetSystemPowerStatus",
+    )
+}
+
+/// Graphics adapters as GDI reports them. `windows-sys` ships no DXGI bindings,
+/// and this project does not take a second Windows binding crate for one
+/// module, so the source is `EnumDisplayDevicesW`: it names the adapters
+/// Windows has attached to a display. An adapter with no display attached is
+/// therefore not listed, which the compatibility matrix records.
+fn gpu() -> Detection<GpuInfo> {
+    use windows_sys::Win32::Graphics::Gdi::{
+        DISPLAY_DEVICE_ACTIVE, DISPLAY_DEVICEW, EnumDisplayDevicesW,
+    };
+
+    let wide = |buffer: &[u16]| {
+        let end = buffer
+            .iter()
+            .position(|unit| *unit == 0)
+            .unwrap_or(buffer.len());
+        String::from_utf16_lossy(&buffer[..end]).trim().to_owned()
+    };
+    let mut devices: Vec<GpuDevice> = Vec::new();
+    let mut index = 0_u32;
+    loop {
+        let mut device = std::mem::MaybeUninit::<DISPLAY_DEVICEW>::zeroed();
+        // SAFETY: the struct is plain old data; writing `cb` through the
+        // uninitialized pointer is valid for that field.
+        unsafe {
+            (*device.as_mut_ptr()).cb = std::mem::size_of::<DISPLAY_DEVICEW>() as u32;
+        }
+        // SAFETY: the buffer is sized as `cb` declares and the call only writes
+        // into it; a zero return means the index is past the last adapter.
+        let found = unsafe { EnumDisplayDevicesW(std::ptr::null(), index, device.as_mut_ptr(), 0) };
+        if found == 0 {
+            break;
+        }
+        index += 1;
+        // SAFETY: the call succeeded, so the struct is fully initialized.
+        let device = unsafe { device.assume_init() };
+        if device.StateFlags & DISPLAY_DEVICE_ACTIVE == 0 {
+            continue;
+        }
+        let name = wide(&device.DeviceString);
+        if name.is_empty() {
+            continue;
+        }
+        // One adapter behind two monitors appears twice; report it once.
+        if devices
+            .iter()
+            .any(|existing| existing.name.as_deref() == Some(name.as_str()))
+        {
+            continue;
+        }
+        let id = wide(&device.DeviceID);
+        let vendor = id
+            .split('&')
+            .find_map(|part| part.strip_prefix("VEN_"))
+            .and_then(|vendor| match vendor {
+                "10DE" => Some("NVIDIA"),
+                "1002" => Some("AMD"),
+                "8086" => Some("Intel"),
+                "15AD" => Some("VMware"),
+                "1AF4" => Some("Red Hat"),
+                _ => None,
+            });
+        devices.push(GpuDevice {
+            name: Some(name),
+            vendor: vendor.map(str::to_owned),
+            id: (!id.is_empty()).then_some(id),
+            driver: None,
+            kind: GpuKind::Unknown,
+        });
+    }
+    if devices.is_empty() {
+        return Detection::unavailable("EnumDisplayDevicesW reports no active display adapter");
+    }
+    Detection::available(GpuInfo { devices }, "EnumDisplayDevicesW")
+}
+
 pub fn collect(selection: &[ModuleId]) -> PlatformData {
     // The hostname is needed for the title even when no module asks for it.
     let hostname = match System::host_name().filter(|s| !s.is_empty()) {
@@ -349,6 +477,8 @@ pub fn collect(selection: &[ModuleId]) -> PlatformData {
         memory: if_selected(selection, ModuleId::Memory, memory),
         swap: if_selected(selection, ModuleId::Swap, swap),
         disk: if_selected(selection, ModuleId::Disk, disk),
+        gpu: if_selected(selection, ModuleId::Gpu, gpu),
+        battery: if_selected(selection, ModuleId::Battery, battery),
         local_ip: if_selected(selection, ModuleId::LocalIp, local_ip),
     }
 }

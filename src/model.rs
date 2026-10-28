@@ -146,6 +146,67 @@ impl<T> Detection<T> {
     }
 }
 
+/// What the platform will say about one graphics adapter. Fields the platform
+/// does not expose stay `None` rather than being guessed from a model table.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct GpuDevice {
+    pub name: Option<String>,
+    pub vendor: Option<String>,
+    pub id: Option<String>,
+    pub driver: Option<String>,
+    pub kind: GpuKind,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum GpuKind {
+    Integrated,
+    Discrete,
+    Unknown,
+}
+
+/// Every graphics adapter, in the order the platform enumerates them.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct GpuInfo {
+    pub devices: Vec<GpuDevice>,
+}
+
+/// What powers the machine right now, as far as the platform will say.
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum PowerSource {
+    Ac,
+    Battery,
+    Unknown,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum BatteryState {
+    Charging,
+    Discharging,
+    Full,
+    Unknown,
+}
+
+/// One battery. `percent` is `None` when the platform exposes the unit but no
+/// charge figure for it, which is different from a charge of zero.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct BatteryUnit {
+    pub name: String,
+    pub percent: Option<u8>,
+    pub state: BatteryState,
+}
+
+/// Every battery the platform reports. A machine with no battery reports an
+/// empty list, and the collector turns that into `unsupported` rather than a
+/// zero percent.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct BatteryInfo {
+    pub units: Vec<BatteryUnit>,
+    pub power: PowerSource,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct SystemSnapshot {
     pub schema_version: u32,
@@ -159,6 +220,8 @@ pub struct SystemSnapshot {
     pub memory: Detection<MemoryInfo>,
     pub swap: Detection<SwapInfo>,
     pub disk: Detection<DiskInfo>,
+    pub gpu: Detection<GpuInfo>,
+    pub battery: Detection<BatteryInfo>,
     pub shell: Detection<ShellInfo>,
     pub terminal: Detection<TerminalInfo>,
     pub local_ip: Detection<LocalIpInfo>,
