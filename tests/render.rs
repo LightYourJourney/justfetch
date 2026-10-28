@@ -94,6 +94,19 @@ fn fixture() -> SystemSnapshot {
             },
             "fixture",
         ),
+        display: Detection::available(
+            DisplayInfo {
+                displays: vec![DisplayUnit {
+                    name: None,
+                    width: 1470,
+                    height: 956,
+                    refresh_hz: Some(60),
+                    primary: true,
+                    kind: DisplayKind::BuiltIn,
+                }],
+            },
+            "fixture",
+        ),
         battery: Detection::available(
             BatteryInfo {
                 units: vec![BatteryUnit {
@@ -178,10 +191,12 @@ fn fixed_plain_render_is_aligned() {
             "Kernel   Linux 6.8\n",
             "Uptime   1d 1h 1m\n",
             "CPU      Test CPU (8 logical)\n",
+            "GPU      Test GPU\n",
             "Memory   2.00 / 8.00 GiB (25%)\n",
             "Swap     1.00 / 4.00 GiB (25%)\n",
             "Disk     100.00 / 500.00 GiB (20%) on /home/tester\n",
             "Battery  82% (charging)\n",
+            "Display  1470x956 @60Hz (built-in)\n",
             "Shell    zsh\n",
             "Term     Test Terminal 1.2\n",
             "IP       192.0.2.10 (eth0)\n",
@@ -1402,4 +1417,72 @@ fn a_gpu_that_cannot_be_enumerated_is_unavailable_not_invented() {
     let value: serde_json::Value = serde_json::from_str(&json::render(&snapshot).unwrap()).unwrap();
     assert_eq!(value["gpu"]["status"], "unavailable");
     assert!(value["gpu"].get("value").is_none());
+}
+
+#[test]
+fn several_displays_mark_the_primary_and_keep_their_own_modes() {
+    let mut snapshot = fixture();
+    snapshot.display = Detection::available(
+        DisplayInfo {
+            displays: vec![
+                DisplayUnit {
+                    name: None,
+                    width: 1470,
+                    height: 956,
+                    refresh_hz: Some(60),
+                    primary: true,
+                    kind: DisplayKind::BuiltIn,
+                },
+                DisplayUnit {
+                    name: None,
+                    width: 2560,
+                    height: 1440,
+                    refresh_hz: None,
+                    primary: false,
+                    kind: DisplayKind::Unknown,
+                },
+            ],
+        },
+        "fixture",
+    );
+    let text = terminal::render(
+        &snapshot,
+        Options {
+            logo: false,
+            unicode: false,
+            ..options(80)
+        },
+    );
+    let value = row_value(&text, "Display").expect("a display row");
+    assert!(
+        value.contains("1470x956 @60Hz (built-in) (primary)"),
+        "{value}"
+    );
+    assert!(value.contains("2560x1440"), "{value}");
+    assert!(
+        !value.contains("2560x1440 @"),
+        "no rate must not print one: {value}"
+    );
+    let json: serde_json::Value = serde_json::from_str(&json::render(&snapshot).unwrap()).unwrap();
+    assert_eq!(
+        json["display"]["value"]["displays"][1]["refresh_hz"],
+        serde_json::Value::Null
+    );
+    assert_eq!(json["display"]["value"]["displays"][0]["kind"], "built_in");
+    assert_eq!(json["display"]["value"]["displays"][0]["primary"], true);
+}
+
+#[test]
+fn a_display_the_platform_cannot_describe_is_unavailable() {
+    let mut snapshot = fixture();
+    snapshot.display = Detection::unavailable("CoreGraphics reports no active display");
+    let text = terminal::render(
+        &snapshot,
+        Options {
+            logo: false,
+            unicode: false,
+            ..options(80)
+        },
+    );
+    assert_eq!(row_value(&text, "Display").as_deref(), Some("Unavailable"));
 }

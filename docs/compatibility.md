@@ -17,6 +17,19 @@ The support contract is conservative: a platform adapter is implemented, but onl
 
 "Executed" means the release binary ran on a real kernel of that platform and returned the JSON above; it does not mean every distribution, device or hardware configuration has been tried. What the runners establish is that the Linux `os-release`/`proc`/sysfs and parent-shell paths and the Windows registry/memory/ToolHelp paths work on at least one real system each. Arch, Debian, Fedora, Gentoo, openSUSE, NixOS, Intel Macs, WSL and container guests remain unexercised. ARM64 Linux has had one non-interactive run, described in its row, which is not a distribution or interactive check.
 
+### Display (Phase 12)
+
+| Platform | Status | Evidence |
+| --- | --- | --- |
+| macOS ARM64 | Supported and tested; not in the default module list | CoreGraphics: `1470x956 @60Hz`, built in, matching the logical size macOS reports. Executed on Mac15,12. The query costs ~60 ms on this host (WindowServer round trip), so it is opt-in |
+| macOS Intel | Implemented, untested | Same API |
+| Linux | Implemented, untested | DRM connectors and their preferred mode, **marked estimated**: sysfs does not know which mode the compositor is using. Monitor names are connector names (`card0-eDP-1`), not panel names |
+| Windows | Implemented, untested | `EnumDisplayMonitors` with `GetMonitorInfoW`; the desktop rectangle is the resolution, and the refresh rate comes from `EnumDisplaySettingsW` |
+
+The panel's native resolution is not reported on macOS: CoreGraphics exposes the
+current mode, not the panel's EDID. A scaled MacBook mode therefore shows the
+logical size (1470x956), while `system_profiler` shows the panel (2560x1664).
+
 ### GPU (Phase 12)
 
 | Platform | Status | Evidence |

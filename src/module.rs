@@ -18,6 +18,7 @@ pub enum ModuleId {
     Swap,
     Disk,
     Battery,
+    Display,
     Shell,
     Terminal,
     LocalIp,
@@ -25,7 +26,28 @@ pub enum ModuleId {
 
 impl ModuleId {
     /// Every module, in the order a default run shows them.
-    pub const ALL: [ModuleId; 13] = [
+    pub const ALL: [ModuleId; 14] = [
+        ModuleId::Os,
+        ModuleId::Host,
+        ModuleId::Kernel,
+        ModuleId::Uptime,
+        ModuleId::Cpu,
+        ModuleId::Gpu,
+        ModuleId::Memory,
+        ModuleId::Swap,
+        ModuleId::Disk,
+        ModuleId::Battery,
+        ModuleId::Display,
+        ModuleId::Shell,
+        ModuleId::Terminal,
+        ModuleId::LocalIp,
+    ];
+
+    /// The modules a default run shows. `Display` is not among them: its
+    /// platform query connects to the window server and was measured at ~60 ms
+    /// on macOS, which would dominate a run that otherwise takes ~12 ms.
+    /// Selecting it explicitly costs that, which is the user's choice to make.
+    pub const DEFAULT: [ModuleId; 13] = [
         ModuleId::Os,
         ModuleId::Host,
         ModuleId::Kernel,
@@ -54,6 +76,7 @@ impl ModuleId {
             ModuleId::Swap => "swap",
             ModuleId::Disk => "disk",
             ModuleId::Battery => "battery",
+            ModuleId::Display => "display",
             ModuleId::Shell => "shell",
             ModuleId::Terminal => "terminal",
             ModuleId::LocalIp => "local_ip",
@@ -74,6 +97,7 @@ impl ModuleId {
             ModuleId::Swap => "Swap",
             ModuleId::Disk => "Disk",
             ModuleId::Battery => "Battery",
+            ModuleId::Display => "Display",
             ModuleId::Shell => "Shell",
             ModuleId::Terminal => "Term",
             ModuleId::LocalIp => "IP",

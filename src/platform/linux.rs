@@ -253,6 +253,61 @@ fn gpu() -> Detection<GpuInfo> {
     Detection::available(GpuInfo { devices }, "/sys/class/drm")
 }
 
+/// Displays from DRM connectors. sysfs knows which connectors are connected
+/// and which modes they advertise, but not which mode is in use: that lives in
+/// the compositor. The preferred mode is reported as an estimate with that
+/// caveat rather than presented as the current resolution.
+fn display() -> Detection<DisplayInfo> {
+    let root = std::path::Path::new("/sys/class/drm");
+    let entries = match std::fs::read_dir(root) {
+        Ok(entries) => entries,
+        Err(error) => {
+            return Detection::unavailable(format!("{} cannot be read: {error}", root.display()));
+        }
+    };
+    let mut displays = Vec::new();
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        // Connectors are named `card0-eDP-1`; `card0` is the adapter itself.
+        if !name.contains('-') {
+            continue;
+        }
+        let status = std::fs::read_to_string(entry.path().join("status")).unwrap_or_default();
+        if status.trim() != "connected" {
+            continue;
+        }
+        let modes = std::fs::read_to_string(entry.path().join("modes")).unwrap_or_default();
+        // The first line is the connector's preferred mode.
+        let Some((width, height)) = modes.lines().next().and_then(|mode| {
+            let (w, h) = mode.trim().split_once('x')?;
+            Some((w.parse::<u32>().ok()?, h.parse::<u32>().ok()?))
+        }) else {
+            continue;
+        };
+        let kind = if name.contains("eDP") || name.contains("LVDS") {
+            DisplayKind::BuiltIn
+        } else {
+            DisplayKind::Unknown
+        };
+        displays.push(DisplayUnit {
+            name: Some(name),
+            width,
+            height,
+            refresh_hz: None,
+            primary: false,
+            kind,
+        });
+    }
+    if displays.is_empty() {
+        return Detection::unavailable("No DRM connector reports a connected display");
+    }
+    Detection::estimated(
+        DisplayInfo { displays },
+        "/sys/class/drm",
+        "Each connector's preferred mode; the mode actually in use is set by the compositor",
+    )
+}
+
 pub fn collect(selection: &[ModuleId]) -> PlatformData {
     let uname = uname();
     // The hostname is needed for the title even when no module asks for it.
@@ -327,6 +382,7 @@ pub fn collect(selection: &[ModuleId]) -> PlatformData {
         swap,
         disk: if_selected(selection, ModuleId::Disk, disk),
         gpu: if_selected(selection, ModuleId::Gpu, gpu),
+        display: if_selected(selection, ModuleId::Display, display),
         battery: if_selected(selection, ModuleId::Battery, battery),
         local_ip: if_selected(selection, ModuleId::LocalIp, local_ip),
     }

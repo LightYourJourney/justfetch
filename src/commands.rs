@@ -432,7 +432,7 @@ mod tests {
             None,
         )
         .unwrap();
-        assert_eq!(parsed.modules, crate::module::ModuleId::ALL.to_vec());
+        assert_eq!(parsed.modules, crate::module::ModuleId::DEFAULT.to_vec());
         assert_eq!(parsed.logo, crate::config::LogoChoice::Auto);
         assert!(parsed.color);
         assert_eq!(parsed.separator, crate::config::DEFAULT_SEPARATOR);

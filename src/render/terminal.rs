@@ -624,6 +624,29 @@ fn value_for(snapshot: &SystemSnapshot, module: ModuleId) -> String {
                 .collect::<Vec<_>>()
                 .join(", ")
         }),
+        ModuleId::Display => display(&snapshot.display, |info| {
+            info.displays
+                .iter()
+                .map(|unit| {
+                    let mut text = format!("{}x{}", unit.width, unit.height);
+                    if let Some(hz) = unit.refresh_hz {
+                        text.push_str(&format!(" @{hz}Hz"));
+                    }
+                    match unit.kind {
+                        DisplayKind::BuiltIn => text.push_str(" (built-in)"),
+                        DisplayKind::Unknown => {}
+                    }
+                    if info.displays.len() > 1 && unit.primary {
+                        text.push_str(" (primary)");
+                    }
+                    match &unit.name {
+                        Some(name) => format!("{name} {text}"),
+                        None => text,
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(", ")
+        }),
         ModuleId::Memory => display(&snapshot.memory, |mem| {
             capacity(mem.used_bytes, mem.total_bytes)
         }),

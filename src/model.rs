@@ -165,6 +165,33 @@ pub enum GpuKind {
     Unknown,
 }
 
+/// One display, as the platform describes it.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct DisplayUnit {
+    pub name: Option<String>,
+    pub width: u32,
+    pub height: u32,
+    pub refresh_hz: Option<u32>,
+    pub primary: bool,
+    pub kind: DisplayKind,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum DisplayKind {
+    /// A panel wired to the machine.
+    BuiltIn,
+    /// A display the platform reports but does not describe; a virtual or
+    /// remote display also lands here rather than being called external.
+    Unknown,
+}
+
+/// Every active display, in the order the platform lists them.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct DisplayInfo {
+    pub displays: Vec<DisplayUnit>,
+}
+
 /// Every graphics adapter, in the order the platform enumerates them.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct GpuInfo {
@@ -221,6 +248,7 @@ pub struct SystemSnapshot {
     pub swap: Detection<SwapInfo>,
     pub disk: Detection<DiskInfo>,
     pub gpu: Detection<GpuInfo>,
+    pub display: Detection<DisplayInfo>,
     pub battery: Detection<BatteryInfo>,
     pub shell: Detection<ShellInfo>,
     pub terminal: Detection<TerminalInfo>,

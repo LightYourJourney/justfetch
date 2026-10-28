@@ -419,6 +419,97 @@ fn gpu() -> Detection<GpuInfo> {
     Detection::available(GpuInfo { devices }, "EnumDisplayDevicesW")
 }
 
+/// Active monitors from GDI. `GetMonitorInfoW` gives the desktop rectangle,
+/// which is the resolution the user sees, and the primary flag; the refresh
+/// rate comes from the display settings of the same device.
+fn display() -> Detection<DisplayInfo> {
+    use windows_sys::Win32::Foundation::RECT;
+    use windows_sys::Win32::Graphics::Gdi::{
+        DEVMODEW, ENUM_CURRENT_SETTINGS, EnumDisplayMonitors, EnumDisplaySettingsW,
+        GetMonitorInfoW, HDC, HMONITOR, MONITORINFOEXW,
+    };
+    use windows_sys::Win32::UI::WindowsAndMessaging::MONITORINFOF_PRIMARY;
+
+    unsafe extern "system" fn collect(
+        monitor: HMONITOR,
+        _device: HDC,
+        _rect: *mut RECT,
+        data: isize,
+    ) -> i32 {
+        // SAFETY: `data` is the pointer to the Vec the caller passed, and the
+        // callback is called synchronously while it is alive.
+        let displays = unsafe { &mut *(data as *mut Vec<DisplayUnit>) };
+        let mut info = std::mem::MaybeUninit::<MONITORINFOEXW>::zeroed();
+        // SAFETY: writing cbSize through the uninitialized pointer is valid for
+        // that field, and the struct is plain data.
+        unsafe {
+            (*info.as_mut_ptr()).monitorInfo.cbSize = std::mem::size_of::<MONITORINFOEXW>() as u32;
+        }
+        // SAFETY: the buffer is sized as cbSize declares and the handle is one
+        // GDI passes to this callback.
+        if unsafe { GetMonitorInfoW(monitor, info.as_mut_ptr().cast()) } == 0 {
+            return 1;
+        }
+        // SAFETY: the successful call initialized the struct.
+        let info = unsafe { info.assume_init() };
+        let rect = info.monitorInfo.rcMonitor;
+        let width = (rect.right - rect.left).max(0) as u32;
+        let height = (rect.bottom - rect.top).max(0) as u32;
+        if width == 0 || height == 0 {
+            return 1;
+        }
+        // The refresh rate belongs to the device the monitor is on; a failure
+        // leaves it unknown rather than assumed.
+        let mut mode = std::mem::MaybeUninit::<DEVMODEW>::zeroed();
+        // SAFETY: writing dmSize through the uninitialized pointer is valid for
+        // that field.
+        unsafe {
+            (*mode.as_mut_ptr()).dmSize = std::mem::size_of::<DEVMODEW>() as u16;
+        }
+        // SAFETY: the device name is NUL-terminated UTF-16 from the struct
+        // above and the mode buffer is sized as dmSize declares.
+        let refresh = unsafe {
+            EnumDisplaySettingsW(
+                info.szDevice.as_ptr(),
+                ENUM_CURRENT_SETTINGS,
+                mode.as_mut_ptr(),
+            )
+        };
+        let refresh_hz = if refresh == 0 {
+            None
+        } else {
+            // SAFETY: the call succeeded, so the struct is fully initialized.
+            let mode = unsafe { mode.assume_init() };
+            (mode.dmDisplayFrequency > 1).then_some(mode.dmDisplayFrequency)
+        };
+        displays.push(DisplayUnit {
+            name: None,
+            width,
+            height,
+            refresh_hz,
+            primary: info.monitorInfo.dwFlags & MONITORINFOF_PRIMARY != 0,
+            kind: DisplayKind::Unknown,
+        });
+        1
+    }
+
+    let mut displays: Vec<DisplayUnit> = Vec::new();
+    // SAFETY: the callback is a valid function with the documented signature and
+    // `data` points at a Vec that outlives the synchronous enumeration.
+    let found = unsafe {
+        EnumDisplayMonitors(
+            std::ptr::null_mut(),
+            std::ptr::null(),
+            Some(collect),
+            (&raw mut displays) as isize,
+        )
+    };
+    if found == 0 || displays.is_empty() {
+        return Detection::unavailable("EnumDisplayMonitors reports no active monitor");
+    }
+    Detection::available(DisplayInfo { displays }, "EnumDisplayMonitors")
+}
+
 pub fn collect(selection: &[ModuleId]) -> PlatformData {
     // The hostname is needed for the title even when no module asks for it.
     let hostname = match System::host_name().filter(|s| !s.is_empty()) {
@@ -478,6 +569,7 @@ pub fn collect(selection: &[ModuleId]) -> PlatformData {
         swap: if_selected(selection, ModuleId::Swap, swap),
         disk: if_selected(selection, ModuleId::Disk, disk),
         gpu: if_selected(selection, ModuleId::Gpu, gpu),
+        display: if_selected(selection, ModuleId::Display, display),
         battery: if_selected(selection, ModuleId::Battery, battery),
         local_ip: if_selected(selection, ModuleId::LocalIp, local_ip),
     }

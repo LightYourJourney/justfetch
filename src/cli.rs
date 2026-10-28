@@ -20,7 +20,7 @@ pub struct Cli {
     /// Show only these modules, in this order (comma separated).
     ///
     /// Modules: os, host, kernel, uptime, cpu, gpu, memory, swap, disk,
-    /// battery, shell, terminal, local_ip.
+    /// battery, display, shell, terminal, local_ip.
     #[arg(long, value_name = "LIST")]
     pub modules: Option<String>,
     /// Read this configuration file, layered over the user default.

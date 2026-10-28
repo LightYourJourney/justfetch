@@ -40,6 +40,7 @@ pub struct PlatformData {
     pub swap: Detection<SwapInfo>,
     pub disk: Detection<DiskInfo>,
     pub gpu: Detection<GpuInfo>,
+    pub display: Detection<DisplayInfo>,
     pub battery: Detection<BatteryInfo>,
     pub local_ip: Detection<LocalIpInfo>,
 }

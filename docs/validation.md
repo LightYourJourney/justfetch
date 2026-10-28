@@ -386,11 +386,41 @@ The tests that pinned the old behaviour were rewritten rather than kept: one ass
 
 **CI caught another test defect.** The first CI run of this pass failed on Ubuntu only: a test asserted that the output does not contain `"CPU "` to prove a custom label replaced the default. The GitHub runner's processor is an `Intel(R) Xeon(R) ... CPU @ 2.80GHz`, so the *value* contains the substring the test forbade. The assertion now checks that no line starts with the label, which is what "the row's label" means; a value that merely mentions the word cannot satisfy or break it. This is the second time this round that a test, not the product, was tied to one machine's data.
 
-**Test count:** 144, up from 87.
+**Test count:** 147, up from 87.
 
 ## Advanced detection round (2026-10-28)
 
 Phase 12 adds collectors one at a time, each with its own platform evidence.
+
+### Display
+
+**Implementation.** macOS enumerates active displays through CoreGraphics;
+Linux reads DRM connectors; Windows uses GDI `EnumDisplayMonitors`.
+
+**macOS evidence.** Executed on a MacBook Air and compared with the system:
+
+```
+system_profiler: Resolution: 2560 x 1664 (panel)
+macOS UI:        Looks like 1470 x 956
+justfetch:       1470x956 @60Hz (built-in)
+```
+
+The number reported is the current mode's logical size, which is what the
+desktop is laid out in; the panel's native resolution is not exposed by the API
+used.
+
+**Performance, and why Display is opt-in.** The first measurement was
+unacceptable: `--modules display` took 66.6 ms against 11.9 ms for
+`--modules os`, about 36.4 M instructions against 28.0 M. Isolating the calls
+showed the cost was `CGGetActiveDisplayList` — the round trip to the window
+server — not the mode copy, since removing the latter changed nothing. A fetch
+tool cannot pay that on every default run, so `Display` is not in
+`ModuleId::DEFAULT`; it is selected by name, where the cost is the user's
+explicit choice. On a local GUI session the call may be cheaper; the figure
+here is from this host and is recorded as such.
+
+**Not verified.** Linux and Windows are cross-compiled only. The Linux path is
+marked estimated because the compositor owns the mode in use.
 
 ### GPU
 

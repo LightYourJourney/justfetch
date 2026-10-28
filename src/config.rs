@@ -68,7 +68,7 @@ impl Default for Config {
         Self {
             format: Format::Text,
             privacy: false,
-            modules: ModuleId::ALL.to_vec(),
+            modules: ModuleId::DEFAULT.to_vec(),
             logo: LogoChoice::Auto,
             logo_art: None,
             layout: Layout::Classic,
@@ -597,7 +597,7 @@ mod tests {
     #[test]
     fn defaults_are_every_module_in_canonical_order() {
         let config = resolve_with(&cli(), None).unwrap();
-        assert_eq!(config.modules, ModuleId::ALL.to_vec());
+        assert_eq!(config.modules, ModuleId::DEFAULT.to_vec());
         assert_eq!(config.logo, LogoChoice::Auto);
         assert!(config.color);
         assert_eq!(config.separator, DEFAULT_SEPARATOR);
@@ -722,7 +722,7 @@ mod tests {
         // A path that does not exist is only an error when it was asked for
         // explicitly.
         let config = resolve_with(&cli(), Some(Path::new("/nonexistent/justfetch.toml"))).unwrap();
-        assert_eq!(config.modules, ModuleId::ALL.to_vec());
+        assert_eq!(config.modules, ModuleId::DEFAULT.to_vec());
     }
 
     #[test]
