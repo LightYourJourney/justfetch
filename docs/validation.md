@@ -447,7 +447,9 @@ findings; all are closed:
   per-pack batteries (it reports one aggregate), and the README example still
   said "not eleven" rows.
 
-**Test count:** 166, up from 87.
+**CI.** Run [40681651007](https://github.com/LightYourJourney/justfetch/actions/runs/40681651007) on `e4d0b34` passed all four jobs — MSRV 1.95.0, Ubuntu, Windows and macOS — so the six collectors compile and the test suite runs on all three platforms.
+
+**Test count:** 167, up from 87.
 
 ## Advanced detection round (2026-10-28)
 
