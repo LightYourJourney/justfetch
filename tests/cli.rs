@@ -24,6 +24,13 @@ fn toml_path(path: &std::path::Path) -> String {
     path.display().to_string().replace('\\', "\\\\")
 }
 
+/// Whether a row with this label is drawn. Checking the start of a line, not
+/// the whole output: a value may mention the word — a CPU model can contain
+/// "CPU " — and that says nothing about which label was used.
+fn has_row(text: &str, label: &str) -> bool {
+    text.lines().any(|line| line.starts_with(label))
+}
+
 fn temp_dir(tag: &str) -> std::path::PathBuf {
     let dir = std::env::temp_dir().join(format!("jf-cli-test-{tag}"));
     let _ = std::fs::remove_dir_all(&dir);
@@ -237,7 +244,7 @@ fn a_config_file_sets_modules_labels_and_separator() {
     );
     let text = String::from_utf8(out.stdout).unwrap();
     assert!(text.contains("Processor :: "), "{text}");
-    assert!(!text.contains("CPU "), "{text}");
+    assert!(!has_row(&text, "CPU "), "{text}");
 }
 
 #[test]
@@ -259,9 +266,9 @@ fn the_command_line_overrides_the_config_file() {
         "--no-color",
     ]);
     let text = String::from_utf8(out.stdout).unwrap();
-    assert!(text.contains("OS "), "{text}");
+    assert!(has_row(&text, "OS "), "{text}");
     assert!(
-        !text.contains("CPU "),
+        !has_row(&text, "CPU "),
         "the file's module list should be overridden:\n{text}"
     );
 }

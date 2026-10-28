@@ -384,4 +384,6 @@ The tests that pinned the old behaviour were rewritten rather than kept: one ass
 
 **CI.** Run [40666473049](https://github.com/LightYourJourney/justfetch/actions/runs/40666473049) on `6308765` passed all four jobs — MSRV 1.95.0, Ubuntu, Windows and macOS — so the fixes from the inline pass are executed on the platforms as well as compiled for them.
 
+**CI caught another test defect.** The first CI run of this pass failed on Ubuntu only: a test asserted that the output does not contain `"CPU "` to prove a custom label replaced the default. The GitHub runner's processor is an `Intel(R) Xeon(R) ... CPU @ 2.80GHz`, so the *value* contains the substring the test forbade. The assertion now checks that no line starts with the label, which is what "the row's label" means; a value that merely mentions the word cannot satisfy or break it. This is the second time this round that a test, not the product, was tied to one machine's data.
+
 **Test count:** 138, up from 87.
