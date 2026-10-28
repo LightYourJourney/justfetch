@@ -1127,3 +1127,29 @@ fn a_row_too_narrow_for_the_column_still_styles_what_it_can() {
         "value lost its colour"
     );
 }
+
+#[test]
+fn a_separator_split_across_lines_does_not_leave_the_value_plain() {
+    let nord = theme::built_in("nord").expect("built in");
+    // Seven columns holds the six-cell label column and one cell of separator,
+    // so the separator straddles two lines.
+    let output = terminal::render(
+        &fixture(),
+        Options {
+            depth: Depth::TrueColor,
+            logo: false,
+            theme: &nord,
+            ..options(7)
+        },
+    );
+    let lines: Vec<&str> = output.lines().collect();
+    let row = lines
+        .iter()
+        .position(|line| layout::sanitize(line).starts_with("OS"))
+        .unwrap_or_else(|| panic!("no OS row:\n{output}"));
+    let continuation = lines[row + 1];
+    assert!(
+        continuation.starts_with('\u{1b}'),
+        "the continuation lost its colour: {continuation:?}"
+    );
+}

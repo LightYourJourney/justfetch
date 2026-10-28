@@ -248,14 +248,17 @@ pub fn themes(depth: Depth, unicode: bool, columns: usize) -> String {
             styled_with(Role::Emphasis, "~"),
             styled(block, colour_style(theme.logo, depth)),
         ];
-        let plain_width = if theme.logo_secondary.is_some() {
-            18
-        } else {
-            15
-        };
         if theme.logo_secondary.is_some() {
             sample_parts.push(styled(block, colour_style(theme.logo_secondary, depth)));
         }
+        // Measure the sample rather than trust a hand-counted width.
+        let mut plain_parts = vec!["Aa", "Aa", rule, "~", block];
+        if theme.logo_secondary.is_some() {
+            plain_parts.push(block);
+        }
+        let plain_width = 2
+            + plain_parts.len().saturating_sub(1)
+            + plain_parts.iter().map(|part| width(part)).sum::<usize>();
         let sample = if inline && columns >= name_width + 2 + chips.len() * 2 + 2 + plain_width {
             format!("  {}", sample_parts.join(" "))
         } else {

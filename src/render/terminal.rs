@@ -475,16 +475,18 @@ fn row_lines(
             let mut line = Line::new();
             if !past_label && chunk.starts_with(&prefix) {
                 line.push(prefix.clone(), styles.label);
+                // The label is complete on this line whatever happens to the
+                // separator, so later chunks are value continuations.
+                past_label = true;
                 let rest = &chunk[prefix.len()..];
                 match rest.strip_prefix(separator) {
                     Some(rest) => {
                         line.push(separator, Style::new());
                         push_value(&mut line, rest, styles.value, styles.emphasis);
-                        past_label = true;
                     }
-                    // The separator itself was split across lines; the rest is
-                    // still value text, and the fragment stays plain.
-                    None => line.push(rest, styles.value),
+                    // The separator itself was split across lines: this
+                    // fragment is still separator, and stays plain.
+                    None => line.push(rest, Style::new()),
                 }
             } else if past_label {
                 push_value(&mut line, &chunk, styles.value, styles.emphasis);

@@ -368,4 +368,9 @@ Phase 11 added a theme model, four layouts and custom artwork. `docs/themes.md` 
 
 **CI.** Run [40479860007](https://github.com/LightYourJourney/justfetch/actions/runs/40479860007) on `99327a7` passed all four jobs — MSRV 1.95.0, Ubuntu, Windows and macOS. The preceding run on `f8233b7` failed the Windows job alone, for the test defect recorded above: the first execution of the theme code on that platform is also the first time a Windows path met the TOML parser.
 
-**Test count:** 136, up from 87.
+**Third review pass, run inline.** The two reviewer agents were cut off by an API quota, so this pass was done directly against the fix commit `0628cc8`. It found two things the commit had introduced, both now fixed:
+
+- When the separator was split across two lines, the row's continuation stayed unstyled: `past_label` was only set on the branch where the separator fitted. A row at seven columns now styles its continuation as the value it continues, and the regression test fails with the old code (`the continuation lost its colour`).
+- The theme preview measured its sample with a hand-counted 15/18 cells instead of measuring the text, which would drift the moment a sample changed. It is measured now.
+
+**Test count:** 137, up from 87.

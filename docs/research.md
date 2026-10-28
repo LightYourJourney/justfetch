@@ -34,15 +34,16 @@ a design decision rather than a dependency:
 
 | Project | Visual model | Taken | Deliberately not copied |
 | --- | --- | --- | --- |
-| Neofetch | artwork beside a block of fields, one accent colour, per-distribution art | the classic arrangement and distribution-based artwork | a configuration that is executable shell |
+| Neofetch | artwork beside a block of fields, a small set of accent colours, per-distribution art | the classic arrangement and distribution-based artwork | a configuration that is executable shell |
 | Fastfetch | modular layout with configurable structure and logo position | width-aware placement, detection separated from presentation | image/font-icon logos and a large preset registry |
 | HyFetch | the Neofetch layout with swappable palettes | palettes as data rather than code | the backend and flag-colour layers |
 | Macchina | themes chosen separately from behaviour | a theme that describes style only | its TUI widget layer |
 | Onefetch | a library of renderers over fixed fixtures | snapshot-driven rendering tests | git analysis and multi-renderer scope |
 
-What justfetch adds, which none of them states as a rule: the plain text is
-measured before any style is attached, so a themed run and a plain run differ by
-escape sequences and nothing else. The rules that follow from the comparison are
+The rule justfetch states for itself: the plain text is measured before any
+style is attached, so a themed run and a plain run differ by escape sequences
+and nothing else. Whether the projects above make the same guarantee is not
+something this repository has verified, so it is not claimed. The rules that follow from the comparison are
 in [themes.md](themes.md).
 
 ## Licensing and names
