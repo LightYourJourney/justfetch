@@ -373,4 +373,6 @@ Phase 11 added a theme model, four layouts and custom artwork. `docs/themes.md` 
 - When the separator was split across two lines, the row's continuation stayed unstyled: `past_label` was only set on the branch where the separator fitted. A row at seven columns now styles its continuation as the value it continues, and the regression test fails with the old code (`the continuation lost its colour`).
 - The theme preview measured its sample with a hand-counted 15/18 cells instead of measuring the text, which would drift the moment a sample changed. It is measured now.
 
+**CI.** Run [40666473049](https://github.com/LightYourJourney/justfetch/actions/runs/40666473049) on `6308765` passed all four jobs — MSRV 1.95.0, Ubuntu, Windows and macOS — so the fixes from the inline pass are executed on the platforms as well as compiled for them.
+
 **Test count:** 137, up from 87.
