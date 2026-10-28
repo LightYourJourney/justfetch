@@ -237,30 +237,42 @@ pub fn themes(depth: Depth, unicode: bool, columns: usize) -> String {
         // colour, and a sample follows the label, value, rule, emphasis and
         // artwork colours.
         let title_style = theme.style(Role::Title, None, theme.logo, depth);
-        let styled_with =
-            |role: Role, text: &str| styled(text, theme.style(role, None, theme.logo, depth));
         let block = if unicode { "██" } else { "##" };
         let rule = if unicode { "──" } else { "--" };
-        let mut sample_parts = vec![
-            styled_with(Role::Label, "Aa"),
-            styled_with(Role::Value, "Aa"),
-            styled_with(Role::Divider, rule),
-            styled_with(Role::Emphasis, "~"),
-            styled(block, colour_style(theme.logo, depth)),
+        // One list drives both what is drawn and how wide it is, so a change
+        // to the sample cannot leave the fit check behind.
+        let mut samples = vec![
+            (Sample::Role(Role::Label), "Aa"),
+            (Sample::Role(Role::Value), "Aa"),
+            (Sample::Role(Role::Divider), rule),
+            (Sample::Role(Role::Emphasis), "~"),
+            (Sample::Logo, block),
         ];
         if theme.logo_secondary.is_some() {
-            sample_parts.push(styled(block, colour_style(theme.logo_secondary, depth)));
+            samples.push((Sample::Secondary, block));
         }
-        // Measure the sample rather than trust a hand-counted width.
-        let mut plain_parts = vec!["Aa", "Aa", rule, "~", block];
-        if theme.logo_secondary.is_some() {
-            plain_parts.push(block);
-        }
-        let plain_width = 2
-            + plain_parts.len().saturating_sub(1)
-            + plain_parts.iter().map(|part| width(part)).sum::<usize>();
-        let sample = if inline && columns >= name_width + 2 + chips.len() * 2 + 2 + plain_width {
-            format!("  {}", sample_parts.join(" "))
+        let styled_parts: Vec<String> = samples
+            .iter()
+            .map(|(kind, text)| {
+                let style = match kind {
+                    Sample::Role(role) => theme.style(*role, None, theme.logo, depth),
+                    Sample::Logo => colour_style(theme.logo, depth),
+                    Sample::Secondary => colour_style(theme.logo_secondary, depth),
+                };
+                styled(text, style)
+            })
+            .collect();
+        // Two spaces before the sample, one between its parts; the chips are
+        // one cell each with a single space between them.
+        let sample_width = 2
+            + samples.iter().map(|(_, text)| width(text)).sum::<usize>()
+            + samples.len().saturating_sub(1);
+        let chips_width = chips.len().saturating_mul(2).saturating_sub(1);
+        // `sample_width` already counts the two spaces it opens with, so the
+        // separator before it is not added twice.
+        let line_width = name_width + 2 + chips_width + sample_width;
+        let sample = if inline && columns >= line_width {
+            format!("  {}", styled_parts.join(" "))
         } else {
             String::new()
         };
@@ -315,6 +327,13 @@ pub fn themes_json() -> String {
     let mut text = serde_json::to_string_pretty(&themes).unwrap_or_else(|_| "[]".to_owned());
     text.push('\n');
     text
+}
+
+/// One part of the theme preview's sample, and which colour it demonstrates.
+enum Sample {
+    Role(Role),
+    Logo,
+    Secondary,
 }
 
 /// Break prose at spaces. `wrap` works on graphemes and is right for values,

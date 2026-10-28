@@ -373,6 +373,15 @@ Phase 11 added a theme model, four layouts and custom artwork. `docs/themes.md` 
 - When the separator was split across two lines, the row's continuation stayed unstyled: `past_label` was only set on the branch where the separator fitted. A row at seven columns now styles its continuation as the value it continues, and the regression test fails with the old code (`the continuation lost its colour`).
 - The theme preview measured its sample with a hand-counted 15/18 cells instead of measuring the text, which would drift the moment a sample changed. It is measured now.
 
+**Fourth review pass.** Two independent axes examined the fix commit `6308765`. Both found the same two defects, which the previous pass had fixed only partway:
+
+- A row narrower than its whole label column still lost all colour: the fragment matching began only once a line held the entire padded prefix, which never happens when the label itself wraps. Styling is now applied by cell range — the label, separator and value ranges are computed once and each wrapped fragment is split at the boundaries that fall inside it — so where the line breaks no longer matters.
+- A separator split across lines had its remainder absorbed into the value span, so with `separator = " :: "` a `:` appeared in the value colour. The same range split keeps separator fragments plain.
+- The preview's width check counted the space before the sample twice and approximated the chip row as `2n` cells; it now sums the parts it actually draws, so a 51-column terminal shows the sample instead of withholding it until 53.
+- The sample was built from two parallel lists, one styled and one plain, which could drift; one list of parts now feeds both the drawing and the measurement.
+
+The tests that pinned the old behaviour were rewritten rather than kept: one asserted that a narrow line must start with an escape, which only held because the separator fragment was wrongly coloured. They now assert what the code promises — the label keeps its colour at every width, and the value fragment after a plain separator is styled.
+
 **CI.** Run [40666473049](https://github.com/LightYourJourney/justfetch/actions/runs/40666473049) on `6308765` passed all four jobs — MSRV 1.95.0, Ubuntu, Windows and macOS — so the fixes from the inline pass are executed on the platforms as well as compiled for them.
 
-**Test count:** 137, up from 87.
+**Test count:** 138, up from 87.

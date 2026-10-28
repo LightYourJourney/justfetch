@@ -1,6 +1,6 @@
 use super::{
     colour::{Colour, Depth},
-    layout::{Layout, sanitize, width, wrap},
+    layout::{Layout, sanitize, split_cells, width, wrap},
     logo,
     theme::{self, Role, Theme},
 };
@@ -465,34 +465,33 @@ fn row_lines(
             lines.push(line);
         }
     } else {
-        // Too narrow to hold the column: wrap the whole row. The label is
-        // styled only where the chunk still starts with it, the separator is
-        // never part of the value span, and once the label is behind us a
-        // continuation is styled as the value it continues.
+        // Too narrow to hold the column: wrap the whole row and style each
+        // fragment by what it actually is. A line break can land inside the
+        // label, inside the separator, or inside the value, so the fragment is
+        // split at the boundaries rather than guessed from where the line
+        // happens to start.
         let text = format!("{prefix}{separator}{}", row.value);
-        let mut past_label = false;
+        let separator_end = label_width + width(separator);
+        let mut consumed = 0;
         for chunk in wrap(&text, columns) {
             let mut line = Line::new();
-            if !past_label && chunk.starts_with(&prefix) {
-                line.push(prefix.clone(), styles.label);
-                // The label is complete on this line whatever happens to the
-                // separator, so later chunks are value continuations.
-                past_label = true;
-                let rest = &chunk[prefix.len()..];
-                match rest.strip_prefix(separator) {
-                    Some(rest) => {
-                        line.push(separator, Style::new());
-                        push_value(&mut line, rest, styles.value, styles.emphasis);
-                    }
-                    // The separator itself was split across lines: this
-                    // fragment is still separator, and stays plain.
-                    None => line.push(rest, Style::new()),
-                }
-            } else if past_label {
-                push_value(&mut line, &chunk, styles.value, styles.emphasis);
-            } else {
-                line.push(chunk, Style::new());
+            let mut rest = chunk.as_str();
+            let mut at = consumed;
+            if at < label_width {
+                let (head, tail) = split_cells(rest, label_width - at);
+                line.push(head, styles.label);
+                at += width(head);
+                rest = tail;
             }
+            if at < separator_end {
+                let (head, tail) = split_cells(rest, separator_end - at);
+                line.push(head, Style::new());
+                rest = tail;
+            }
+            if !rest.is_empty() {
+                push_value(&mut line, rest, styles.value, styles.emphasis);
+            }
+            consumed += width(&chunk);
             lines.push(line);
         }
     }

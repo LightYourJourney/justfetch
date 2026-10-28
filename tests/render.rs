@@ -326,10 +326,11 @@ fn a_narrow_colored_row_still_accents_its_label() {
         }
         out
     }
-    // The label column is six cells ("Kernel"/"Memory"), and the separator is
-    // no longer part of the styled prefix. A row is accented when its first
-    // line still contains the whole column, and plain below that.
-    for columns in 3..=12 {
+    // Styling is applied by cell range, so a line that begins inside the label
+    // column still carries the label's colour — including at widths narrower
+    // than the column itself. From two columns upward the label fits on one
+    // line, which is what lets the test find the row.
+    for columns in 2..=12 {
         let text = terminal::render(
             &fixture(),
             Options {
@@ -342,12 +343,9 @@ fn a_narrow_colored_row_still_accents_its_label() {
             .lines()
             .find(|line| visible(line).starts_with("OS"))
             .unwrap_or_else(|| panic!("no OS row at {columns} columns: {text:?}"));
-        let accented = row.starts_with('\u{1b}');
-        assert_eq!(
-            accented,
-            columns >= 6,
-            "accent at {columns} columns should be {}, row: {row:?}",
-            columns >= 6
+        assert!(
+            row.starts_with('\u{1b}'),
+            "the label lost its accent at {columns} columns: {row:?}"
         );
     }
 }
@@ -1147,9 +1145,11 @@ fn a_separator_split_across_lines_does_not_leave_the_value_plain() {
         .iter()
         .position(|line| layout::sanitize(line).starts_with("OS"))
         .unwrap_or_else(|| panic!("no OS row:\n{output}"));
-    let continuation = lines[row + 1];
+    // The line may open with a plain separator fragment; what must not be
+    // plain is the value that follows it.
+    let continuation = lines[row + 1].trim_start();
     assert!(
-        continuation.starts_with('\u{1b}'),
+        continuation.starts_with("\u{1b}[38;2;"),
         "the continuation lost its colour: {continuation:?}"
     );
 }

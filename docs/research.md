@@ -43,8 +43,8 @@ a design decision rather than a dependency:
 The rule justfetch states for itself: the plain text is measured before any
 style is attached, so a themed run and a plain run differ by escape sequences
 and nothing else. Whether the projects above make the same guarantee is not
-something this repository has verified, so it is not claimed. The rules that follow from the comparison are
-in [themes.md](themes.md).
+something this repository has verified, so it is not claimed. The rules that
+follow from the comparison are in [themes.md](themes.md).
 
 ## Licensing and names
 

@@ -154,6 +154,23 @@ pub fn sanitize_display(text: &str) -> String {
         .join("\n")
 }
 
+/// The first `cells` display cells of `text`, and the remainder. A grapheme is
+/// never split, so a grapheme wider than the request leaves the head empty.
+pub fn split_cells(text: &str, cells: usize) -> (&str, &str) {
+    if cells == 0 {
+        return ("", text);
+    }
+    let mut used = 0;
+    for (index, grapheme) in text.grapheme_indices(true) {
+        let here = width(grapheme);
+        if used + here > cells {
+            return text.split_at(index);
+        }
+        used += here;
+    }
+    (text, "")
+}
+
 pub fn width(text: &str) -> usize {
     UnicodeWidthStr::width(text)
 }
@@ -196,6 +213,17 @@ mod tests {
         assert_eq!(wrap("a中e\u{301}👩‍🔬z", 3), ["a中", "e\u{301}👩‍🔬", "z"]);
         assert!(wrap("中中文", 1).iter().all(|line| width(line) <= 1));
         assert_eq!(wrap("e\u{301}x", 1), ["e\u{301}", "x"]);
+    }
+
+    #[test]
+    fn cells_split_never_inside_a_grapheme() {
+        assert_eq!(split_cells("abc", 2), ("ab", "c"));
+        assert_eq!(split_cells("abc", 0), ("", "abc"));
+        assert_eq!(split_cells("abc", 9), ("abc", ""));
+        // A two-cell grapheme cannot be halved.
+        assert_eq!(split_cells("中a", 1), ("", "中a"));
+        assert_eq!(split_cells("中a", 2), ("中", "a"));
+        assert_eq!(split_cells("e\u{301}x", 1), ("e\u{301}", "x"));
     }
 
     #[test]
