@@ -101,7 +101,7 @@ fn fixture() -> SystemSnapshot {
                     width: 1470,
                     height: 956,
                     refresh_hz: Some(60),
-                    primary: true,
+                    primary: Some(true),
                     kind: DisplayKind::BuiltIn,
                 }],
             },
@@ -125,6 +125,16 @@ fn fixture() -> SystemSnapshot {
                 session: SessionType::Wayland,
             },
             "fixture",
+        ),
+        locale: Detection::available_with_note(
+            LocaleInfo {
+                process: Some("en_US.UTF-8".to_owned()),
+                process_source: Some("LANG".to_owned()),
+                system: Some("en_US".to_owned()),
+                system_source: Some("CFPreferences AppleLocale".to_owned()),
+            },
+            "fixture",
+            "fixture note",
         ),
         battery: Detection::available(
             BatteryInfo {
@@ -227,6 +237,7 @@ fn fixed_plain_render_is_aligned() {
             "Display   1470x956 @60Hz (built-in)\n",
             "Packages  dpkg 1234\n",
             "Desktop   GNOME (Wayland)\n",
+            "Locale    en_US.UTF-8 (LANG), system en_US\n",
             "Shell     zsh\n",
             "Term      Test Terminal 1.2\n",
             "IP        192.0.2.10 (eth0)\n",
@@ -1461,7 +1472,7 @@ fn several_displays_mark_the_primary_and_keep_their_own_modes() {
                     width: 1470,
                     height: 956,
                     refresh_hz: Some(60),
-                    primary: true,
+                    primary: Some(true),
                     kind: DisplayKind::BuiltIn,
                 },
                 DisplayUnit {
@@ -1469,7 +1480,7 @@ fn several_displays_mark_the_primary_and_keep_their_own_modes() {
                     width: 2560,
                     height: 1440,
                     refresh_hz: None,
-                    primary: false,
+                    primary: Some(false),
                     kind: DisplayKind::Unknown,
                 },
             ],
@@ -1501,6 +1512,7 @@ fn several_displays_mark_the_primary_and_keep_their_own_modes() {
     );
     assert_eq!(json["display"]["value"]["displays"][0]["kind"], "built_in");
     assert_eq!(json["display"]["value"]["displays"][0]["primary"], true);
+    assert!(json["display"]["value"]["displays"][1]["primary"] == false);
 }
 
 #[test]
@@ -1585,7 +1597,7 @@ fn the_desktop_row_names_the_session_type_and_kind() {
     snapshot.desktop = Detection::available(
         DesktopInfo {
             name: "Sway".to_owned(),
-            kind: DesktopKind::Compositor,
+            kind: DesktopKind::WindowManager,
             session: SessionType::Wayland,
         },
         "fixture",
@@ -1603,7 +1615,7 @@ fn the_desktop_row_names_the_session_type_and_kind() {
         Some("Sway (Wayland)")
     );
     let json: serde_json::Value = serde_json::from_str(&json::render(&snapshot).unwrap()).unwrap();
-    assert_eq!(json["desktop"]["value"]["kind"], "compositor");
+    assert_eq!(json["desktop"]["value"]["kind"], "window_manager");
     assert_eq!(json["desktop"]["value"]["session"], "wayland");
 }
 
@@ -1622,4 +1634,74 @@ fn a_platform_without_a_desktop_concept_says_so() {
         },
     );
     assert_eq!(row_value(&text, "Desktop").as_deref(), Some("Unsupported"));
+}
+
+#[test]
+fn the_process_locale_and_the_system_default_are_kept_apart() {
+    let mut snapshot = fixture();
+    snapshot.locale = Detection::available(
+        LocaleInfo {
+            process: Some("zh_CN.UTF-8".to_owned()),
+            process_source: Some("LANG".to_owned()),
+            system: Some("en_US".to_owned()),
+            system_source: Some("system preferences".to_owned()),
+        },
+        "fixture",
+    );
+    let text = terminal::render(
+        &snapshot,
+        Options {
+            logo: false,
+            unicode: false,
+            ..options(80)
+        },
+    );
+    assert_eq!(
+        row_value(&text, "Locale").as_deref(),
+        Some("zh_CN.UTF-8 (LANG), system en_US")
+    );
+    let json: serde_json::Value = serde_json::from_str(&json::render(&snapshot).unwrap()).unwrap();
+    assert_eq!(json["locale"]["value"]["process"], "zh_CN.UTF-8");
+    assert_eq!(json["locale"]["value"]["system"], "en_US");
+    assert_eq!(json["locale"]["value"]["process_source"], "LANG");
+}
+
+#[test]
+fn one_matching_locale_is_not_printed_twice() {
+    let mut snapshot = fixture();
+    snapshot.locale = Detection::available(
+        LocaleInfo {
+            process: Some("en_US".to_owned()),
+            process_source: Some("LANG".to_owned()),
+            system: Some("en_US".to_owned()),
+            system_source: Some("system preferences".to_owned()),
+        },
+        "fixture",
+    );
+    let text = terminal::render(
+        &snapshot,
+        Options {
+            logo: false,
+            unicode: false,
+            ..options(80)
+        },
+    );
+    assert_eq!(row_value(&text, "Locale").as_deref(), Some("en_US (LANG)"));
+}
+
+#[test]
+fn an_unreadable_locale_is_unavailable_not_empty_strings() {
+    let mut snapshot = fixture();
+    snapshot.locale = Detection::unavailable(
+        "No locale variable is set and the system default could not be read",
+    );
+    let text = terminal::render(
+        &snapshot,
+        Options {
+            logo: false,
+            unicode: false,
+            ..options(80)
+        },
+    );
+    assert_eq!(row_value(&text, "Locale").as_deref(), Some("Unavailable"));
 }

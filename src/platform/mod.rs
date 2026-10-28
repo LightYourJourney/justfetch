@@ -43,6 +43,7 @@ pub struct PlatformData {
     pub display: Detection<DisplayInfo>,
     pub packages: Detection<PackagesInfo>,
     pub desktop: Detection<DesktopInfo>,
+    pub locale: Detection<LocaleInfo>,
     pub battery: Detection<BatteryInfo>,
     pub local_ip: Detection<LocalIpInfo>,
 }

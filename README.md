@@ -4,13 +4,13 @@
 
 A compact Rust CLI that displays real local system information, with a responsive ASCII layout and structured JSON. It runs offline, requires no configuration or administrator access, and does not call other fetch tools.
 
-**Status:** the published [v0.1.0 pre-release](https://github.com/LightYourJourney/justfetch/releases) carries the **seven-field** build described in its [release notes](docs/release-notes/v0.1.0.md). The sixteen fields, `--privacy`, the module, theme and layout system, and the wider test and CI work described below are in the repository and **not yet released**; nothing is on crates.io. Apple Silicon macOS was exercised locally, Linux x86-64 and Windows x64 in the CI test job, and ARM64 Linux in the release workflow, which also runs each packaged archive on its own runner except the cross-compiled Intel macOS one. Intel macOS is built but has never been run, so its archive is unverified; WSL and distributions other than Ubuntu remain untested. See the [compatibility matrix](docs/compatibility.md).
+**Status:** the published [v0.1.0 pre-release](https://github.com/LightYourJourney/justfetch/releases) carries the **seven-field** build described in its [release notes](docs/release-notes/v0.1.0.md). The seventeen fields, `--privacy`, the module, theme and layout system, and the wider test and CI work described below are in the repository and **not yet released**; nothing is on crates.io. Apple Silicon macOS was exercised locally, Linux x86-64 and Windows x64 in the CI test job, and ARM64 Linux in the release workflow, which also runs each packaged archive on its own runner except the cross-compiled Intel macOS one. Intel macOS is built but has never been run, so its archive is unverified; WSL and distributions other than Ubuntu remain untested. See the [compatibility matrix](docs/compatibility.md).
 
 ## Features
 
-This list describes the current source. The published v0.1.0 archive is older and does not contain the sixteen fields or `--privacy`; see Status above.
+This list describes the current source. The published v0.1.0 archive is older and does not contain the seventeen fields or `--privacy`; see Status above.
 
-- OS, device model or labeled hostname, kernel, uptime, CPU, graphics adapters, physical memory and swap, the filesystem holding your home directory, battery state, displays (opt-in), per-manager installed package counts, the desktop session (Linux), shell, terminal and local IPv4 addresses. Swap is reported as unsupported on Windows, which exposes no page-file figure to the APIs this project uses.
+- OS, device model or labeled hostname, kernel, uptime, CPU, graphics adapters, physical memory and swap, the filesystem holding your home directory, battery state, displays (opt-in), per-manager installed package counts, the desktop session (Linux), the process and system locale, shell, terminal and local IPv4 addresses. Swap is reported as unsupported on Windows, which exposes no page-file figure to the APIs this project uses.
 - Explicit available/unavailable/unsupported/redacted/deselected/error states, source and confidence in JSON.
 - `--privacy` withholds the user name, the host name and the local addresses, and shortens the home path to `~`, identically in text and JSON.
 - Module selection and ordering, custom labels, a custom separator, and a TOML file to keep them in. Unselected modules are not collected at all. `justfetch init` writes a commented file; `justfetch doctor` explains what is wrong with a broken one.
@@ -24,7 +24,7 @@ This list describes the current source. The published v0.1.0 archive is older an
 
 ## Example
 
-Captured from a real `--no-color` invocation of the current source on Apple M3 / macOS 26.6.2; the v0.1.0 archive renders seven rows, not eleven. The user and host identity and the home path are replaced by shorter placeholders; the divider tracks the title's width, so it is shorter here than in the original. Memory, swap, disk and uptime naturally change. This is plain output; a compatible TTY adds colors automatically.
+Captured from a real `--no-color` invocation of the current source on Apple M3 / macOS 26.6.2; the v0.1.0 archive renders seven rows, not the sixteen a default run now shows. The user and host identity and the home path are replaced by shorter placeholders; the divider tracks the title's width, so it is shorter here than in the original. Memory, swap, disk and uptime naturally change. This is plain output; a compatible TTY adds colors automatically.
 
 ```text
          .'       ~ [user]@[host]
@@ -108,7 +108,7 @@ For example, an available memory field has this structure (numbers here illustra
 }
 ```
 
-The full document has `schema_version: 1`, identity/environment metadata and sixteen field objects. Missing values have status/reason rather than fake N/A values; errors carry source/code/message. Consumers should ignore new additive fields. See [architecture](docs/architecture.md) and [accounting definitions](docs/compatibility.md).
+The full document has `schema_version: 1`, identity/environment metadata and seventeen field objects. Missing values have status/reason rather than fake N/A values; errors carry source/code/message. Consumers should ignore new additive fields. See [architecture](docs/architecture.md) and [accounting definitions](docs/compatibility.md).
 
 ## Platforms and accuracy
 

@@ -1,6 +1,7 @@
 //! Collection orchestrator; detection never writes to stdout or stderr.
 pub mod desktop;
 pub mod linux;
+pub mod locale;
 pub mod shell;
 
 use crate::{
@@ -126,6 +127,7 @@ pub fn collect(selection: &[ModuleId]) -> SystemSnapshot {
         display: data.display,
         packages: data.packages,
         desktop: data.desktop,
+        locale: data.locale,
         battery: data.battery,
         shell,
         terminal: if_selected(selection, ModuleId::Terminal, terminal),

@@ -636,7 +636,7 @@ fn value_for(snapshot: &SystemSnapshot, module: ModuleId) -> String {
                         DisplayKind::BuiltIn => text.push_str(" (built-in)"),
                         DisplayKind::Unknown => {}
                     }
-                    if info.displays.len() > 1 && unit.primary {
+                    if info.displays.len() > 1 && unit.primary == Some(true) {
                         text.push_str(" (primary)");
                     }
                     match &unit.name {
@@ -659,6 +659,24 @@ fn value_for(snapshot: &SystemSnapshot, module: ModuleId) -> String {
             SessionType::Wayland => format!("{} (Wayland)", info.name),
             SessionType::Tty => format!("{} (tty)", info.name),
             SessionType::Unknown => info.name.clone(),
+        }),
+        ModuleId::Locale => display(&snapshot.locale, |info| {
+            match (&info.process, &info.system) {
+                (Some(process), Some(system)) if process != system => {
+                    format!(
+                        "{process} ({}), system {system}",
+                        info.process_source.as_deref().unwrap_or("env")
+                    )
+                }
+                (Some(process), _) => {
+                    format!(
+                        "{process} ({})",
+                        info.process_source.as_deref().unwrap_or("env")
+                    )
+                }
+                (None, Some(system)) => format!("system {system}"),
+                (None, None) => "Unavailable".to_owned(),
+            }
         }),
         ModuleId::Memory => display(&snapshot.memory, |mem| {
             capacity(mem.used_bytes, mem.total_bytes)

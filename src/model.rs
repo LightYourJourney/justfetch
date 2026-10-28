@@ -165,14 +165,27 @@ pub enum GpuKind {
     Unknown,
 }
 
+/// The process locale and the system's configured default, kept apart: a shell
+/// can set `LANG` for one process without changing what the system will use for
+/// the next login.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct LocaleInfo {
+    /// What this process would use, and which variable said so.
+    pub process: Option<String>,
+    pub process_source: Option<String>,
+    /// The system-wide default, when the platform exposes it separately.
+    pub system: Option<String>,
+    pub system_source: Option<String>,
+}
+
 /// What kind of thing provides the graphical session.
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum DesktopKind {
     /// A desktop environment: GNOME, KDE Plasma, XFCE, Cinnamon, …
     Desktop,
-    /// A Wayland compositor used on its own: Sway, Hyprland, …
-    Compositor,
+    /// A window manager or compositor used on its own: Sway, Hyprland, i3.
+    WindowManager,
     Unknown,
 }
 
@@ -218,7 +231,9 @@ pub struct DisplayUnit {
     pub width: u32,
     pub height: u32,
     pub refresh_hz: Option<u32>,
-    pub primary: bool,
+    /// `None` when the platform does not say which display is primary, which
+    /// is different from "this one is not".
+    pub primary: Option<bool>,
     pub kind: DisplayKind,
 }
 
@@ -297,6 +312,7 @@ pub struct SystemSnapshot {
     pub display: Detection<DisplayInfo>,
     pub packages: Detection<PackagesInfo>,
     pub desktop: Detection<DesktopInfo>,
+    pub locale: Detection<LocaleInfo>,
     pub battery: Detection<BatteryInfo>,
     pub shell: Detection<ShellInfo>,
     pub terminal: Detection<TerminalInfo>,

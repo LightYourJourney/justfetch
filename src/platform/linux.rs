@@ -134,6 +134,14 @@ fn battery() -> Detection<BatteryInfo> {
         let kind = text(&path.join("type")).unwrap_or_default();
         match kind.as_str() {
             "Battery" => {
+                // `scope` separates the machine's battery from a mouse's or a
+                // headset's; `present` is 0 for an empty bay.
+                if text(&path.join("scope")).is_some_and(|scope| scope != "System") {
+                    continue;
+                }
+                if text(&path.join("present")).as_deref() == Some("0") {
+                    continue;
+                }
                 let state = match text(&path.join("status")).as_deref() {
                     Some("Charging") => BatteryState::Charging,
                     Some("Discharging") => BatteryState::Discharging,
@@ -142,13 +150,16 @@ fn battery() -> Detection<BatteryInfo> {
                 };
                 units.push(BatteryUnit {
                     name: entry.file_name().to_string_lossy().into_owned(),
-                    // A unit with no capacity file reports `None`, not zero.
-                    percent: text(&path.join("capacity")).and_then(|v| v.parse::<u8>().ok()),
+                    // A unit with no capacity file reports `None`, not zero; a
+                    // value above 100 is not a percentage, so it is not one.
+                    percent: text(&path.join("capacity"))
+                        .and_then(|v| v.parse::<u8>().ok())
+                        .filter(|percent| *percent <= 100),
                     state,
                 });
             }
             // The adapter, not a battery: it only says whether mains is live.
-            "Mains" | "USB" | "USB_C" | "AC" | "ACAD" => {
+            "Mains" | "USB" | "USB_C" | "USB_PD" | "USB_TYPE_C" | "AC" | "ACAD" => {
                 if let Some(online) = text(&path.join("online")) {
                     ac_online = Some(online == "1");
                 }
@@ -294,7 +305,8 @@ fn display() -> Detection<DisplayInfo> {
             width,
             height,
             refresh_hz: None,
-            primary: false,
+            // sysfs has no primary bit.
+            primary: None,
             kind,
         });
     }
@@ -313,17 +325,19 @@ fn display() -> Detection<DisplayInfo> {
 /// Berkeley DB, and guessing from file counts would be a number about nothing.
 fn packages() -> Detection<PackagesInfo> {
     let mut managers = Vec::new();
-    // dpkg keeps one `.list` file per installed package.
-    if let Ok(entries) = std::fs::read_dir("/var/lib/dpkg/info") {
-        let count = entries
-            .flatten()
-            .filter(|entry| entry.file_name().to_string_lossy().ends_with(".list"))
+    // dpkg's status file is authoritative: a `.list` file also survives for a
+    // package that was removed but not purged, and there is one per
+    // architecture, so counting those overcounts what is installed.
+    if let Ok(status) = std::fs::read_to_string("/var/lib/dpkg/status") {
+        let count = status
+            .lines()
+            .filter(|line| line.trim() == "Status: install ok installed")
             .count() as u64;
         if count > 0 {
             managers.push(PackageManager {
                 name: "dpkg".to_owned(),
                 count,
-                definition: "installed packages: one .list file in /var/lib/dpkg/info".to_owned(),
+                definition: "installed packages: entries in /var/lib/dpkg/status with status install ok installed".to_owned(),
             });
         }
     }
@@ -376,6 +390,39 @@ fn desktop() -> Detection<DesktopInfo> {
         wayland_display: var("WAYLAND_DISPLAY").is_some(),
         display: var("DISPLAY").is_some(),
     })
+}
+
+/// The process locale from the POSIX variables, and the system default from
+/// the file the distribution maintains for it. The two are different things and
+/// are reported separately.
+fn locale() -> Detection<LocaleInfo> {
+    let var = |name: &str| std::env::var(name).ok();
+    let lc_all = var("LC_ALL");
+    let lc_messages = var("LC_MESSAGES");
+    let lang = var("LANG");
+    let process = crate::detect::locale::process_locale(
+        lc_all.as_deref(),
+        lc_messages.as_deref(),
+        lang.as_deref(),
+    );
+    // systemd distributions keep it in /etc/locale.conf; Debian's own file is
+    // the fallback. A missing file means the platform has no separate default.
+    let (system, source) = ["/etc/locale.conf", "/etc/default/locale"]
+        .into_iter()
+        .find_map(|path| {
+            let text = std::fs::read_to_string(path).ok()?;
+            let value = text
+                .lines()
+                .find_map(|line| line.trim().strip_prefix("LANG="))?
+                .trim()
+                .trim_matches('"')
+                .to_owned();
+            (!value.is_empty()).then_some((value, path))
+        })
+        .map_or((None, "/etc/locale.conf"), |(value, path)| {
+            (Some(value), path)
+        });
+    crate::detect::locale::build(process, system, source)
 }
 
 pub fn collect(selection: &[ModuleId]) -> PlatformData {
@@ -455,6 +502,7 @@ pub fn collect(selection: &[ModuleId]) -> PlatformData {
         display: if_selected(selection, ModuleId::Display, display),
         packages: if_selected(selection, ModuleId::Packages, packages),
         desktop: if_selected(selection, ModuleId::Desktop, desktop),
+        locale: if_selected(selection, ModuleId::Locale, locale),
         battery: if_selected(selection, ModuleId::Battery, battery),
         local_ip: if_selected(selection, ModuleId::LocalIp, local_ip),
     }

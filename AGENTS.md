@@ -2,7 +2,7 @@
 
 ## Goal and scope
 
-Build a fast, accurate, offline Rust system-information CLI. Current scope: OS, Host, Kernel, Uptime, CPU, GPU, Memory, Swap, Disk, Battery, Display, Packages, Desktop, Shell, Terminal, Local IP, terminal/JSON, original ASCII logos and graceful field failures. Swap is unsupported on Windows, which exposes no page-file usage through the APIs this project permits. Module selection and ordering (`--modules` or a TOML file), custom labels, a custom separator, `init` and `doctor` are implemented; see docs/configuration.md. Colour themes, four layouts, custom logo files and the `themes` listing are implemented; see docs/themes.md. Arbitrary plugin modules and additional collectors belong to later releases; see docs/roadmap.md.
+Build a fast, accurate, offline Rust system-information CLI. Current scope: OS, Host, Kernel, Uptime, CPU, GPU, Memory, Swap, Disk, Battery, Display, Packages, Desktop, Locale, Shell, Terminal, Local IP, terminal/JSON, original ASCII logos and graceful field failures. Swap is unsupported on Windows, which exposes no page-file usage through the APIs this project permits. Module selection and ordering (`--modules` or a TOML file), custom labels, a custom separator, `init` and `doctor` are implemented; see docs/configuration.md. Colour themes, four layouts, custom logo files and the `themes` listing are implemented; see docs/themes.md. Arbitrary plugin modules and additional collectors belong to later releases; see docs/roadmap.md.
 
 ## Architecture
 

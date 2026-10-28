@@ -386,11 +386,91 @@ The tests that pinned the old behaviour were rewritten rather than kept: one ass
 
 **CI caught another test defect.** The first CI run of this pass failed on Ubuntu only: a test asserted that the output does not contain `"CPU "` to prove a custom label replaced the default. The GitHub runner's processor is an `Intel(R) Xeon(R) ... CPU @ 2.80GHz`, so the *value* contains the substring the test forbade. The assertion now checks that no line starts with the label, which is what "the row's label" means; a value that merely mentions the word cannot satisfy or break it. This is the second time this round that a test, not the product, was tied to one machine's data.
 
-**Test count:** 158, up from 87.
+### Phase 12 overall performance
+
+Default run (16 modules, `display` excluded), 30 runs, against a build of the
+pre-Phase-12 commit `03c1fef` in a separate worktree:
+
+| Build | Median instructions | Wall |
+| --- | --- | --- |
+| `03c1fef` (11 modules) | 28.25 M | 9.0 ms |
+| Phase 12 (16 modules) | 37.63 M | 10.4 ms |
+
++33% instructions, +16% wall for five new collectors. Packages accounts for
+most of it (~6 M, enumerating ~900 directory entries); GPU and Battery are
+under 0.4 M each, and Desktop and Locale are environment reads. No collector
+made the default run slower than the module it added.
+
+### Independent audit of the new detection
+
+A reviewer that had taken no part in the work audited the six collectors against
+the native APIs and every FFI declaration. It confirmed the macOS figures
+against `system_profiler`, `pmset`, `brew list` and `defaults read`. Twelve
+findings; all are closed:
+
+- **A crash.** `CFStringGetCString` was called on whatever
+  `CFPreferencesCopyValue` returned. `AppleLocale` is user-writable, and a
+  number there makes that call throw an Objective-C exception, which aborts the
+  process. Every Core Foundation read now checks the type id first; a unit test
+  builds a `CFNumber` and asserts the guard rejects it, so the check is
+  exercised without changing the user's preferences.
+- **A value from an unknown.** Windows reports `BatteryFlag == 255` for
+  "unknown"; that was being turned into a battery unit. It is now
+  `unavailable`, distinct from "there is no battery" (128).
+- **Windows GPU vendor never populated.** `DeviceID` is
+  `PCI\VEN_10DE&DEV_…`, so splitting on `&` never produced a `VEN_` prefix.
+  The vendor is now taken from wherever `VEN_` falls, and duplicate adapters
+  are merged by `DeviceID` rather than by name.
+- **A non-existent battery.** macOS publishes both bays of a two-bay portable;
+  the empty one reports `Is Present = false` and was counted. It is skipped, and
+  the empty-list reason now distinguishes "no internal source" from "reported
+  absent".
+- **Peripheral batteries.** Linux `type = Battery` also matches a mouse or
+  headset; `scope` and `present` are now required, and a capacity above 100 is
+  not treated as a percentage.
+- **A false primary flag.** sysfs has no primary bit, so every Linux display
+  claimed "not primary". The field is now `Option<bool>` and Linux reports
+  `null`.
+- **A null IOKit iterator.** `IOServiceGetMatchingServices` can succeed with no
+  matches; the code iterated and released object 0. It now returns
+  `unavailable` before touching it.
+- **A wrong integer width.** `CFNumberType` is `CFIndex` (long), declared `int`.
+  It works only because the value zero-extends.
+- **i3 misclassified.** It is an X11 window manager, not a Wayland compositor,
+  so the variant is now `WindowManager` and the documentation says so.
+- **dpkg overcount.** `.list` files survive a removal that has not been purged,
+  and there is one per architecture. The count now reads installed entries from
+  `/var/lib/dpkg/status`.
+- **A false comment** about display-count overflow, corrected to say the extra
+  displays would be omitted.
+- **Two stale documents**: the validation record described Windows as reporting
+  per-pack batteries (it reports one aggregate), and the README example still
+  said "not eleven" rows.
+
+**Test count:** 166, up from 87.
 
 ## Advanced detection round (2026-10-28)
 
 Phase 12 adds collectors one at a time, each with its own platform evidence.
+
+### Locale
+
+**Implementation.** `detect::locale::process_locale` applies POSIX precedence
+(`LC_ALL` → `LC_MESSAGES` → `LANG`, empty is unset, `C`/`POSIX` are real values)
+and has its own tests; `build` assembles the two halves or reports unavailable
+when both are absent. System sources: `/etc/locale.conf` (fallback
+`/etc/default/locale`) on Linux, `CFPreferencesCopyValue("AppleLocale", …)` on
+macOS, `GetUserDefaultLocaleName` on Windows.
+
+**macOS evidence.**
+
+```
+defaults read -g AppleLocale   zh_CN
+LANG                           zh_CN.UTF-8
+justfetch                      zh_CN.UTF-8 (LANG), system zh_CN
+```
+
+**Not verified.** Linux and Windows paths are cross-compiled only.
 
 ### Desktop
 
@@ -408,8 +488,8 @@ Windows report `unsupported` by design.
 ### Packages
 
 **Implementation.** macOS counts directories in Homebrew's Cellar and Caskroom;
-Linux counts `.list` files in `/var/lib/dpkg/info` and directories in
-`/var/lib/pacman/local`; Windows counts directories in `scoop/apps`. Each
+Linux counts entries with status `install ok installed` in
+`/var/lib/dpkg/status` and directories in `/var/lib/pacman/local`; Windows counts directories in `scoop/apps`. Each
 manager is its own entry with a `definition`; nothing is summed.
 
 **macOS evidence.** Executed on a MacBook Air and compared with Homebrew's own
@@ -493,10 +573,12 @@ a headless compute GPU is not enumerated.
 ### Battery
 
 **Implementation.** macOS reads IOKit power-source descriptions; Linux reads
-`/sys/class/power_supply`; Windows reads `GetSystemPowerStatus`. Each reports
-every battery as its own unit with its own percentage and state, so two packs
-are not averaged, and a unit the platform exposes without a charge figure
-reports no percentage rather than zero.
+`/sys/class/power_supply`; Windows reads `GetSystemPowerStatus`. Every battery
+the platform reports separately is its own unit with its own percentage and
+state, so two packs are not averaged; Windows exposes one aggregate reading and
+therefore reports one unit. A unit the platform exposes without a charge figure
+reports no percentage rather than zero, and a bay reported as not present is
+not a unit at all.
 
 **macOS evidence.** Executed on a MacBook Air (Mac15,12, macOS 26.6.2) and
 compared with the system's own report:

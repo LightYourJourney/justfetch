@@ -21,6 +21,7 @@ pub enum ModuleId {
     Display,
     Packages,
     Desktop,
+    Locale,
     Shell,
     Terminal,
     LocalIp,
@@ -28,7 +29,7 @@ pub enum ModuleId {
 
 impl ModuleId {
     /// Every module, in the order a default run shows them.
-    pub const ALL: [ModuleId; 16] = [
+    pub const ALL: [ModuleId; 17] = [
         ModuleId::Os,
         ModuleId::Host,
         ModuleId::Kernel,
@@ -42,6 +43,7 @@ impl ModuleId {
         ModuleId::Display,
         ModuleId::Packages,
         ModuleId::Desktop,
+        ModuleId::Locale,
         ModuleId::Shell,
         ModuleId::Terminal,
         ModuleId::LocalIp,
@@ -51,7 +53,7 @@ impl ModuleId {
     /// platform query connects to the window server and was measured at ~60 ms
     /// on macOS, which would dominate a run that otherwise takes ~12 ms.
     /// Selecting it explicitly costs that, which is the user's choice to make.
-    pub const DEFAULT: [ModuleId; 15] = [
+    pub const DEFAULT: [ModuleId; 16] = [
         ModuleId::Os,
         ModuleId::Host,
         ModuleId::Kernel,
@@ -64,6 +66,7 @@ impl ModuleId {
         ModuleId::Battery,
         ModuleId::Packages,
         ModuleId::Desktop,
+        ModuleId::Locale,
         ModuleId::Shell,
         ModuleId::Terminal,
         ModuleId::LocalIp,
@@ -85,6 +88,7 @@ impl ModuleId {
             ModuleId::Display => "display",
             ModuleId::Packages => "packages",
             ModuleId::Desktop => "desktop",
+            ModuleId::Locale => "locale",
             ModuleId::Shell => "shell",
             ModuleId::Terminal => "terminal",
             ModuleId::LocalIp => "local_ip",
@@ -108,6 +112,7 @@ impl ModuleId {
             ModuleId::Display => "Display",
             ModuleId::Packages => "Packages",
             ModuleId::Desktop => "Desktop",
+            ModuleId::Locale => "Locale",
             ModuleId::Shell => "Shell",
             ModuleId::Terminal => "Term",
             ModuleId::LocalIp => "IP",

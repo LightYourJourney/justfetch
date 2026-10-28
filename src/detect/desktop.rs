@@ -35,7 +35,7 @@ pub fn describe(evidence: &Evidence<'_>) -> Detection<DesktopInfo> {
         return Detection::available(
             DesktopInfo {
                 name: "Sway".to_owned(),
-                kind: DesktopKind::Compositor,
+                kind: DesktopKind::WindowManager,
                 session,
             },
             "SWAYSOCK",
@@ -45,7 +45,7 @@ pub fn describe(evidence: &Evidence<'_>) -> Detection<DesktopInfo> {
         return Detection::estimated(
             DesktopInfo {
                 name: "Hyprland".to_owned(),
-                kind: DesktopKind::Compositor,
+                kind: DesktopKind::WindowManager,
                 session,
             },
             "HYPRLAND_INSTANCE_SIGNATURE",
@@ -115,9 +115,9 @@ fn normalise(raw: &str) -> (String, DesktopKind) {
         "budgie" => ("Budgie", DesktopKind::Desktop),
         "pantheon" => ("Pantheon", DesktopKind::Desktop),
         "deepin" => ("Deepin", DesktopKind::Desktop),
-        "sway" => ("Sway", DesktopKind::Compositor),
-        "hyprland" => ("Hyprland", DesktopKind::Compositor),
-        "i3" => ("i3", DesktopKind::Compositor),
+        "sway" => ("Sway", DesktopKind::WindowManager),
+        "hyprland" => ("Hyprland", DesktopKind::WindowManager),
+        "i3" => ("i3", DesktopKind::WindowManager),
         _ => return (raw.trim().to_owned(), DesktopKind::Unknown),
     };
     (name.to_owned(), kind)

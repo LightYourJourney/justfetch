@@ -308,9 +308,13 @@ fn battery() -> Detection<BatteryInfo> {
     }
     // SAFETY: the call succeeded, so the struct is fully initialized.
     let status = unsafe { status.assume_init() };
-    // BatteryFlag 128 means no system battery; 255 means the value is unknown,
-    // which must not be reported as no battery.
-    if status.BatteryFlag != 255 && status.BatteryFlag & 128 != 0 {
+    // BatteryFlag 255 means the value is unknown — neither "there is a
+    // battery" nor "there is none", so it is not turned into a unit.
+    if status.BatteryFlag == 255 {
+        return Detection::unavailable("Windows reports an unknown battery state");
+    }
+    // 128 means no system battery.
+    if status.BatteryFlag & 128 != 0 {
         return Detection::unsupported("Windows reports no system battery on this machine");
     }
     let percent = (status.BatteryLifePercent != 255).then_some(status.BatteryLifePercent);
@@ -386,18 +390,27 @@ fn gpu() -> Detection<GpuInfo> {
         if name.is_empty() {
             continue;
         }
-        // One adapter behind two monitors appears twice; report it once.
+        let id = wide(&device.DeviceID);
+        // One adapter behind several monitors appears once per monitor with the
+        // same DeviceID; two identical cards have different ones.
+        let dedup_key = if id.is_empty() {
+            name.clone()
+        } else {
+            id.clone()
+        };
         if devices
             .iter()
-            .any(|existing| existing.name.as_deref() == Some(name.as_str()))
+            .any(|existing| existing.id.as_deref() == Some(dedup_key.as_str()))
         {
             continue;
         }
-        let id = wide(&device.DeviceID);
+        // The id looks like `PCI\VEN_10DE&DEV_2504&SUBSYS_…`; the vendor is the
+        // four hex digits after `VEN_`, wherever they fall in the string.
         let vendor = id
-            .split('&')
-            .find_map(|part| part.strip_prefix("VEN_"))
-            .and_then(|vendor| match vendor {
+            .find("VEN_")
+            .map(|at| &id[at + 4..])
+            .and_then(|rest| rest.get(..4))
+            .and_then(|vendor| match vendor.to_ascii_uppercase().as_str() {
                 "10DE" => Some("NVIDIA"),
                 "1002" => Some("AMD"),
                 "8086" => Some("Intel"),
@@ -487,7 +500,7 @@ fn display() -> Detection<DisplayInfo> {
             width,
             height,
             refresh_hz,
-            primary: info.monitorInfo.dwFlags & MONITORINFOF_PRIMARY != 0,
+            primary: Some(info.monitorInfo.dwFlags & MONITORINFOF_PRIMARY != 0),
             kind: DisplayKind::Unknown,
         });
         1
@@ -540,6 +553,33 @@ fn packages() -> Detection<PackagesInfo> {
         },
         "scoop/apps directories",
     )
+}
+
+/// The process locale from the POSIX variables, and the user's default locale
+/// from Windows. `GetUserDefaultLocaleName` answers for the user profile, which
+/// is what the next login will use; the environment answers for this process.
+fn locale() -> Detection<LocaleInfo> {
+    use windows_sys::Win32::Globalization::GetUserDefaultLocaleName;
+
+    let var = |name: &str| std::env::var(name).ok();
+    let lc_all = var("LC_ALL");
+    let lc_messages = var("LC_MESSAGES");
+    let lang = var("LANG");
+    let process = crate::detect::locale::process_locale(
+        lc_all.as_deref(),
+        lc_messages.as_deref(),
+        lang.as_deref(),
+    );
+    // LOCALE_NAME_MAX_LENGTH is 85, including the terminator.
+    let mut buffer = [0_u16; 85];
+    // SAFETY: the buffer holds the documented maximum length and the size is
+    // passed in characters.
+    let written = unsafe { GetUserDefaultLocaleName(buffer.as_mut_ptr(), buffer.len() as i32) };
+    let system = (written > 0).then(|| {
+        let end = (written as usize - 1).min(buffer.len());
+        String::from_utf16_lossy(&buffer[..end])
+    });
+    crate::detect::locale::build(process, system, "GetUserDefaultLocaleName")
 }
 
 pub fn collect(selection: &[ModuleId]) -> PlatformData {
@@ -603,6 +643,7 @@ pub fn collect(selection: &[ModuleId]) -> PlatformData {
         gpu: if_selected(selection, ModuleId::Gpu, gpu),
         display: if_selected(selection, ModuleId::Display, display),
         packages: if_selected(selection, ModuleId::Packages, packages),
+        locale: if_selected(selection, ModuleId::Locale, locale),
         desktop: if_selected(selection, ModuleId::Desktop, || {
             Detection::unsupported(
                 "Windows has no desktop environment in this sense; the shell is part of the system",

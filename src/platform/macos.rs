@@ -33,7 +33,7 @@ type CFStringRef = *const std::ffi::c_void;
 /// kCFStringEncodingUTF8
 const CF_UTF8: u32 = 0x0800_0100;
 /// kCFNumberSInt32Type
-const CF_SINT32: i32 = 3;
+const CF_SINT32: libc::c_long = 3;
 
 #[link(name = "CoreFoundation", kind = "framework")]
 unsafe extern "C" {
@@ -51,8 +51,13 @@ unsafe extern "C" {
         size: libc::c_long,
         encoding: u32,
     ) -> u8;
-    fn CFNumberGetValue(number: CFTypeRef, kind: i32, out: *mut std::ffi::c_void) -> u8;
+    // CFNumberType is CF_ENUM(CFIndex), which is a long, not an int.
+    fn CFNumberGetValue(number: CFTypeRef, kind: libc::c_long, out: *mut std::ffi::c_void) -> u8;
     fn CFBooleanGetValue(value: CFTypeRef) -> u8;
+    fn CFGetTypeID(value: CFTypeRef) -> usize;
+    fn CFStringGetTypeID() -> usize;
+    fn CFNumberGetTypeID() -> usize;
+    fn CFBooleanGetTypeID() -> usize;
     fn CFRelease(value: CFTypeRef);
 }
 
@@ -79,8 +84,36 @@ fn power_value(description: CFDictionaryRef, key: &CStr) -> Option<CFTypeRef> {
     (!value.is_null()).then_some(value)
 }
 
+/// Whether a Core Foundation value is of the expected type. Sending a string
+/// message to a number is an Objective-C exception, not an error code, and it
+/// aborts the process — so the type is checked before the call, not after.
+fn is_type(value: CFTypeRef, expected: usize) -> bool {
+    // SAFETY: every CF value has a type id; the call has no preconditions.
+    unsafe { CFGetTypeID(value) == expected }
+}
+
+/// Type ids are constant for the life of the process and the queries take no
+/// arguments, so they are wrapped rather than repeated as bare unsafe blocks.
+fn string_type() -> usize {
+    // SAFETY: the call returns a constant type id and has no preconditions.
+    unsafe { CFStringGetTypeID() }
+}
+
+fn number_type() -> usize {
+    // SAFETY: the call returns a constant type id and has no preconditions.
+    unsafe { CFNumberGetTypeID() }
+}
+
+fn boolean_type() -> usize {
+    // SAFETY: the call returns a constant type id and has no preconditions.
+    unsafe { CFBooleanGetTypeID() }
+}
+
 fn power_string(description: CFDictionaryRef, key: &CStr) -> Option<String> {
     let value = power_value(description, key)?;
+    if !is_type(value, string_type()) {
+        return None;
+    }
     let mut buffer = [0_i8; 128];
     // SAFETY: the buffer size matches the capacity passed, and the value is a
     // CFString as its key documents. A non-zero return means the text fitted.
@@ -105,6 +138,9 @@ fn power_string(description: CFDictionaryRef, key: &CStr) -> Option<String> {
 
 fn power_int(description: CFDictionaryRef, key: &CStr) -> Option<i32> {
     let value = power_value(description, key)?;
+    if !is_type(value, number_type()) {
+        return None;
+    }
     let mut out = 0_i32;
     // SAFETY: the output pointer is valid for the write the call performs, and
     // the value is a CFNumber as its key documents.
@@ -114,6 +150,9 @@ fn power_int(description: CFDictionaryRef, key: &CStr) -> Option<i32> {
 
 fn power_bool(description: CFDictionaryRef, key: &CStr) -> Option<bool> {
     let value = power_value(description, key)?;
+    if !is_type(value, boolean_type()) {
+        return None;
+    }
     // SAFETY: the value is a CFBoolean as its key documents.
     Some(unsafe { CFBooleanGetValue(value) } != 0)
 }
@@ -145,6 +184,7 @@ fn battery() -> Detection<BatteryInfo> {
     let count = unsafe { CFArrayGetCount(list) };
     let mut units = Vec::new();
     let mut power = PowerSource::Unknown;
+    let mut internal_sources = 0;
     for index in 0..count {
         // SAFETY: index is within the array's count; the borrowed description
         // is valid while the blob lives.
@@ -160,6 +200,11 @@ fn battery() -> Detection<BatteryInfo> {
         }
         // A UPS is a power source but not the machine's battery.
         if power_string(description, c"Transport Type").as_deref() != Some("Internal") {
+            continue;
+        }
+        internal_sources += 1;
+        // A two-bay portable publishes both bays; the empty one says so.
+        if power_bool(description, c"Is Present") == Some(false) {
             continue;
         }
         if let Some(state) = power_string(description, c"Power Source State") {
@@ -203,9 +248,11 @@ fn battery() -> Detection<BatteryInfo> {
         CFRelease(blob);
     }
     if units.is_empty() {
-        return Detection::unsupported(
-            "This machine reports no internal battery; macOS desktops have none",
-        );
+        return Detection::unsupported(if internal_sources > 0 {
+            "The internal battery is reported as not present"
+        } else {
+            "This machine reports no internal battery; macOS desktops have none"
+        });
     }
     Detection::available(BatteryInfo { units, power }, source)
 }
@@ -252,9 +299,14 @@ fn registry_string(entry: IoObject, key: &CStr) -> Option<String> {
     if value.is_null() {
         return None;
     }
+    if !is_type(value, string_type()) {
+        // SAFETY: the reference is an owned copy and is released once.
+        unsafe { CFRelease(value) };
+        return None;
+    }
     let mut buffer = [0_i8; 128];
-    // SAFETY: the buffer size matches the capacity passed; the model property is
-    // a CFString. A non-zero return means it fitted.
+    // SAFETY: the buffer size matches the capacity passed and the value was
+    // checked to be a CFString. A non-zero return means it fitted.
     let ok = unsafe {
         CFStringGetCString(
             value,
@@ -295,6 +347,11 @@ fn gpu() -> Detection<GpuInfo> {
             ErrorCode::ApiFailed,
             format!("IOServiceGetMatchingServices returned {result}"),
         );
+    }
+    // Success with a null iterator means no service matched, and a null object
+    // must not be released or iterated.
+    if iterator == 0 {
+        return Detection::unavailable("No IOAccelerator service is registered");
     }
     let mut devices = Vec::new();
     loop {
@@ -357,8 +414,8 @@ unsafe extern "C" {
 /// external panel the API cannot prove it is.
 fn display() -> Detection<DisplayInfo> {
     let source = "CoreGraphics active displays";
-    // 32 is well above the display count of any machine this runs on; a larger
-    // number would mean the second call still does not fit, which is reported.
+    // 32 is well above the display count of any machine this runs on. If a
+    // machine ever exceeded it, the extra displays would be omitted silently.
     let mut ids = [0_u32; 32];
     let mut count: u32 = 0;
     // SAFETY: the buffer holds 32 u32 values, which is the capacity passed, and
@@ -407,7 +464,7 @@ fn display() -> Detection<DisplayInfo> {
             width,
             height,
             refresh_hz: (refresh > 0.0).then(|| refresh.round() as u32),
-            primary: main,
+            primary: Some(main),
             kind: if builtin {
                 DisplayKind::BuiltIn
             } else {
@@ -465,6 +522,87 @@ fn packages() -> Detection<PackagesInfo> {
         PackagesInfo { managers },
         "Homebrew Cellar and Caskroom directories",
     )
+}
+
+// --- Locale --------------------------------------------------------------
+
+#[link(name = "CoreFoundation", kind = "framework")]
+unsafe extern "C" {
+    static kCFPreferencesAnyApplication: CFStringRef;
+    static kCFPreferencesCurrentUser: CFStringRef;
+    static kCFPreferencesAnyHost: CFStringRef;
+    fn CFPreferencesCopyValue(
+        key: CFStringRef,
+        application: CFStringRef,
+        user: CFStringRef,
+        host: CFStringRef,
+    ) -> CFTypeRef;
+}
+
+/// The system's `AppleLocale`, read through preferences rather than by running
+/// `defaults`. `None` when the domain has no such key.
+fn system_locale() -> Option<String> {
+    // SAFETY: the key is a valid NUL-terminated string used only for this call.
+    let key = unsafe { CFStringCreateWithCString(ptr::null(), c"AppleLocale".as_ptr(), CF_UTF8) };
+    if key.is_null() {
+        return None;
+    }
+    // SAFETY: the domain constants are exported CFStrings, and the returned
+    // value is an owned copy released below.
+    let value = unsafe {
+        CFPreferencesCopyValue(
+            key,
+            kCFPreferencesAnyApplication,
+            kCFPreferencesCurrentUser,
+            kCFPreferencesAnyHost,
+        )
+    };
+    // SAFETY: `key` is an owned copy created above.
+    unsafe { CFRelease(key) };
+    if value.is_null() {
+        return None;
+    }
+    if !is_type(value, string_type()) {
+        // SAFETY: the value is an owned copy and is released once.
+        unsafe { CFRelease(value) };
+        return None;
+    }
+    let mut buffer = [0_i8; 128];
+    // SAFETY: the buffer size matches the capacity passed and the value was
+    // checked to be a CFString. A non-zero return means it fitted.
+    let ok = unsafe {
+        CFStringGetCString(
+            value,
+            buffer.as_mut_ptr(),
+            buffer.len() as libc::c_long,
+            CF_UTF8,
+        )
+    };
+    // SAFETY: the value is an owned copy and is released once.
+    unsafe { CFRelease(value) };
+    if ok == 0 {
+        return None;
+    }
+    // SAFETY: the call above wrote a NUL-terminated string into the buffer.
+    Some(
+        unsafe { CStr::from_ptr(buffer.as_ptr()) }
+            .to_string_lossy()
+            .into_owned(),
+    )
+}
+
+fn locale() -> Detection<LocaleInfo> {
+    let var = |name: &str| std::env::var(name).ok();
+    let lc_all = var("LC_ALL");
+    let lc_messages = var("LC_MESSAGES");
+    let lang = var("LANG");
+    let process = crate::detect::locale::process_locale(
+        lc_all.as_deref(),
+        lc_messages.as_deref(),
+        lang.as_deref(),
+    );
+    let system = system_locale();
+    crate::detect::locale::build(process, system, "CFPreferences AppleLocale")
 }
 
 pub fn parent_executable() -> io::Result<String> {
@@ -726,6 +864,7 @@ pub fn collect(selection: &[ModuleId]) -> PlatformData {
         packages: if_selected(selection, ModuleId::Packages, packages),
         // macOS has no desktop environment in the Linux sense: the window
         // server is part of the system rather than a session a user picks.
+        locale: if_selected(selection, ModuleId::Locale, locale),
         desktop: if_selected(selection, ModuleId::Desktop, || {
             Detection::unsupported(
                 "macOS has no desktop environment in this sense; Aqua is the window server",
@@ -733,5 +872,39 @@ pub fn collect(selection: &[ModuleId]) -> PlatformData {
         }),
         battery: if_selected(selection, ModuleId::Battery, battery),
         local_ip: if_selected(selection, ModuleId::LocalIp, local_ip),
+    }
+}
+
+#[cfg(test)]
+unsafe extern "C" {
+    // Only the type-guard test builds a CFNumber; production code only reads.
+    fn CFNumberCreate(
+        allocator: CFTypeRef,
+        kind: libc::c_long,
+        value: *const std::ffi::c_void,
+    ) -> CFTypeRef;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `AppleLocale` is user-writable, so a preferences domain can hold a
+    /// number. Sending a string message to it is an Objective-C exception that
+    /// aborts the process, which is why every read checks the type first; this
+    /// pins the check without touching the user's preferences.
+    #[test]
+    fn a_number_is_not_mistaken_for_a_string() {
+        let mut value: i32 = 42;
+        // SAFETY: the value pointer is valid for one i32, which is what the
+        // CF_SINT32 kind declares, and the result is an owned reference.
+        let number = unsafe { CFNumberCreate(ptr::null(), CF_SINT32, (&raw mut value).cast()) };
+        assert!(!number.is_null());
+        // SAFETY: the reference is live; both queries take it by value.
+        unsafe {
+            assert!(is_type(number, number_type()));
+            assert!(!is_type(number, string_type()));
+            CFRelease(number);
+        }
     }
 }
