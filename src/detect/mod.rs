@@ -1,4 +1,5 @@
 //! Collection orchestrator; detection never writes to stdout or stderr.
+pub mod desktop;
 pub mod linux;
 pub mod shell;
 
@@ -124,6 +125,7 @@ pub fn collect(selection: &[ModuleId]) -> SystemSnapshot {
         gpu: data.gpu,
         display: data.display,
         packages: data.packages,
+        desktop: data.desktop,
         battery: data.battery,
         shell,
         terminal: if_selected(selection, ModuleId::Terminal, terminal),

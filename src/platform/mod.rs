@@ -42,6 +42,7 @@ pub struct PlatformData {
     pub gpu: Detection<GpuInfo>,
     pub display: Detection<DisplayInfo>,
     pub packages: Detection<PackagesInfo>,
+    pub desktop: Detection<DesktopInfo>,
     pub battery: Detection<BatteryInfo>,
     pub local_ip: Detection<LocalIpInfo>,
 }

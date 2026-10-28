@@ -118,6 +118,14 @@ fn fixture() -> SystemSnapshot {
             },
             "fixture",
         ),
+        desktop: Detection::available(
+            DesktopInfo {
+                name: "GNOME".to_owned(),
+                kind: DesktopKind::Desktop,
+                session: SessionType::Wayland,
+            },
+            "fixture",
+        ),
         battery: Detection::available(
             BatteryInfo {
                 units: vec![BatteryUnit {
@@ -218,6 +226,7 @@ fn fixed_plain_render_is_aligned() {
             "Battery   82% (charging)\n",
             "Display   1470x956 @60Hz (built-in)\n",
             "Packages  dpkg 1234\n",
+            "Desktop   GNOME (Wayland)\n",
             "Shell     zsh\n",
             "Term      Test Terminal 1.2\n",
             "IP        192.0.2.10 (eth0)\n",
@@ -1568,4 +1577,49 @@ fn no_readable_package_database_is_unsupported_not_zero() {
         },
     );
     assert_eq!(row_value(&text, "Packages").as_deref(), Some("Unsupported"));
+}
+
+#[test]
+fn the_desktop_row_names_the_session_type_and_kind() {
+    let mut snapshot = fixture();
+    snapshot.desktop = Detection::available(
+        DesktopInfo {
+            name: "Sway".to_owned(),
+            kind: DesktopKind::Compositor,
+            session: SessionType::Wayland,
+        },
+        "fixture",
+    );
+    let text = terminal::render(
+        &snapshot,
+        Options {
+            logo: false,
+            unicode: false,
+            ..options(80)
+        },
+    );
+    assert_eq!(
+        row_value(&text, "Desktop").as_deref(),
+        Some("Sway (Wayland)")
+    );
+    let json: serde_json::Value = serde_json::from_str(&json::render(&snapshot).unwrap()).unwrap();
+    assert_eq!(json["desktop"]["value"]["kind"], "compositor");
+    assert_eq!(json["desktop"]["value"]["session"], "wayland");
+}
+
+#[test]
+fn a_platform_without_a_desktop_concept_says_so() {
+    let mut snapshot = fixture();
+    snapshot.desktop = Detection::unsupported(
+        "Windows has no desktop environment in this sense; the shell is part of the system",
+    );
+    let text = terminal::render(
+        &snapshot,
+        Options {
+            logo: false,
+            unicode: false,
+            ..options(80)
+        },
+    );
+    assert_eq!(row_value(&text, "Desktop").as_deref(), Some("Unsupported"));
 }

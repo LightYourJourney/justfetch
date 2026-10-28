@@ -165,6 +165,36 @@ pub enum GpuKind {
     Unknown,
 }
 
+/// What kind of thing provides the graphical session.
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum DesktopKind {
+    /// A desktop environment: GNOME, KDE Plasma, XFCE, Cinnamon, …
+    Desktop,
+    /// A Wayland compositor used on its own: Sway, Hyprland, …
+    Compositor,
+    Unknown,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionType {
+    X11,
+    Wayland,
+    Tty,
+    Unknown,
+}
+
+/// The graphical session's name and what kind of thing it is. `note` on the
+/// detection records which evidence agreed, because no single variable is
+/// proof on its own.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct DesktopInfo {
+    pub name: String,
+    pub kind: DesktopKind,
+    pub session: SessionType,
+}
+
 /// One package manager's installed count. Managers are never summed: a dpkg
 /// package, a Homebrew formula and a cask are different things, and one number
 /// over them would be a number about nothing.
@@ -266,6 +296,7 @@ pub struct SystemSnapshot {
     pub gpu: Detection<GpuInfo>,
     pub display: Detection<DisplayInfo>,
     pub packages: Detection<PackagesInfo>,
+    pub desktop: Detection<DesktopInfo>,
     pub battery: Detection<BatteryInfo>,
     pub shell: Detection<ShellInfo>,
     pub terminal: Detection<TerminalInfo>,

@@ -386,11 +386,24 @@ The tests that pinned the old behaviour were rewritten rather than kept: one ass
 
 **CI caught another test defect.** The first CI run of this pass failed on Ubuntu only: a test asserted that the output does not contain `"CPU "` to prove a custom label replaced the default. The GitHub runner's processor is an `Intel(R) Xeon(R) ... CPU @ 2.80GHz`, so the *value* contains the substring the test forbade. The assertion now checks that no line starts with the label, which is what "the row's label" means; a value that merely mentions the word cannot satisfy or break it. This is the second time this round that a test, not the product, was tied to one machine's data.
 
-**Test count:** 149, up from 87.
+**Test count:** 158, up from 87.
 
 ## Advanced detection round (2026-10-28)
 
 Phase 12 adds collectors one at a time, each with its own platform evidence.
+
+### Desktop
+
+**Implementation.** The decision is a pure function (`detect::desktop::describe`)
+and the platform adapter only gathers variables. Seven unit tests cover: two
+agreeing sources, one source (estimated), a compositor socket outranking the
+variables, a nested session whose sources disagree, a TTY with no variables,
+an unknown identifier kept verbatim, and the `DISPLAY` fallback for the session
+type.
+
+**Not verified.** No Linux desktop was available, so the adapter that reads the
+environment has never run against a real GNOME, KDE or Sway session. macOS and
+Windows report `unsupported` by design.
 
 ### Packages
 

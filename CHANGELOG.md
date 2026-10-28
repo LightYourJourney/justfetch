@@ -4,6 +4,7 @@
 
 ### Advanced detection
 
+- Add **Desktop**, the fifth Phase 12 module. Linux combines `XDG_CURRENT_DESKTOP` (last colon-separated segment), `XDG_SESSION_DESKTOP`, `DESKTOP_SESSION` and the session type; a compositor socket (`SWAYSOCK`, `HYPRLAND_INSTANCE_SIGNATURE`) outranks them because it exists only while that compositor runs. Two sources that agree confirm the name, one source is marked estimated with the sources named, and disagreement keeps the most specific source and records the rest. No variables with a TTY session reports `unsupported`; macOS and Windows report `unsupported` because neither has a desktop environment in this sense. The decision logic is a pure function in `detect::desktop` with its own tests.
 - Add **Packages**, the fourth Phase 12 module. macOS counts Homebrew formulae and casks as separate entries; Linux counts dpkg packages (one `.list` file each) and pacman packages (one directory each); Windows counts Scoop applications. Counts are never summed across managers, because a formula, a cask and a dpkg package are different things; each entry carries a `definition` saying what it counts. RPM and winget are reported as unsupported rather than counted from something adjacent, because this build has no reader for their databases.
 - Add **Display**, the third Phase 12 module. macOS enumerates active displays through CoreGraphics and reports the current mode's logical size (what macOS calls "Looks like"), the refresh rate when the API gives one, and whether the panel is built in; the panel's native resolution is not reported because CoreGraphics does not expose it without reading the EDID. Linux reports each connected DRM connector with its preferred mode, marked estimated because the mode actually in use belongs to the compositor. Windows enumerates monitors through GDI, where the desktop rectangle is the resolution the user sees, with the device's refresh rate. Several displays are listed separately with the primary marked. `display` is not in the default module list: the macOS query was measured at ~60 ms, so it is opt-in.
 - Add **GPU**, the second Phase 12 module. macOS enumerates `IOAccelerator` services through IOKit and reports the model and class; the class names the vendor and whether the adapter is on the package (AGX and Intel accelerators are integrated, AMD accelerators on Intel Macs are discrete), and anything else keeps `unknown` rather than being guessed. Linux reads DRM sysfs and reports PCI ids plus the driver, with a model name only when NVIDIA publishes one in procfs. Windows uses `EnumDisplayDevicesW`, because `windows-sys` ships no DXGI bindings; that lists adapters attached to a display, which the compatibility matrix records as a limitation. Every adapter is its own entry.
@@ -54,7 +55,7 @@
 - Bound and clean user artwork: 32 KiB, 40 lines and 160 columns per line, escape sequences stripped, trailing spaces removed, empty refused. Custom theme files are limited to 16 KiB and validated key by key.
 - The artwork is shaded between the theme's two logo colours when both are set and the terminal can express the intermediate shades; named colours are not blended into invented ones.
 - JSON output is untouched by any of these settings. `schema_version` stays 1.
-- 149 tests, up from 87.
+- 158 tests, up from 87.
 
 ## 0.1.0 — pre-release
 

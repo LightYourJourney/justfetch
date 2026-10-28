@@ -724,6 +724,13 @@ pub fn collect(selection: &[ModuleId]) -> PlatformData {
         gpu: if_selected(selection, ModuleId::Gpu, gpu),
         display: if_selected(selection, ModuleId::Display, display),
         packages: if_selected(selection, ModuleId::Packages, packages),
+        // macOS has no desktop environment in the Linux sense: the window
+        // server is part of the system rather than a session a user picks.
+        desktop: if_selected(selection, ModuleId::Desktop, || {
+            Detection::unsupported(
+                "macOS has no desktop environment in this sense; Aqua is the window server",
+            )
+        }),
         battery: if_selected(selection, ModuleId::Battery, battery),
         local_ip: if_selected(selection, ModuleId::LocalIp, local_ip),
     }

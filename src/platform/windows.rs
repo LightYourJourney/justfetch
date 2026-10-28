@@ -603,6 +603,11 @@ pub fn collect(selection: &[ModuleId]) -> PlatformData {
         gpu: if_selected(selection, ModuleId::Gpu, gpu),
         display: if_selected(selection, ModuleId::Display, display),
         packages: if_selected(selection, ModuleId::Packages, packages),
+        desktop: if_selected(selection, ModuleId::Desktop, || {
+            Detection::unsupported(
+                "Windows has no desktop environment in this sense; the shell is part of the system",
+            )
+        }),
         battery: if_selected(selection, ModuleId::Battery, battery),
         local_ip: if_selected(selection, ModuleId::LocalIp, local_ip),
     }

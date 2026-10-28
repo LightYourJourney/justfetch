@@ -654,6 +654,12 @@ fn value_for(snapshot: &SystemSnapshot, module: ModuleId) -> String {
                 .collect::<Vec<_>>()
                 .join(", ")
         }),
+        ModuleId::Desktop => display(&snapshot.desktop, |info| match info.session {
+            SessionType::X11 => format!("{} (X11)", info.name),
+            SessionType::Wayland => format!("{} (Wayland)", info.name),
+            SessionType::Tty => format!("{} (tty)", info.name),
+            SessionType::Unknown => info.name.clone(),
+        }),
         ModuleId::Memory => display(&snapshot.memory, |mem| {
             capacity(mem.used_bytes, mem.total_bytes)
         }),

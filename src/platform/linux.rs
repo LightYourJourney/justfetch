@@ -352,6 +352,32 @@ fn packages() -> Detection<PackagesInfo> {
     Detection::available(PackagesInfo { managers }, "package database directories")
 }
 
+/// Gather the session evidence and let the pure detector decide. The platform
+/// adapter only reads the environment; what the variables mean is in
+/// `detect::desktop`, where it can be tested without a desktop.
+fn desktop() -> Detection<DesktopInfo> {
+    use crate::detect::desktop::{Evidence, describe};
+    let var = |name: &str| {
+        std::env::var(name)
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+    };
+    let current = var("XDG_CURRENT_DESKTOP");
+    let session = var("XDG_SESSION_DESKTOP");
+    let desktop = var("DESKTOP_SESSION");
+    let session_type = var("XDG_SESSION_TYPE");
+    describe(&Evidence {
+        xdg_current: current.as_deref(),
+        xdg_session: session.as_deref(),
+        desktop_session: desktop.as_deref(),
+        sway_socket: var("SWAYSOCK").is_some(),
+        hyprland_signature: var("HYPRLAND_INSTANCE_SIGNATURE").is_some(),
+        session_type: session_type.as_deref(),
+        wayland_display: var("WAYLAND_DISPLAY").is_some(),
+        display: var("DISPLAY").is_some(),
+    })
+}
+
 pub fn collect(selection: &[ModuleId]) -> PlatformData {
     let uname = uname();
     // The hostname is needed for the title even when no module asks for it.
@@ -428,6 +454,7 @@ pub fn collect(selection: &[ModuleId]) -> PlatformData {
         gpu: if_selected(selection, ModuleId::Gpu, gpu),
         display: if_selected(selection, ModuleId::Display, display),
         packages: if_selected(selection, ModuleId::Packages, packages),
+        desktop: if_selected(selection, ModuleId::Desktop, desktop),
         battery: if_selected(selection, ModuleId::Battery, battery),
         local_ip: if_selected(selection, ModuleId::LocalIp, local_ip),
     }
