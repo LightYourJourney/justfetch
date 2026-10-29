@@ -128,25 +128,37 @@ def no_observation(module, native):
 
 
 def evaluate(module, field, native):
-    """Return (justfetch text, native text, verdict)."""
+    """Return (justfetch text, native text, verdict).
+
+    The verdicts are the ones the acceptance procedure uses:
+
+      match         the two agree
+      mismatch      they disagree
+      unsupported   justfetch says not applicable, and the platform tool agrees
+      inconclusive  there is no comparison — either side has nothing
+      error         justfetch reported a failure; always a finding
+    """
     status = field.get("status")
     value = field.get("value") or {}
     if no_observation(module, native):
         native = None
 
+    if status == "error":
+        return f"error ({field.get('code', '?')})", show(native) if native else "—", "error"
+
     if status == "available":
         text = TEXTS[module](value)
         if native is None:
-            return text, "—", "uncomparable"
+            return text, "—", "inconclusive"
         return text, show(native), "match" if compare(module, value, native) else "mismatch"
 
-    # Everything else means justfetch has no value to compare, which is only a
-    # finding when the platform tool did produce one for `unsupported`.
     if status == "unsupported":
         if native is None:
             return status, "—", "unsupported"
+        # The platform has an answer justfetch declined to give.
         return status, show(native), "mismatch"
-    return status, show(native) if native is not None else "—", "uncomparable"
+    # unavailable, redacted, deselected: no value on our side.
+    return status, show(native) if native is not None else "—", "inconclusive"
 
 
 def check_inputs(document, native):
@@ -244,9 +256,16 @@ def check_value(module, value):
 
 
 def main():
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        description="Compare a justfetch document with native observations.")
     parser.add_argument("--justfetch", required=True)
     parser.add_argument("--native", required=True)
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Acceptance mode: a covered module with no comparison, or any error, "
+             "fails the run (exit 3) instead of being reported and passing.",
+    )
     args = parser.parse_args()
 
     try:
@@ -267,23 +286,58 @@ def main():
     tools = native.get("tools", {})
     values = native.get("values", {})
 
+    # A module is covered when the platform tool produced something for it, or
+    # when justfetch says the question does not apply — both are verdicts with
+    # evidence behind them. A module with neither is reported as not covered.
+    covered = {
+        module
+        for module in MODULES
+        if not no_observation(module, values.get(module))
+        or document[module]["status"] == "unsupported"
+    }
+
     print(f"{'module':10} {'justfetch':34} {'platform tool':34} verdict")
     print("-" * 92)
-    mismatches = 0
+    counts = {"match": 0, "mismatch": 0, "unsupported": 0, "inconclusive": 0, "error": 0}
     for module in MODULES:
         ours, theirs, result = evaluate(module, document[module], values.get(module))
+        if result == "inconclusive" and module not in covered:
+            result = "not covered"
+        else:
+            counts[result] += 1
         tool = tools.get(module)
         if tool and theirs != "—":
             theirs = f"{theirs} ({tool})"
-        if result == "mismatch":
-            mismatches += 1
         print(f"{module:10} {show(ours):34} {theirs:34} {result}")
 
     print("-" * 92)
-    if mismatches:
-        print(f"{mismatches} mismatch(es): a disagreement is a finding, not something to smooth over.")
+    uncovered = [module for module in MODULES if module not in covered]
+    print(
+        f"covered {len(covered)}/{len(MODULES)}: "
+        f"{counts['match']} match, {counts['unsupported']} unsupported, "
+        f"{counts['inconclusive']} inconclusive, {counts['mismatch']} mismatch, "
+        f"{counts['error']} error"
+        + (f"; not covered: {', '.join(uncovered)}" if uncovered else "")
+    )
+
+    if counts["mismatch"] or counts["error"]:
+        if counts["mismatch"]:
+            print(f"{counts['mismatch']} mismatch(es): a disagreement is a finding, not something to smooth over.")
+        if counts["error"]:
+            print(f"{counts['error']} error(s): justfetch failed to collect where the platform answered.")
         return 1
-    print("No comparable value disagreed. 'uncomparable' and 'unsupported' are not passes.")
+
+    if args.strict and counts["inconclusive"]:
+        print(
+            f"{counts['inconclusive']} covered module(s) had no comparison; "
+            "strict mode does not accept that as evidence."
+        )
+        return 3
+
+    if args.strict:
+        print("Strict: every covered module matched or was genuinely unsupported.")
+    else:
+        print("Diagnostic: no disagreement found. 'inconclusive', 'not covered' and 'unsupported' are not passes; use --strict for acceptance.")
     return 0
 
 

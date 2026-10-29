@@ -57,7 +57,7 @@ NATIVE = {
 
 
 class Compare(unittest.TestCase):
-    def run_compare(self, doc, native, bom=False):
+    def run_compare(self, doc, native, bom=False, strict=False):
         with tempfile.TemporaryDirectory() as work:
             doc_path = pathlib.Path(work, "doc.json")
             native_path = pathlib.Path(work, "native.json")
@@ -66,10 +66,11 @@ class Compare(unittest.TestCase):
                 native_path.write_bytes(b"\xef\xbb\xbf" + json.dumps(native).encode())
             else:
                 native_path.write_text(json.dumps(native))
-            result = subprocess.run(
-                [sys.executable, str(COMPARE), "--justfetch", str(doc_path),
-                 "--native", str(native_path)],
-                capture_output=True, text=True)
+            command = [sys.executable, str(COMPARE), "--justfetch", str(doc_path),
+                       "--native", str(native_path)]
+            if strict:
+                command.append("--strict")
+            result = subprocess.run(command, capture_output=True, text=True)
         return result
 
     def test_agreement_exits_zero(self):
@@ -122,8 +123,13 @@ class Compare(unittest.TestCase):
         result = self.run_compare(document(), native)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         desktop = [line for line in result.stdout.splitlines() if line.startswith("desktop")][0]
-        self.assertIn("uncomparable", desktop)
+        self.assertIn("inconclusive", desktop)
         self.assertNotIn("match", desktop)
+
+    def test_strict_rejects_an_inconclusive_covered_module(self):
+        native = {"tools": {}, "values": {"desktop": "sway"}}
+        result = self.run_compare(document(), native, strict=True)
+        self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
 
     def test_unsupported_without_a_native_answer_is_unsupported(self):
         doc = document(battery={"status": "unsupported", "reason": "no battery"})
@@ -139,7 +145,7 @@ class Compare(unittest.TestCase):
         result = self.run_compare(doc, NATIVE)
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
 
-    def test_an_empty_observation_is_uncomparable_not_a_mismatch(self):
+    def test_an_empty_observation_is_not_a_mismatch(self):
         doc = document(**AVAILABLE)
         native = {"tools": {}, "values": {"packages": {}, "gpu": {"names": []},
                                           "display": [], "battery": {"state": "full"}}}
@@ -147,7 +153,43 @@ class Compare(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         for line in result.stdout.splitlines():
             if line.split()[:1] and line.split()[0] in ("packages", "gpu", "display", "battery"):
-                self.assertIn("uncomparable", line)
+                # Nothing to compare: either "not covered" (no evidence at all)
+                # or "inconclusive" (covered, but this module has none). Never
+                # a mismatch, and never a match.
+                self.assertNotIn("mismatch", line)
+                self.assertNotIn("match ", line)
+
+    def test_an_error_is_a_failure_in_both_modes(self):
+        doc = document(battery={"status": "error", "source": "IOKit",
+                                "code": "io", "message": "no answer"})
+        for strict in (False, True):
+            result = self.run_compare(doc, NATIVE, strict=strict)
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            line = [l for l in result.stdout.splitlines() if l.startswith("battery")][0]
+            self.assertIn("error", line)
+
+    def test_unavailable_where_the_platform_answered_fails_strict(self):
+        doc = document(battery={"status": "unavailable", "reason": "read failed"})
+        diagnostic = self.run_compare(doc, NATIVE)
+        self.assertEqual(diagnostic.returncode, 0, diagnostic.stdout + diagnostic.stderr)
+        strict = self.run_compare(doc, NATIVE, strict=True)
+        self.assertEqual(strict.returncode, 3, strict.stdout + strict.stderr)
+
+    def test_unavailable_without_a_platform_answer_is_not_covered(self):
+        doc = document(battery={"status": "unavailable", "reason": "read failed"})
+        result = self.run_compare(doc, {"tools": {}, "values": {}}, strict=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_a_missing_module_is_bad_input(self):
+        doc = document(**AVAILABLE)
+        del doc["locale"]
+        result = self.run_compare(doc, NATIVE)
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+
+    def test_strict_accepts_a_full_match(self):
+        result = self.run_compare(document(**AVAILABLE), NATIVE, strict=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("Strict: every covered module matched", result.stdout)
 
     def test_a_non_string_desktop_name_is_bad_input(self):
         doc = document(desktop={"status": "available", "value": {"name": 3},

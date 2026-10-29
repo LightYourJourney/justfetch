@@ -157,8 +157,23 @@ prints one verdict per module:
 | --- | --- |
 | `match` | justfetch and the platform tool agree |
 | `mismatch` | They disagree. This is a finding; please report it with the table |
-| `uncomparable` | The platform tool had nothing to compare — not a pass |
 | `unsupported` | justfetch says the question does not apply, and the tool agrees there is nothing |
+| `inconclusive` | There is no comparison: one side has nothing. Includes justfetch reporting `unavailable` or `error` while the platform tool has an answer |
+| `error` | justfetch reported a failure. Always a finding |
+| `not covered` | The script gathered no observation for this module, and justfetch did not say the question does not apply |
+
+Two modes, and the difference matters for acceptance:
+
+- **Diagnostic** (the default) reports everything and passes unless there is a
+  `mismatch` or an `error`. Use it to see what a machine reports.
+- **Strict** (`--strict`, which every `verify-*` script uses) also fails when a
+  covered module has no comparison — a missing answer is not evidence. Exit
+  codes: `0` pass, `1` mismatch or error, `2` bad input or setup problem, `3`
+  strict only, coverage incomplete.
+
+A module is *covered* when the platform tool produced something for it, or when
+justfetch says the question does not apply. The summary line names the modules
+that were not covered, so a gap is visible rather than silent.
 
 The scripts are read-only, need `python3` for the comparison, write nothing
 outside a temporary directory they remove, and print only non-identifying values

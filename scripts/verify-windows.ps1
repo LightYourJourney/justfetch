@@ -62,7 +62,7 @@ try {
         if ($LASTEXITCODE -eq 0) { $python = $candidate; break }
     }
     if ($python) {
-        & $python.Source (Join-Path $here 'compare.py') `
+        & $python.Source (Join-Path $here 'compare.py') --strict `
             --justfetch (Join-Path $work 'doc.json') --native (Join-Path $work 'native.json')
         exit $LASTEXITCODE
     }

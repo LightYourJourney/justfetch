@@ -941,3 +941,72 @@ runs the independent validator and the comparison-script tests.
 Linux, Windows, WSL and Intel hardware, exactly as before. The scripts are how
 another tester can close that gap without the maintainer owning the machine; the
 release gates in `docs/roadmap.md` say what evidence those runs must produce.
+
+## Repository-hygiene round (2026-10-30)
+
+Phase 16. This round is about what the repository itself carries, not about the
+binary.
+
+### The committed run data
+
+Three files — `full.json`, `partial.json`, `broken.json` — were committed in
+`d21356e` and were present in the tree of the published tag. Their contents, by
+category and without reproducing the values:
+
+| Category | What was there |
+| --- | --- |
+| Account identity | the OS user name and the machine's host name, as strings |
+| Network | one RFC 1918 address on the local interface |
+| System description | OS version, hardware model, package counts, and the source strings |
+
+No home-directory path, no public address, no credential, no serial number. They
+were produced by running the binary in the repository root for the schema check
+and swept in by `git add -A`.
+
+They are deleted and ignored as of `95b8667`. The CI schema job now writes its
+documents to `$RUNNER_TEMP`, outside the checkout, so a future `git add -A`
+cannot pick them up.
+
+**Residual risk.** The files remain in the history of `d21356e` through
+`74c5506` and in the tree of the `v1.0.0-rc.1` tag, which is public. Removing
+them means rewriting published history and moving a published tag — destructive,
+and worse than the exposure: the account name is already the commit author and
+the host name follows a default-looking pattern. The decision is to leave them,
+say so here, and not carry them forward. A maintainer who wants them gone
+completely has to rewrite the branch and re-tag, which is a separate, approved
+operation.
+
+### Packaging
+
+`cargo package --list` was audited: no run output, no `.json` outside
+`docs/json-schema.json` and the hyperfine benchmark exports under
+`docs/benchmarks/`, which contain command names and timings only — no user name,
+host name or path. The release archives hold the binary, `LICENSE` and
+`README.md` and nothing else.
+
+### Diagnostic and strict acceptance
+
+`compare.py` used to report `uncomparable` — and exit 0 — when justfetch said
+`unavailable` or `error` while the platform tool had a real answer. For a
+release gate that is the wrong direction: a collection failure looked like a
+pass.
+
+The verdicts are now `match`, `mismatch`, `unsupported`, `inconclusive`,
+`error` and `not covered`, with two modes:
+
+| Mode | Fails on |
+| --- | --- |
+| Diagnostic (default) | a mismatch or an error |
+| Strict (`--strict`) | those, plus any covered module with no comparison |
+
+Exit codes: `0` pass, `1` mismatch or error, `2` bad input or setup, `3` strict
+coverage gap. Every `verify-*` script runs strict. On this Mac the run reports
+`covered 5/6: 4 match, 1 unsupported` and names `display` as not covered, which
+is the honest description of what a comparison against `system_profiler` can
+establish there.
+
+Twenty comparison tests cover the counterexamples: an error with native data, an
+`unavailable` where the tool answered, `unavailable` with no answer, a missing
+module, an extra display, empty observations, a malformed document, the wrong
+native shape and fabricated extra adapters or managers. The schema tests are
+separate and validate documents, not comparisons.

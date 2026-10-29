@@ -54,7 +54,7 @@ for key in ("LC_ALL", "LC_MESSAGES", "LANG"):
 (work / "native.json").write_text(json.dumps({"tools": tools, "values": values}, indent=2))
 PY
 
-python3 "$here/compare.py" --justfetch "$work/doc.json" --native "$work/native.json"
+python3 "$here/compare.py" --strict --justfetch "$work/doc.json" --native "$work/native.json"
 compared=$?
 
 python3 - "$work/doc.json" <<'PY'
