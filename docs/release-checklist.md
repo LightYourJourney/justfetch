@@ -8,12 +8,12 @@ operations.
 
 | Gate A condition | State |
 | --- | --- |
-| CI green on the exact commit to be tagged | Met — `d21356e`, run 40911175646: all six jobs succeeded |
+| CI green on the exact commit to be tagged | Met — the tag is on `6dd54e9`, whose run 40911728414 passed all six jobs (the preceding `d21356e` passed run 40911175646) |
 | No known P0 or P1 | Met |
 | Release notes and matrix state what was and was not executed | Met |
 | The tag creates a draft prerelease | In place in the workflow; publishing stays a maintainer action |
 
-Steps 1 to 5 below were carried out on 2026-10-30: `d21356e` passed CI, the tag
+Steps 1 to 5 below were carried out on 2026-10-30: `6dd54e9` passed CI, the tag
 was pushed, the workflow produced five archives plus `SHA256SUMS`, every checksum
 verified, and the release was published as a prerelease at
 <https://github.com/LightYourJourney/justfetch/releases/tag/v1.0.0-rc.1>.
@@ -22,7 +22,7 @@ verified, and the release was published as a prerelease at
 
 ```sh
 # 1. The commit that will be tagged must exist on GitHub and pass CI.
-#    Done for d21356e: run 40911175646, six jobs green.
+#    Done for 6dd54e9: run 40911728414, six jobs green.
 git status                       # clean, nothing left to commit
 gh run list --limit 1 --jq '.[0] | "\(.headSha[0:7]) \(.conclusion)"'
 
@@ -30,8 +30,9 @@ gh run list --limit 1 --jq '.[0] | "\(.headSha[0:7]) \(.conclusion)"'
 git tag -a v1.0.0-rc.1 -m "justfetch v1.0.0-rc.1"
 git push origin v1.0.0-rc.1
 
-# 3. The workflow builds five targets, smoke-tests each packaged binary, writes
-#    SHA256SUMS and creates a DRAFT prerelease. Check it before publishing.
+# 3. The workflow builds five targets, smoke-tests the packaged binary on each
+#    runner that can execute it (Intel macOS cannot), writes SHA256SUMS and
+#    creates a DRAFT prerelease. Check it before publishing.
 gh release view v1.0.0-rc.1
 gh release download v1.0.0-rc.1 --dir /tmp/rc-assets
 (cd /tmp/rc-assets && shasum -a 256 -c SHA256SUMS)

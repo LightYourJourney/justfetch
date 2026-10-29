@@ -12,6 +12,10 @@ if ! command -v python3 >/dev/null 2>&1; then
   echo "python3 is required for the comparison" >&2
   exit 2
 fi
+if ! python3 -c 'import json' >/dev/null 2>&1; then
+  echo "python3 is on PATH but does not run; check the interpreter" >&2
+  exit 2
+fi
 if [ ! -x "$BIN" ]; then
   echo "Build first: cargo build --release --locked (looked for $BIN)" >&2
   exit 2
@@ -34,7 +38,7 @@ work = pathlib.Path(sys.argv[1])
 values, tools = {}, {}
 
 if shutil.which("dpkg-query"):
-    result = subprocess.run(["dpkg-query", "-W", "-f=${db:Status-Abbrev}\n"],
+    result = subprocess.run(["dpkg-query", "-W", "-f=${db:Status-Abbrev}\\n"],
                             capture_output=True, text=True)
     count = len([l for l in result.stdout.splitlines() if l.startswith("ii")])
     if count:

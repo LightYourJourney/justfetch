@@ -919,6 +919,23 @@ updated the same day.
 native runners, the MSRV job, the packaging job and the JSON Schema job, which
 runs the independent validator and the comparison-script tests.
 
+### Review round on the published candidate
+
+- `scripts/verify-windows.ps1` emitted the GPU observation as a bare list while
+  `compare.py` requires `{"names": [...]}`, so every Windows run would have
+  stopped at "malformed input". Fixed. The comparer's tests cover the shape it
+  accepts, not the shape each producer writes — that is where the two can still
+  drift.
+- The gate table cited run 40911175646 for the commit that would be tagged. The
+  tag is on `6dd54e9`, whose own run 40911728414 was green; both are cited now.
+- Three files the CI schema job writes — `full.json`, `partial.json`,
+  `broken.json` — were committed in `d21356e` and contain the user name, host
+  name and home directory path. They are deleted and ignored now, but they
+  remain in the tree of the published tag. Rewriting a published tag would be
+  worse than leaving them; the next release does not carry them.
+- The checklist said the workflow smoke-tests every packaged binary. Intel macOS
+  is built but not executed, which the release notes already said.
+
 ### Not verified
 
 Linux, Windows, WSL and Intel hardware, exactly as before. The scripts are how

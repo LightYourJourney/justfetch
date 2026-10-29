@@ -3,3 +3,8 @@
 /stage/
 __pycache__/
 *.pyc
+
+# Written by the CI schema job (and locally when reproducing it)
+/full.json
+/partial.json
+/broken.json

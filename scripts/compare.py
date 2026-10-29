@@ -114,10 +114,25 @@ def compare(module, value, native):
     return False
 
 
+def no_observation(module, native):
+    """True when the platform tool produced nothing worth comparing."""
+    if native is None:
+        return True
+    if isinstance(native, (dict, list, str)) and len(native) == 0:
+        return True
+    # `{"names": [], "ids": []}` is a container that carries nothing.
+    if module == "gpu" and isinstance(native, dict):
+        return not (native.get("names") or native.get("ids"))
+    # A battery reading without a percentage is not an observation either.
+    return module == "battery" and isinstance(native, dict) and "percent" not in native
+
+
 def evaluate(module, field, native):
     """Return (justfetch text, native text, verdict)."""
     status = field.get("status")
     value = field.get("value") or {}
+    if no_observation(module, native):
+        native = None
 
     if status == "available":
         text = TEXTS[module](value)
@@ -219,6 +234,12 @@ def check_value(module, value):
             for d in displays
         ):
             return "`display.displays` must be a list of {width, height}"
+    if module == "desktop" and not isinstance(value.get("name"), str):
+        return "`desktop.name` must be a string"
+    if module == "locale":
+        for key in ("process", "system"):
+            if value.get(key) is not None and not isinstance(value[key], str):
+                return f"`locale.{key}` must be a string or null"
     return None
 
 

@@ -126,9 +126,34 @@ class Compare(unittest.TestCase):
         self.assertNotIn("match", desktop)
 
     def test_unsupported_without_a_native_answer_is_unsupported(self):
-        result = self.run_compare(document(), {"tools": {}, "values": {}})
+        doc = document(battery={"status": "unsupported", "reason": "no battery"})
+        result = self.run_compare(doc, {"tools": {}, "values": {}})
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn("unsupported", result.stdout)
+        # The footer mentions both words, so assert on the module's own line.
+        battery = [line for line in result.stdout.splitlines() if line.startswith("battery")][0]
+        self.assertIn("unsupported", battery)
+
+    def test_an_extra_display_is_a_mismatch(self):
+        doc = document(**AVAILABLE)
+        doc["display"]["value"]["displays"].append({"width": 2560, "height": 1440})
+        result = self.run_compare(doc, NATIVE)
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+
+    def test_an_empty_observation_is_uncomparable_not_a_mismatch(self):
+        doc = document(**AVAILABLE)
+        native = {"tools": {}, "values": {"packages": {}, "gpu": {"names": []},
+                                          "display": [], "battery": {"state": "full"}}}
+        result = self.run_compare(doc, native)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        for line in result.stdout.splitlines():
+            if line.split()[:1] and line.split()[0] in ("packages", "gpu", "display", "battery"):
+                self.assertIn("uncomparable", line)
+
+    def test_a_non_string_desktop_name_is_bad_input(self):
+        doc = document(desktop={"status": "available", "value": {"name": 3},
+                                "source": "x", "confidence": "confirmed"})
+        result = self.run_compare(doc, {"tools": {}, "values": {}})
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
 
     def test_unsupported_with_a_native_answer_is_a_mismatch(self):
         doc = document(battery={"status": "unsupported", "reason": "no battery"})

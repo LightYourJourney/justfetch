@@ -33,7 +33,8 @@ try {
 
     $adapters = @(Get-CimInstance -ClassName Win32_VideoController -ErrorAction SilentlyContinue)
     if ($adapters.Count -gt 0) {
-        $values['gpu'] = @($adapters | ForEach-Object { $_.Name })
+        # compare.py expects {"names": [...]}: a bare list is rejected as bad input.
+        $values['gpu'] = @{ names = @($adapters | ForEach-Object { $_.Name }) }
         $tools['gpu'] = 'Win32_VideoController'
     }
     $withMode = $adapters | Where-Object { $_.CurrentHorizontalResolution } | Select-Object -First 1
