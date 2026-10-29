@@ -4,25 +4,24 @@ What has to be true before the candidate is published, and the commands that do
 it. The gates themselves are in [roadmap](roadmap.md); this file is the order of
 operations.
 
-## Verdict as of 2026-10-29
+## Verdict as of 2026-10-30
 
 | Gate A condition | State |
 | --- | --- |
-| CI green on the exact commit to be tagged | **Pending** — the final commit is not pushed yet. The last pushed commit passed all six jobs. |
+| CI green on the exact commit to be tagged | Met — `d21356e`, run 40911175646: all six jobs succeeded |
 | No known P0 or P1 | Met |
 | Release notes and matrix state what was and was not executed | Met |
 | The tag creates a draft prerelease | In place in the workflow; publishing stays a maintainer action |
 
-**Go**, once the push in step 1 is green. Anything less is a claim without
-evidence.
+**Go** for the tag. Step 1 below is already done; start at step 2.
 
 ## Publishing the candidate
 
 ```sh
 # 1. The commit that will be tagged must exist on GitHub and pass CI.
+#    Done for d21356e: run 40911175646, six jobs green.
 git status                       # clean, nothing left to commit
-git push origin main
-gh run watch                     # six jobs: 3 native, MSRV, Package, Schema
+gh run list --limit 1 --jq '.[0] | "\(.headSha[0:7]) \(.conclusion)"'
 
 # 2. The tag. This is the point of no return for the version number.
 git tag -a v1.0.0-rc.1 -m "justfetch v1.0.0-rc.1"

@@ -897,6 +897,12 @@ document with `os` and `gpu` available.
   and the default modules; no test compares their output, and `display` is never
   run there because it is not a default module. Both documents say that now.
 
+### CI
+
+`d21356e` passed all six jobs on GitHub Actions (run 40911175646): the three
+native runners, the MSRV job, the packaging job and the JSON Schema job, which
+runs the independent validator and the comparison-script tests.
+
 ### Not verified
 
 Linux, Windows, WSL and Intel hardware, exactly as before. The scripts are how
