@@ -728,6 +728,40 @@ quiesced, so the instruction counts are the figure to compare.
 
 Phase 14. The point of this round was evidence rather than features.
 
+### Native cross-check (2026-10-29)
+
+Six modules, run on the MacBook Air and compared with the system's own answer:
+
+| Module | justfetch | Native source |
+| --- | --- | --- |
+| GPU | `Apple M3` | `system_profiler`: `Chipset Model: Apple M3` |
+| Battery | `87% (discharging)` | `pmset -g batt`: `87%; discharging; 2:04 remaining` |
+| Display | `1470x956 @60Hz (built-in)` | CoreGraphics mode; the panel is 2560x1664, explained in compatibility.md |
+| Packages | `homebrew formulae 883, homebrew casks 44` | `brew list --formula` 883, `--cask` 44 |
+| Desktop | `Unsupported` | macOS has no desktop environment in this sense |
+| Locale | `zh_CN.UTF-8 (LANG), system zh_CN` | `$LANG`, `defaults read -g AppleLocale` |
+
+Battery varied between runs during the day (100% on AC, 87% discharging here);
+each figure matched `pmset` at the moment it was taken.
+
+### Review-round fixes
+
+- The schema validator could pass vacuously in two ways: a dangling `$ref`
+  resolved to JSON `null`, which constrains nothing, and `additionalProperties`
+  was only honoured as `false`. A dangling reference now panics, the
+  `additionalProperties` schema form is validated, and a test proves a broken
+  reference fails.
+- Linux reported "no display" or "no adapter" when it had merely failed to read
+  a connector or card. A read failure is counted, and if nothing was read the
+  state is `unavailable` with the count, not `unsupported`.
+- Windows display and GPU are `unavailable`, not `unsupported`: a session without
+  an interactive desktop looks exactly like a machine with no monitor or
+  adapter, which is the same ambiguity macOS display has.
+- `scripts/verify-linux.sh` required `python3` while claiming no tool was
+  required; it now says so and checks. `check-release.sh` rejects a local
+  archive whose target the workflow does not build, and requires five targets in
+  the workflow.
+
 ### JSON Schema v1
 
 `docs/json-schema.json` now describes the document: seventeen module fields,
@@ -747,8 +781,11 @@ keyword the validator does not know is a test panic rather than a silent pass.
 
 The states had drifted: "no battery" was `unsupported` while "no display" and
 "no graphics adapter" were `unavailable`, although all three mean the same thing
-— the question does not apply on this machine. They are `unsupported` now on all three platforms, and
-the rule is written down in `docs/compatibility.md`: unavailable means the
+— the question does not apply on this machine. Battery and the Linux checks are
+`unsupported`; macOS display, Windows display and Windows GPU are `unavailable`,
+because a sandbox, a container or a session without a desktop cannot be told
+apart from a machine with no hardware. The rule is written down in
+`docs/compatibility.md`: unavailable means the
 platform should have answered and did not; error means an API reported failure.
 
 ### Verification procedures for platforms this machine does not have

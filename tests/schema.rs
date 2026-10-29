@@ -67,7 +67,9 @@ const IMPLEMENTED: [&str; 16] = [
     "$defs",
 ];
 
-fn validate_at(schema: &Value, root: &Value, instance: &Value, path: &str) -> Result<(), String> {
+/// A schema keyword the validator does not implement would otherwise be a
+/// silent pass, so it is a panic wherever a schema node is examined.
+fn check_implemented(schema: &Value, path: &str) {
     if let Some(object) = schema.as_object() {
         for key in object.keys() {
             assert!(
@@ -76,11 +78,21 @@ fn validate_at(schema: &Value, root: &Value, instance: &Value, path: &str) -> Re
             );
         }
     }
+}
+
+fn validate_at(schema: &Value, root: &Value, instance: &Value, path: &str) -> Result<(), String> {
+    check_implemented(schema, path);
     if let Some(reference) = schema.get("$ref").and_then(Value::as_str) {
         let name = reference
             .strip_prefix("#/$defs/")
             .unwrap_or_else(|| panic!("unsupported $ref: {reference}"));
         let target = &root["$defs"][name];
+        // A dangling reference would otherwise validate everything: `Null`
+        // constrains nothing and the call below returns Ok for it.
+        assert!(
+            target.is_object(),
+            "{path}: $ref points at a missing definition `{name}`"
+        );
         return validate_at(target, root, instance, path);
     }
     if let Some(variants) = schema.get("oneOf").and_then(Value::as_array) {
@@ -141,10 +153,17 @@ fn validate_at(schema: &Value, root: &Value, instance: &Value, path: &str) -> Re
             }
         }
         let properties = schema.get("properties").and_then(Value::as_object);
-        if schema.get("additionalProperties") == Some(&Value::Bool(false)) {
-            for key in object.keys() {
-                if !properties.is_some_and(|properties| properties.contains_key(key)) {
+        for (key, value) in object {
+            if properties.is_some_and(|properties| properties.contains_key(key)) {
+                continue;
+            }
+            match schema.get("additionalProperties") {
+                Some(Value::Bool(true)) | None => {}
+                Some(Value::Bool(false)) => {
                     return Err(format!("{path}: unexpected property `{key}`"));
+                }
+                Some(child_schema) => {
+                    validate_at(child_schema, root, value, &format!("{path}.{key}"))?;
                 }
             }
         }
@@ -170,12 +189,7 @@ fn check_keywords(schema: &Value, path: &str) {
     let Some(object) = schema.as_object() else {
         return;
     };
-    for key in object.keys() {
-        assert!(
-            IMPLEMENTED.contains(&key.as_str()),
-            "{path}: schema keyword `{key}` is not implemented by this validator"
-        );
-    }
+    check_implemented(schema, path);
     if let Some(properties) = object.get("properties").and_then(Value::as_object) {
         for (name, child) in properties {
             check_keywords(child, &format!("{path}.properties.{name}"));
@@ -198,6 +212,18 @@ fn check_keywords(schema: &Value, path: &str) {
             check_keywords(child, &format!("{path}.$defs.{name}"));
         }
     }
+}
+
+#[test]
+fn a_dangling_reference_fails_rather_than_validating_everything() {
+    let root = schema();
+    let mut broken = root.clone();
+    broken["properties"]["kernel"]["oneOf"][0]["properties"]["value"] =
+        serde_json::json!({"$ref": "#/$defs/does_not_exist"});
+    let document = document(&["--format", "json"]);
+    // The available-kernel variant is the one a real document takes.
+    let result = std::panic::catch_unwind(|| validate_at(&broken, &broken, &document, "$"));
+    assert!(result.is_err(), "a dangling $ref must not validate");
 }
 
 #[test]

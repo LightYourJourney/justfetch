@@ -2,12 +2,18 @@
 # Cross-check justfetch's Linux collectors against the system's own tools.
 #
 # Read-only. Run on a real Linux machine and paste the output into
-# docs/validation.md under a dated heading. Nothing here changes state, and no
-# tool is required: a missing one leaves its line marked "not available".
+# docs/validation.md under a dated heading. Nothing here changes state. `python3`
+# is required for the status summary; every other tool is optional and a missing
+# one leaves its line marked "not available".
 set -u
 
 say() { printf '\n=== %s ===\n' "$1"; }
 have() { command -v "$1" >/dev/null 2>&1; }
+
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "python3 is required for the status summary" >&2
+  exit 1
+fi
 
 BIN=${BIN:-./target/release/justfetch}
 if [ ! -x "$BIN" ]; then
@@ -17,17 +23,19 @@ fi
 
 say "environment"
 echo "kernel:    $(uname -srm)"
-echo "distro:    $(. /etc/os-release 2>/dev/null && echo "$PRETTY_NAME")"
+echo "distro:    $(. /etc/os-release 2>/dev/null && echo "${PRETTY_NAME:-unknown}")"
 echo "container: ${container:-none}"
 if [ -e /proc/1/cgroup ] && grep -qiE 'docker|kubepods|lxc' /proc/1/cgroup 2>/dev/null; then
   echo "container: yes (/proc/1/cgroup)"
 fi
 
 say "justfetch --format json"
-"$BIN" --format json --modules gpu,battery,display,packages,desktop,locale > /tmp/jf.json || { echo "justfetch failed" >&2; exit 1; }
-python3 - <<'PY'
+out=$(mktemp "${TMPDIR:-/tmp}/jf-linux.XXXXXX")
+"$BIN" --format json --modules gpu,battery,display,packages,desktop,locale > "$out" || { echo "justfetch failed" >&2; exit 1; }
+JF_JSON="$out" python3 - <<'PY'
 import json
-d = json.load(open('/tmp/jf.json'))
+import os
+d = json.load(open(os.environ['JF_JSON']))
 for k in ('gpu','battery','display','packages','desktop','locale'):
     v = d.get(k, {})
     print(f"{k:9} {v.get('status'):12} {v.get('reason') or v.get('source') or ''}")
@@ -58,7 +66,11 @@ for c in /sys/class/drm/card*-*; do
 done
 
 say "gpu (compare with justfetch)"
-have lspci && lspci -nn 2>/dev/null | grep -Ei 'vga|3d|display' || echo "lspci not available"
+if have lspci; then
+  lspci -nn 2>/dev/null | grep -Ei 'vga|3d|display' || echo "lspci found no display adapter"
+else
+  echo "lspci not available"
+fi
 ls /proc/driver/nvidia/gpus/*/information 2>/dev/null | while read -r f; do
   echo "$f"; grep -m1 'Model:' "$f"
 done

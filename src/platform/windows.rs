@@ -416,7 +416,9 @@ fn gpu() -> Detection<GpuInfo> {
         });
     }
     if devices.is_empty() {
-        return Detection::unsupported("No display adapter is present in this session");
+        return Detection::unavailable(
+            "EnumDisplayDevicesW reports no active display adapter; a session without an interactive desktop looks the same as no hardware",
+        );
     }
     Detection::available(GpuInfo { devices }, "EnumDisplayDevicesW")
 }
@@ -507,7 +509,9 @@ fn display() -> Detection<DisplayInfo> {
         )
     };
     if found == 0 || displays.is_empty() {
-        return Detection::unsupported("No monitor is attached to this session");
+        return Detection::unavailable(
+            "EnumDisplayMonitors reports no monitor; a session without an interactive desktop looks the same as no monitor",
+        );
     }
     Detection::available(
         DisplayInfo {

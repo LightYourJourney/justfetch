@@ -206,6 +206,7 @@ fn gpu() -> Detection<GpuInfo> {
         }
     };
     let mut devices = Vec::new();
+    let mut unreadable = 0_u32;
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().into_owned();
         // `card0` is an adapter; `card0-DP-1` is a connector on it.
@@ -214,7 +215,9 @@ fn gpu() -> Detection<GpuInfo> {
         }
         let Ok(uevent) = std::fs::read_to_string(entry.path().join("device/uevent")) else {
             // A card with no device node is a virtual framebuffer or a
-            // connector-only stub; it is not evidence of an adapter.
+            // connector-only stub, but a failed read is not evidence either
+            // way; it is counted so an empty list can say which happened.
+            unreadable += 1;
             continue;
         };
         let field = |key: &str| {
@@ -246,7 +249,13 @@ fn gpu() -> Detection<GpuInfo> {
         });
     }
     if devices.is_empty() {
-        return Detection::unsupported("No graphics adapter is present in /sys/class/drm");
+        return if unreadable > 0 {
+            Detection::unavailable(format!(
+                "{unreadable} DRM card(s) exist but their device information could not be read"
+            ))
+        } else {
+            Detection::unsupported("No graphics adapter is present in /sys/class/drm")
+        };
     }
     Detection::available(GpuInfo { devices }, "/sys/class/drm")
 }
@@ -264,13 +273,17 @@ fn display() -> Detection<DisplayInfo> {
         }
     };
     let mut displays = Vec::new();
+    let mut unreadable = 0_u32;
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().into_owned();
         // Connectors are named `card0-eDP-1`; `card0` is the adapter itself.
         if !name.contains('-') {
             continue;
         }
-        let status = std::fs::read_to_string(entry.path().join("status")).unwrap_or_default();
+        let Ok(status) = std::fs::read_to_string(entry.path().join("status")) else {
+            unreadable += 1;
+            continue;
+        };
         if status.trim() != "connected" {
             continue;
         }
@@ -280,6 +293,7 @@ fn display() -> Detection<DisplayInfo> {
             let (w, h) = mode.trim().split_once('x')?;
             Some((w.parse::<u32>().ok()?, h.parse::<u32>().ok()?))
         }) else {
+            unreadable += 1;
             continue;
         };
         let kind = if name.contains("eDP") || name.contains("LVDS") {
@@ -298,7 +312,13 @@ fn display() -> Detection<DisplayInfo> {
         });
     }
     if displays.is_empty() {
-        return Detection::unsupported("No display is connected to this machine");
+        return if unreadable > 0 {
+            Detection::unavailable(format!(
+                "{unreadable} DRM connector(s) exist but their state or modes could not be read"
+            ))
+        } else {
+            Detection::unsupported("No display is connected according to /sys/class/drm")
+        };
     }
     Detection::estimated(
         DisplayInfo {

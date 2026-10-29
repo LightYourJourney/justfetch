@@ -18,10 +18,11 @@ value" means "not here", "not read" or "failed":
 
 A machine with no battery, no display or no graphics adapter reports
 `unsupported` with a reason rather than a zero, an empty list or a guess — where
-the platform can prove the absence (`/sys` lists no connector, Windows lists no
-monitor, macOS reports no internal battery). When an API simply returns nothing
-and a sandbox that denies it would look identical, the state is `unavailable`
-with a reason saying so; macOS display is reported that way.
+the platform can prove the absence — `/sys` lists no connector, macOS reports
+no internal battery. When an API simply returns nothing and a sandbox, a
+container or a session without a desktop would look identical, the state is
+`unavailable` with a reason saying so; macOS display and Windows display and
+GPU are reported that way.
 
 ## Evidence matrix
 
@@ -35,12 +36,14 @@ with a reason saying so; macOS display is reported that way.
 | WSL1 | Linux adapter, WSL detection/semantic safeguards | Pure parser fixtures only | Not tested in WSL1 | No WSL runner; `scripts/verify-wsl.sh` is the procedure |
 | WSL2 | Linux adapter, explicit WSL2 marker detection | Pure parser fixtures only | Not tested in WSL2 | No WSL runner; `scripts/verify-wsl.sh` is the procedure |
 
-| BSD and other OS | Out of v0.1 scope | Compile-time unsupported | Not tested | None |
+| BSD and other OS | Out of scope for 1.0 | Compile-time unsupported | Not tested | None |
 
-On WSL the Linux adapter runs, so packages and locale are expected to work,
-while battery, display and desktop have nothing to answer and should report
-`unsupported`. The script checks exactly that, including that `environment.kind`
-says `wsl`.
+On WSL the Linux adapter runs, so packages and locale are expected to work.
+Battery and display have nothing to answer and should report `unsupported` or
+`unavailable`. Desktop depends on the session: with no desktop variables and no
+TTY it is `unavailable` (the variables are absent, not the concept), and under a
+plain TTY it is `unsupported`. The script accepts exactly those states, and
+checks that `environment.kind` says `wsl`.
 
 "Executed" means the release binary ran on a real kernel of that platform and returned the JSON above; it does not mean every distribution, device or hardware configuration has been tried. What the runners establish is that the Linux `os-release`/`proc`/sysfs and parent-shell paths and the Windows registry/memory/ToolHelp paths work on at least one real system each. Arch, Debian, Fedora, Gentoo, openSUSE, NixOS, Intel Macs, WSL and container guests remain unexercised. ARM64 Linux has had one non-interactive run, described in its row, which is not a distribution or interactive check.
 
@@ -157,7 +160,7 @@ These OS accounting definitions differ. JSON exposes `definition` and `scope`; c
 
 The displayed OS is the current Linux distribution. uname identifies the running kernel interface. An explicit WSL2/microsoft-standard kernel marker selects WSL2; Microsoft markers or WSL environment hints without that evidence produce WSL with an unknown version, never a guessed WSL1. Custom kernels and removed environment hints may make detection impossible. WSL memory and uptime have wsl_environment scope: WSL1 reports come from its compatibility layer and WSL2 from its managed kernel/VM. Neither is a claim about physical Windows host RAM or host boot time. DMI/device-tree hardware probing is skipped under WSL; Host is the Linux environment hostname.
 
-On ordinary VMs, hardware identifiers describe the guest. Container kernel, uptime and physical-memory counters can be shared with the host; v0.1 does not implement cgroup limits or a container identity module. These reports are kernel-visible system totals, not container quotas.
+On ordinary VMs, hardware identifiers describe the guest. Container kernel, uptime and physical-memory counters can be shared with the host; 1.0 does not implement cgroup limits or a container identity module. These reports are kernel-visible system totals, not container quotas.
 
 ## Terminal behavior
 

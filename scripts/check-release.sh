@@ -37,10 +37,12 @@ grep -q -- "--draft" .github/workflows/release.yml \
 grep -q -- "--prerelease" .github/workflows/release.yml \
   && note "release is marked prerelease" || bad "release is not marked prerelease"
 grep -q "github.event_name == 'push'" .github/workflows/release.yml \
-  && note "only a tag push reaches the release job" || bad "release job can run for a non-push event"
+  && note "release job requires a push event" || bad "release job does not require a push event"
 
 # Targets the workflow builds, and the archive name it gives each.
 targets=$(sed -n 's/^ *target: //p' .github/workflows/release.yml | tr -d '\r')
+count=$(echo "$targets" | grep -c . || true)
+[ "$count" -eq 5 ] && note "workflow builds 5 targets" || bad "workflow lists $count targets, expected 5"
 for target in $targets; do
   case "$target" in
     *windows*) name="justfetch-$tag-$target.zip" ;;
@@ -55,9 +57,16 @@ if [ -d dist ]; then
     [ -e "$archive" ] || continue
     base=$(basename "$archive")
     case "$base" in
-      "justfetch-$tag-"*) note "local archive: $base" ;;
-      *) bad "local archive has the wrong name: $base" ;;
+      "justfetch-$tag-"*) ;;
+      *) bad "local archive has the wrong name: $base"; continue ;;
     esac
+    # The target must be one the workflow builds.
+    target=$(echo "$base" | sed -e "s/^justfetch-$tag-//" -e 's/\.tar\.gz$//' -e 's/\.zip$//')
+    if echo "$targets" | grep -qx "$target"; then
+      note "local archive: $base"
+    else
+      bad "local archive names a target the workflow does not build: $target"
+    fi
   done
   if [ -f dist/SHA256SUMS ]; then
     (cd dist && shasum -a 256 -c SHA256SUMS >/dev/null 2>&1 || sha256sum -c SHA256SUMS >/dev/null 2>&1) \

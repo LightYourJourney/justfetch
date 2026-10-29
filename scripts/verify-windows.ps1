@@ -16,6 +16,7 @@ Write-Host "session:   $([System.Environment]::UserInteractive)"
 
 Section 'justfetch --format json'
 $doc = & $bin --format json | ConvertFrom-Json
+if ($LASTEXITCODE -ne 0) { Write-Error "justfetch exited $LASTEXITCODE"; exit 1 }
 foreach ($k in 'gpu','battery','display','packages','desktop','locale') {
     $item = $doc.$k
     $detail = if ($item.PSObject.Properties['reason']) { $item.reason } else { $item.source }
