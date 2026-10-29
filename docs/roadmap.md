@@ -52,6 +52,50 @@ Broaden device/distro/WSL coverage, improve terminal heuristics and visual asset
 counted `SHA256SUMS`, `cargo package` verification, the RustSec advisory check,
 `SECURITY.md`, and draft Homebrew and Scoop manifests in `packaging/`.
 
+Two gates, not one. Unavailable hardware is a reason to state a limit, not a
+reason to wait forever.
+
+### Gate A — publish the release candidate for public trial
+
+1. CI green on the exact commit that will be tagged (all five jobs, including
+   the independent JSON Schema job).
+2. No known P0 or P1 defect.
+3. Release notes and compatibility matrix state what has and has not been
+   executed, without overstating either.
+4. The tag creates a **draft** prerelease; a maintainer publishes it.
+
+As of 2026-10-29 conditions 2 and 3 are met. Condition 1 needs the commit that
+carries these changes to pass CI — it is pushed and verified before tagging, not
+assumed. Condition 4 is the tag and the draft, both maintainer actions.
+
+### Gate B — declare v1.0 stable
+
+1. The release candidate has been available for public trial, and any defect it
+   surfaced is closed.
+2. At least one person has run `scripts/verify-linux.sh` on a real Linux machine
+   and one `scripts/verify-windows.ps1` on real Windows, pasting the verdict
+   table into `docs/validation.md`. The scripts exist so this does not depend on
+   the maintainer owning that hardware.
+3. Intel macOS is either exercised on hardware or its absence is accepted in
+   writing, with the Rosetta evidence named as the substitute.
+4. A decision on crates.io: publish, or state that installation is
+   `cargo install --path .` from a checkout.
+5. `--draft --prerelease` is removed from the release workflow.
+
+Until Gate B is met, the project stays a release candidate. Calling it stable
+without those steps would be a claim the evidence does not support.
+
+## v0.4 — Polish
+
+Broaden device/distro/WSL coverage, improve terminal heuristics and visual assets, measured performance refinement, compatibility/migration documentation. `--privacy` covers the identity fields already; broader redaction policy can grow with the later collectors.
+
+## v1.0 — Stable
+
+**State: v1.0.0-rc.1, release candidate.** Done: the CLI and JSON stability policy
+(README), five-target release automation with packaged-binary smoke tests and a
+counted `SHA256SUMS`, `cargo package` verification, the RustSec advisory check,
+`SECURITY.md`, and draft Homebrew and Scoop manifests in `packaging/`.
+
 Still open, and each one blocks turning the candidate into a release:
 
 1. Execute the newer collectors on real Linux and Windows machines and record

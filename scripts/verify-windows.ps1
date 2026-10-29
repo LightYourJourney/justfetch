@@ -1,55 +1,68 @@
-# Cross-check justfetch's Windows collectors against the system's own tools.
+# Compare justfetch's Windows collectors with the system's own tools.
 #
-# Read-only. Run on a real Windows 10/11 machine in PowerShell and paste the
-# output into docs/validation.md under a dated heading.
+# Read-only and repeatable. Prints one verdict per module: match, mismatch,
+# uncomparable or unsupported. Exit 1 on any mismatch, 2 on a setup problem.
+# The comparison itself needs Python 3 (scripts/compare.py); without it the
+# raw observations are printed for a manual comparison and the script exits 2.
 $ErrorActionPreference = 'Continue'
 
-$bin = if ($env:BIN) { $env:BIN } else { '.\target\release\justfetch.exe' }
-if (-not (Test-Path $bin)) { Write-Error "Build first: cargo build --release --locked (looked for $bin)"; exit 1 }
+$here = Split-Path -Parent $MyInvocation.MyCommand.Path
+$bin = if ($env:BIN) { $env:BIN } else { Join-Path (Get-Location) 'target\release\justfetch.exe' }
+if (-not (Test-Path $bin)) { Write-Error "Build first: cargo build --release --locked (looked for $bin)"; exit 2 }
 
-function Section($name) { Write-Host "`n=== $name ===" }
+$work = Join-Path ([System.IO.Path]::GetTempPath()) ("jf-windows-" + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $work | Out-Null
+try {
+    & $bin --format json --modules gpu,battery,display,packages,desktop,locale |
+        Out-File -Encoding utf8 (Join-Path $work 'doc.json')
+    if ($LASTEXITCODE -ne 0) { Write-Error "justfetch exited $LASTEXITCODE"; exit 2 }
 
-Section 'environment'
-Write-Host "os:        $([System.Environment]::OSVersion.VersionString)"
-Write-Host "arch:      $env:PROCESSOR_ARCHITECTURE"
-Write-Host "session:   $([System.Environment]::UserInteractive)"
+    # Only non-identifying observations: percentages, adapter names, resolutions
+    # and counts. No serial numbers, user names or addresses.
+    $values = [ordered]@{}
+    $tools = [ordered]@{}
 
-Section 'justfetch --format json'
-$doc = & $bin --format json | ConvertFrom-Json
-if ($LASTEXITCODE -ne 0) { Write-Error "justfetch exited $LASTEXITCODE"; exit 1 }
-foreach ($k in 'gpu','battery','display','packages','desktop','locale') {
-    $item = $doc.$k
-    $detail = if ($item.PSObject.Properties['reason']) { $item.reason } else { $item.source }
-    Write-Host ("{0,-9} {1,-12} {2}" -f $k, $item.status, $detail)
+    $battery = Get-CimInstance -ClassName Win32_Battery -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($battery) {
+        $values['battery'] = @{ percent = [int]$battery.EstimatedChargeRemaining }
+        $tools['battery'] = 'Win32_Battery'
+    }
+
+    $adapters = @(Get-CimInstance -ClassName Win32_VideoController -ErrorAction SilentlyContinue)
+    if ($adapters.Count -gt 0) {
+        $values['gpu'] = @($adapters | ForEach-Object { $_.Name })
+        $tools['gpu'] = 'Win32_VideoController'
+    }
+    $withMode = $adapters | Where-Object { $_.CurrentHorizontalResolution } | Select-Object -First 1
+    if ($withMode) {
+        $values['display'] = @("$($withMode.CurrentHorizontalResolution)x$($withMode.CurrentVerticalResolution)")
+        $tools['display'] = 'Win32_VideoController'
+    }
+
+    $scoop = Join-Path $env:USERPROFILE 'scoop\apps'
+    if (Test-Path $scoop) {
+        $values['packages'] = @{ scoop = @(Get-ChildItem $scoop -Directory).Count }
+        $tools['packages'] = 'scoop/apps'
+    }
+
+    # locale is deliberately absent: justfetch reads GetUserDefaultLocaleName,
+    # and comparing it with CultureInfo would compare the same source twice.
+
+    @{ tools = $tools; values = $values } | ConvertTo-Json -Depth 6 |
+        Out-File -Encoding utf8 (Join-Path $work 'native.json')
+
+    $python = Get-Command python3, python -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($python) {
+        & $python.Source (Join-Path $here 'compare.py') `
+            --justfetch (Join-Path $work 'doc.json') --native (Join-Path $work 'native.json')
+        exit $LASTEXITCODE
+    }
+
+    Write-Host 'Python 3 is not installed, so the comparison cannot run. Raw values:'
+    Get-Content (Join-Path $work 'doc.json') | Write-Host
+    Get-Content (Join-Path $work 'native.json') | Write-Host
+    exit 2
 }
-
-Section 'battery (compare with justfetch)'
-Get-CimInstance -ClassName Win32_Battery |
-    Select-Object Name, EstimatedChargeRemaining, BatteryStatus |
-    Format-Table -AutoSize | Out-String | Write-Host
-
-Section 'gpu (compare with justfetch)'
-Get-CimInstance -ClassName Win32_VideoController |
-    Select-Object Name, AdapterCompatibility, CurrentHorizontalResolution, CurrentVerticalResolution, CurrentRefreshRate |
-    Format-Table -AutoSize | Out-String | Write-Host
-
-Section 'packages (compare with justfetch)'
-$scoopApps = Join-Path $env:USERPROFILE 'scoop\apps'
-if (Test-Path $scoopApps) {
-    Write-Host "scoop apps: $((@(Get-ChildItem $scoopApps -Directory)).Count)"
-} else { Write-Host 'scoop: not installed' }
-$winget = Get-Command winget -ErrorAction SilentlyContinue
-if ($winget) {
-    # winget list includes system packages; the number is context, not a count
-    # justfetch claims to match.
-    Write-Host "winget list entries: $((& winget list --accept-source-agreements 2>$null | Measure-Object -Line).Lines)"
-} else { Write-Host 'winget: not available' }
-
-Section 'locale (compare with justfetch)'
-Write-Host "GetUserDefaultLocaleName equivalent: $([System.Globalization.CultureInfo]::CurrentCulture.Name)"
-Write-Host "LANG=$env:LANG LC_ALL=$env:LC_ALL LC_MESSAGES=$env:LC_MESSAGES"
-
-Section 'paste into docs/validation.md'
-Write-Host 'Record: date, Windows edition and build, whether it was a VM or RDP'
-Write-Host 'session, the six statuses above, and any line where justfetch and the'
-Write-Host 'native tool disagree.'
+finally {
+    Remove-Item -Recurse -Force $work -ErrorAction SilentlyContinue
+}

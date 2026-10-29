@@ -148,6 +148,34 @@ Host has the most involved fallback chain, and its exact behavior differs by pla
 
 Every field has available/unavailable/unsupported/redacted/deselected/error status. `deselected` means the module was not selected, so nothing was attempted; it is not a failure and not a platform limitation. Windows swap is the one field that reports `unsupported`: the platform exposes no page-file usage through any API this project permits, which is a different claim from a value that is merely unavailable right now. It renders as `Unsupported` and carries its reason. Available fields have source/confidence and optional note. Some sysinfo APIs report only Option, so unavailable can include library-level access/detection failure; justfetch cannot recover an error the dependency does not expose. Direct native calls and file reads preserve errors. A field failure does not suppress other results or make JSON invalid. Exit 0 means collection/rendering completed; inspect field status to assess completeness. Invalid CLI usage and output-write failures return nonzero; broken pipes exit quietly.
 
+## Verifying on your platform
+
+`scripts/verify-<platform>` runs justfetch beside the platform's own tools and
+prints one verdict per module:
+
+| Verdict | Meaning |
+| --- | --- |
+| `match` | justfetch and the platform tool agree |
+| `mismatch` | They disagree. This is a finding; please report it with the table |
+| `uncomparable` | The platform tool had nothing to compare — not a pass |
+| `unsupported` | justfetch says the question does not apply, and the tool agrees there is nothing |
+
+The scripts are read-only, need `python3` for the comparison, write nothing
+outside a temporary directory they remove, and print only non-identifying values
+(counts, percentages, adapter names, resolutions, locales).
+
+```sh
+cargo build --release --locked
+scripts/verify-macos.sh      # macOS
+scripts/verify-linux.sh      # Linux
+scripts/verify-windows.ps1   # Windows, in PowerShell
+scripts/verify-wsl.sh        # inside WSL1/WSL2
+```
+
+Exit status is 0 when nothing comparable disagreed, 1 on a mismatch and 2 on a
+setup problem. Paste the table into `docs/validation.md` with the date, the OS
+version and whether the machine was virtual.
+
 ## Exact memory definitions
 
 - Linux: `used = MemTotal - MemAvailable`. /proc labels these quantities kB, meaning 1024 bytes. When MemAvailable is absent, estimate available as MemFree + Buffers + Cached + SReclaimable - Shmem (optional last two default to zero). That fallback is labeled estimated. Missing/invalid counters and arithmetic overflow are errors; no fabricated zero result.

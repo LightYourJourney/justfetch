@@ -64,3 +64,33 @@ jobs:
       # contain, so a missing entry in `include` fails here rather than at
       # publish time.
       - run: cargo +stable package --locked
+
+  schema:
+    name: JSON Schema
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - run: rustup toolchain install stable --profile minimal
+      - run: cargo +stable build --release --locked
+      # An independent validator, not the hand-written one in the test suite:
+      # if the two ever disagree, the schema or the document is wrong.
+      - run: pipx install check-jsonschema==0.39.0
+      - name: Validate real documents
+        run: |
+          set -eu
+          ./target/release/justfetch --format json > full.json
+          ./target/release/justfetch --format json --modules os > partial.json
+          check-jsonschema --schemafile docs/json-schema.json full.json partial.json
+      - name: A broken document must be rejected
+        run: |
+          set -eu
+          python3 - <<'PY'
+          import json
+          doc = json.load(open("partial.json"))
+          doc["os"] = {"status": "maybe"}
+          json.dump(doc, open("broken.json", "w"))
+          PY
+          if check-jsonschema --schemafile docs/json-schema.json broken.json >/dev/null 2>&1; then
+            echo "the validator accepted a document with an unknown state"
+            exit 1
+          fi

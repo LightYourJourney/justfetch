@@ -809,3 +809,56 @@ produces those names; only a real tag run can. It passes on this tree.
 
 The release-candidate commit `5f01550` passed all five jobs on GitHub Actions:
 the three native runners, the 1.95 MSRV job and the packaging job.
+
+## Verification-tooling round (2026-10-29)
+
+Phase 15. The evidence for this round is that the evidence tools now produce a
+verdict instead of a transcript.
+
+### Verification scripts
+
+`scripts/compare.py` takes a justfetch document and a JSON file of the same
+observations from the platform's tools, and prints one line per module with a
+verdict: `match`, `mismatch`, `uncomparable` or `unsupported`. The platform
+scripts build that JSON with the tools they have, write both files to a
+`mktemp` directory they remove on exit, and print only non-identifying values —
+counts, percentages, adapter names, resolutions and locales.
+
+Exit status: 0 when nothing comparable disagreed, 1 on a mismatch, 2 on a setup
+problem. A verdict of `uncomparable` or `unsupported` is explicitly not a pass.
+
+Run on this MacBook Air (macOS 26.6.2, Mac15,12) on 2026-10-29:
+
+```
+module     justfetch                    platform tool                   verdict
+gpu        Apple M3                     ["Apple M3"] (system_profiler)  match
+battery    78% discharging              {"percent": 78, ...} (pmset)    match
+display    1470x956                   —                                uncomparable
+packages   homebrew formulae 883, ...  {"homebrew formulae": 883, ...} match
+desktop    unsupported                 —                                unsupported
+locale     zh_CN.UTF-8                 zh_CN.UTF-8 ($LANG)              match
+```
+
+Display is `uncomparable` on purpose: justfetch reports the mode's logical
+points and `system_profiler` reports the panel, so a comparison would
+manufacture a mismatch.
+
+### Independent schema validation
+
+`check-jsonschema` 0.39.0 — the standard Python validator, not the hand-written
+one in `tests/schema.rs` — accepts a full document and a partial one, and
+rejects a document with an unknown state. CI now runs that validator on the
+built binary's output, plus the rejection case, so the two implementations have
+to agree.
+
+### Installation
+
+`cargo install --path . --locked` was run from this tree: it installs
+`justfetch 1.0.0-rc.1`, and the installed binary reports that version and emits a
+document with `os` and `gpu` available.
+
+### Not verified
+
+Linux, Windows, WSL and Intel hardware, exactly as before. The scripts are how
+another tester can close that gap without the maintainer owning the machine; the
+release gates in `docs/roadmap.md` say what evidence those runs must produce.
