@@ -7,7 +7,7 @@
 # Only non-identifying values are read: counts, percentages, adapter names,
 # resolutions and locales. No serial numbers, IP addresses or user names.
 set -u
-here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+here=$(cd -- "$(dirname -- "$0")" && pwd)
 BIN=${BIN:-./target/release/justfetch}
 
 if ! command -v python3 >/dev/null 2>&1; then
@@ -25,8 +25,8 @@ trap 'rm -rf "$work"' EXIT HUP INT TERM
 "$BIN" --format json --modules gpu,battery,display,packages,desktop,locale > "$work/doc.json" \
   || { echo "justfetch failed" >&2; exit 2; }
 
-python3 - "$work" <<'PY'
-import glob, json, os, pathlib, re, subprocess, sys
+python3 - "$work" <<'PY' || { echo "failed to gather native observations" >&2; exit 2; }
+import glob, json, os, pathlib, re, shutil, subprocess, sys
 
 work = pathlib.Path(sys.argv[1])
 values, tools = {}, {}
@@ -36,8 +36,7 @@ def run(cmd):
     return result.stdout if result.returncode == 0 else ""
 
 # Battery: the first system battery in sysfs.
-bats = sorted(glob.glob("/sys/class/power_supply/BAT*"))
-for bat in bats:
+for bat in sorted(glob.glob("/sys/class/power_supply/BAT*")):
     try:
         scope = open(f"{bat}/scope").read().strip()
         if scope and scope != "System":
@@ -52,34 +51,62 @@ for bat in bats:
     tools["battery"] = bat
     break
 
-# Packages: each manager's own count, under the name justfetch uses.
-if subprocess.run(["sh", "-c", "command -v dpkg-query"], capture_output=True).returncode == 0:
-    count = len([l for l in run(["dpkg-query", "-W", "-f=${db:Status-Abbrev}\n"]).splitlines()
+# Packages: each manager's own count, under the names justfetch reports, and
+# only when the count is non-zero — that is when the collector reports it.
+managers, manager_tools = {}, []
+if shutil.which("dpkg-query"):
+    count = len([l for l in run(["dpkg-query", "-W", "-f=${db:Status-Abbrev}\\n"]).splitlines()
                  if l.startswith("ii")])
-    values.setdefault("packages", {})["dpkg"] = count
-    tools["packages"] = "dpkg-query"
-if subprocess.run(["sh", "-c", "command -v pacman"], capture_output=True).returncode == 0:
+    if count:
+        managers["dpkg"] = count
+        manager_tools.append("dpkg-query")
+if shutil.which("pacman"):
     count = len([l for l in run(["pacman", "-Q"]).splitlines() if l.strip()])
-    values.setdefault("packages", {})["pacman"] = count
-    tools.setdefault("packages", "pacman")
+    if count:
+        managers["pacman"] = count
+        manager_tools.append("pacman")
+if managers:
+    values["packages"] = managers
+    tools["packages"] = ", ".join(manager_tools)
 
-# GPU: the adapter names the kernel exposes, when it exposes any.
-names = []
+# GPU: PCI ids are exact, so compare those when the platform shows them; the
+# name is for the human reading the table.
+names, ids = [], []
 for path in glob.glob("/proc/driver/nvidia/gpus/*/information"):
     for line in open(path, errors="replace"):
         if line.startswith("Model:"):
             names.append(line.split(":", 1)[1].strip())
 if names:
-    values["gpu"] = names
+    values["gpu"] = {"names": names}
     tools["gpu"] = "/proc/driver/nvidia"
+elif shutil.which("lspci"):
+    for line in run(["lspci", "-nn"]).splitlines():
+        if not re.search(r"(VGA compatible|3D controller|Display controller)", line):
+            continue
+        token = re.search(r"\[([0-9a-fA-F]{4}:[0-9a-fA-F]{4})\]", line)
+        if token:
+            ids.append(token.group(1))
+        names.append(line.split(": ", 1)[-1].strip())
+    if ids:
+        values["gpu"] = {"ids": ids, "names": names}
+        tools["gpu"] = "lspci -nn"
 
-# Display: the current mode, which only the display server knows.
-if os.environ.get("DISPLAY") and subprocess.run(["sh", "-c", "command -v xrandr"],
-                                                capture_output=True).returncode == 0:
-    current = re.search(r"^\s+(\d+x\d+).*\*", run(["xrandr", "--current"]), re.MULTILINE)
-    if current:
-        values["display"] = [current.group(1)]
-        tools["display"] = "xrandr"
+# Display: sysfs knows the preferred mode, which is what Linux reports. The
+# current mode lives in the compositor, so comparing against xrandr would
+# manufacture a mismatch whenever the user is not running the preferred mode.
+resolutions = []
+for connector in sorted(glob.glob("/sys/class/drm/card*-*")):
+    try:
+        if open(f"{connector}/status").read().strip() != "connected":
+            continue
+        modes = open(f"{connector}/modes").read().split()
+    except OSError:
+        continue
+    if modes:
+        resolutions.append(modes[0])
+if resolutions:
+    values["display"] = resolutions
+    tools["display"] = "sysfs modes (same source as the estimate)"
 
 # Desktop and locale: what the session actually exported.
 desktop = os.environ.get("XDG_CURRENT_DESKTOP", "").split(":")[-1]

@@ -8,15 +8,15 @@ Used by scripts/verify-*. The platform script writes both files:
                 "tools":  {"battery": "pmset", ...},
                 "values": {"battery": {"percent": 87, "state": "discharging"},
                            "packages": {"homebrew formulae": 883},
-                           "gpu": ["Apple M3"], "display": ["1470x956"],
-                           "desktop": "Aqua", "locale": "zh_CN.UTF-8"}
+                           "gpu": {"names": ["Apple M3"]}, "display": ["1470x956"],
+                           "desktop": "Sway", "locale": "zh_CN.UTF-8"}
               }
 
 Each module gets one verdict:
 
   match         the two agree
   mismatch      they disagree — the interesting case
-  uncomparable  the platform tool gave nothing to compare against
+  uncomparable  there was nothing to compare, or justfetch did not collect it
   unsupported   justfetch says the question does not apply, and the platform
                 tool agrees there is nothing
 
@@ -32,11 +32,12 @@ MODULES = ["gpu", "battery", "display", "packages", "desktop", "locale"]
 
 
 def show(value, limit=34):
-    text = json.dumps(value, ensure_ascii=False) if not isinstance(value, str) else value
+    """One line for the table, truncated at `limit` characters."""
+    text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
     return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
-def battery(value):
+def battery_text(value):
     units = value.get("units", [])
     if not units:
         return ""
@@ -45,116 +46,179 @@ def battery(value):
     return f"{percent} {first.get('state', '?')}"
 
 
-def packages(value):
+def packages_text(value):
     return ", ".join(f"{m['name']} {m['count']}" for m in value.get("managers", []))
 
 
-def gpu(value):
+def gpu_text(value):
     return ", ".join(
         device.get("name") or f"{device.get('vendor', '?')} {device.get('id', '')}".strip()
         for device in value.get("devices", [])
     )
 
 
-def display(value):
+def display_text(value):
     return ", ".join(
         f"{unit['width']}x{unit['height']}" for unit in value.get("displays", [])
     )
 
 
-def locale(value):
+def desktop_text(value):
+    return value.get("name", "")
+
+
+def locale_text(value):
     return value.get("process") or value.get("system") or ""
 
 
-SHOWN = {
-    "battery": battery,
-    "packages": packages,
-    "gpu": gpu,
-    "display": display,
-    "desktop": lambda value: value.get("name", ""),
-    "locale": locale,
+TEXTS = {
+    "battery": battery_text,
+    "packages": packages_text,
+    "gpu": gpu_text,
+    "display": display_text,
+    "desktop": desktop_text,
+    "locale": locale_text,
 }
 
 
-def verdict(module, status, value, native):
-    """Return (verdict, native-text) for one module."""
-    if native is None:
-        if status == "unsupported":
-            return "unsupported", "—"
-        if status == "unavailable":
-            # The tool could not answer either; that is not "not applicable".
-            return "uncomparable", "—"
-        return "uncomparable", "—"
-
-    if status in ("unsupported", "unavailable"):
-        # justfetch declined but the platform tool has an answer.
-        return "mismatch", show(native)
-
+def compare(module, value, native):
+    """Return True when the justfetch value agrees with the native observation."""
     if module == "battery":
-        if not isinstance(native, dict):
-            return "uncomparable", show(native)
-        units = value.get("units", [])
-        percent = units[0].get("percent") if units else None
-        state = units[0].get("state") if units else None
-        ok = percent == native.get("percent") and (
-            native.get("state") is None or state == native["state"]
+        units = value.get("units") or [{}]
+        return units[0].get("percent") == native.get("percent") and (
+            native.get("state") is None or units[0].get("state") == native["state"]
         )
-        return ("match" if ok else "mismatch"), show(native)
-
     if module == "packages":
-        ours = {m["name"]: m["count"] for m in value.get("managers", [])}
-        theirs = {k: v for k, v in native.items()}
-        ok = all(ours.get(name) == count for name, count in theirs.items())
-        return ("match" if ok else "mismatch"), show(theirs)
-
+        # Both directions: a manager or a count that only one side reports is a
+        # disagreement, not a match on the subset they share.
+        ours = {manager["name"]: manager["count"] for manager in value.get("managers", [])}
+        return bool(native) and ours == native
     if module == "gpu":
-        names = [str(n).lower() for n in native]
-        ours = " ".join(gpu(value).split()).lower()
-        ok = any(name and name in ours for name in names)
-        return ("match" if ok else "mismatch"), show(native)
-
+        devices = value.get("devices") or []
+        # PCI ids are exact; names are the fallback where the platform has none.
+        if native.get("ids"):
+            ours = {str(d.get("id", "")).lower() for d in devices if d.get("id")}
+            return bool(ours) and ours == {str(i).lower() for i in native["ids"]}
+        ours = gpu_text(value).lower()
+        names = [name.strip().lower() for name in native.get("names", []) if name.strip()]
+        # Every adapter the platform reports appears in ours, and ours reports
+        # no adapter the platform does not — a fabricated extra fails the count.
+        return bool(names) and len(names) == len(devices) and all(n in ours for n in names)
     if module == "display":
-        resolutions = {str(r) for r in native}
-        ours = {f"{u['width']}x{u['height']}" for u in value.get("displays", [])}
-        return ("match" if resolutions & ours else "mismatch"), show(native)
-
+        ours = {f"{unit['width']}x{unit['height']}" for unit in value.get("displays", [])}
+        theirs = {str(resolution) for resolution in native}
+        return bool(ours) and ours == theirs
     if module in ("desktop", "locale"):
-        ours = SHOWN[module](value).lower()
-        theirs = str(native).lower()
-        ok = bool(theirs) and (theirs in ours or ours in theirs)
-        return ("match" if ok else "mismatch"), show(native)
+        ours, theirs = TEXTS[module](value).lower(), str(native).lower()
+        return bool(ours) and bool(theirs) and (theirs in ours or ours in theirs)
+    return False
 
-    return "uncomparable", show(native)
+
+def evaluate(module, field, native):
+    """Return (justfetch text, native text, verdict)."""
+    status = field.get("status")
+    value = field.get("value") or {}
+
+    if status == "available":
+        text = TEXTS[module](value)
+        if native is None:
+            return text, "—", "uncomparable"
+        return text, show(native), "match" if compare(module, value, native) else "mismatch"
+
+    # Everything else means justfetch has no value to compare, which is only a
+    # finding when the platform tool did produce one for `unsupported`.
+    if status == "unsupported":
+        if native is None:
+            return status, "—", "unsupported"
+        return status, show(native), "mismatch"
+    return status, show(native) if native is not None else "—", "uncomparable"
 
 
 def check_inputs(document, native):
     """Return a description of the first malformed input, or None.
 
-    The exit status distinguishes a mismatch (1) from a bad input (2); an
-    exception would be reported as 1 and look like a disagreement.
+    `evaluate` indexes into these structures, so anything it would trip over is
+    rejected here as bad input (exit 2) rather than surfacing as a crash.
     """
     if not isinstance(document, dict):
         return "the justfetch document is not an object"
     for module in MODULES:
         field = document.get(module)
-        if not isinstance(field, dict) or "status" not in field:
-            return f"`{module}` is missing or not an object"
-        if field["status"] == "available" and not isinstance(field.get("value"), dict):
-            return f"`{module}` says available without a value object"
-    values = native.get("values", {}) if isinstance(native, dict) else {}
+        if not isinstance(field, dict) or not isinstance(field.get("status"), str):
+            return f"`{module}` is missing a status"
+        if field["status"] != "available":
+            continue
+        value = field.get("value")
+        problem = check_value(module, value)
+        if problem:
+            return problem
+    if not isinstance(native, dict):
+        return "the native file is not an object"
+    if not isinstance(native.get("tools", {}), dict):
+        return "native `tools` is not an object"
+    values = native.get("values", {})
     if not isinstance(values, dict):
         return "native `values` is not an object"
-    shapes = {"battery": dict, "packages": dict, "gpu": list, "display": list,
-              "desktop": str, "locale": str}
+    shapes = {
+        "battery": dict,
+        "packages": dict,
+        "gpu": dict,
+        "display": list,
+        "desktop": str,
+        "locale": str,
+    }
     for module, expected in shapes.items():
         value = values.get(module)
         if value is not None and not isinstance(value, expected):
             return f"native `{module}` is {type(value).__name__}, expected {expected.__name__}"
-    if isinstance(values.get("gpu"), list) and not all(isinstance(n, str) for n in values["gpu"]):
-        return "native `gpu` must be a list of strings"
+    gpu = values.get("gpu")
+    if isinstance(gpu, dict):
+        for key in ("names", "ids"):
+            if gpu.get(key) is not None and not (
+                isinstance(gpu[key], list) and all(isinstance(v, str) for v in gpu[key])
+            ):
+                return f"native `gpu.{key}` must be a list of strings"
     if isinstance(values.get("packages"), dict) and not all(
-            isinstance(count, int) for count in values["packages"].values()):
+        isinstance(count, int) for count in values["packages"].values()
+    ):
         return "native `packages` must map names to integers"
+    if isinstance(values.get("battery"), dict) and not isinstance(
+        values["battery"].get("percent", 0), int
+    ):
+        return "native `battery.percent` must be an integer"
+    return None
+
+
+def check_value(module, value):
+    if not isinstance(value, dict):
+        return f"`{module}` says available without an object value"
+    if module == "battery":
+        units = value.get("units")
+        if not isinstance(units, list) or not all(isinstance(u, dict) for u in units):
+            return "`battery.units` must be a list of objects"
+        for unit in units:
+            if unit.get("percent") is not None and not isinstance(unit["percent"], int):
+                return "`battery.units[].percent` must be an integer or null"
+    if module == "packages":
+        managers = value.get("managers")
+        if not isinstance(managers, list) or not all(
+            isinstance(m, dict) and isinstance(m.get("name"), str)
+            and isinstance(m.get("count"), int)
+            for m in managers
+        ):
+            return "`packages.managers` must be a list of {name, count}"
+    if module == "gpu":
+        devices = value.get("devices")
+        if not isinstance(devices, list) or not all(isinstance(d, dict) for d in devices):
+            return "`gpu.devices` must be a list of objects"
+    if module == "display":
+        displays = value.get("displays")
+        if not isinstance(displays, list) or not all(
+            isinstance(d, dict) and isinstance(d.get("width"), int)
+            and isinstance(d.get("height"), int)
+            for d in displays
+        ):
+            return "`display.displays` must be a list of {width, height}"
     return None
 
 
@@ -186,15 +250,13 @@ def main():
     print("-" * 92)
     mismatches = 0
     for module in MODULES:
-        field = document.get(module, {})
-        status = field.get("status")
-        shown = SHOWN[module](field["value"]) if status == "available" else status
-        result, native_text = verdict(module, status, field.get("value", {}), values.get(module))
+        ours, theirs, result = evaluate(module, document[module], values.get(module))
         tool = tools.get(module)
-        native_text = f"{native_text} ({tool})" if tool and native_text != "—" else native_text
+        if tool and theirs != "—":
+            theirs = f"{theirs} ({tool})"
         if result == "mismatch":
             mismatches += 1
-        print(f"{module:10} {show(shown):34} {native_text:34} {result}")
+        print(f"{module:10} {show(ours):34} {theirs:34} {result}")
 
     print("-" * 92)
     if mismatches:

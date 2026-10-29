@@ -74,13 +74,14 @@ jobs:
       - run: cargo +stable build --release --locked
       # An independent validator, not the hand-written one in the test suite:
       # if the two ever disagree, the schema or the document is wrong.
-      - run: pipx install check-jsonschema==0.39.0
+      - name: The comparison scripts behave
+        run: python3 scripts/test_compare.py
       - name: Validate real documents
         run: |
           set -eu
           ./target/release/justfetch --format json > full.json
           ./target/release/justfetch --format json --modules os > partial.json
-          check-jsonschema --schemafile docs/json-schema.json full.json partial.json
+          pipx run check-jsonschema==0.39.0 --schemafile docs/json-schema.json full.json partial.json
       - name: A broken document must be rejected
         run: |
           set -eu
@@ -93,7 +94,14 @@ jobs:
           doc["host"]["status"] = "maybe"
           json.dump(doc, open("broken.json", "w"))
           PY
-          if check-jsonschema --schemafile docs/json-schema.json broken.json >/dev/null 2>&1; then
+          output=$(pipx run check-jsonschema==0.39.0 --schemafile docs/json-schema.json broken.json 2>&1) && {
             echo "the validator accepted a document with an unknown state"
             exit 1
-          fi
+          }
+          # A missing tool or unreadable schema also exits non-zero; only a real
+          # validation failure is the result this step is asserting.
+          echo "$output" | grep -q "Schema validation errors were encountered" || {
+            echo "the check failed for the wrong reason:"
+            echo "$output"
+            exit 1
+          }

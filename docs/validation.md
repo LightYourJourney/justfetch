@@ -877,6 +877,26 @@ document with `os` and `gpu` available.
 - The roadmap had the v0.4 and v1.0 sections twice; the stale copy is gone.
 - A committed `__pycache__` file was removed and ignored.
 
+### Second review round
+
+- The comparison was one-directional: a document with an invented extra adapter
+  or package manager still reported `match`. `packages` and `display` now
+  compare whole sets, `gpu` compares PCI ids where the platform exposes them and
+  otherwise compares counts as well as names, and a fabricated extra fails.
+- WSL had no verdict table. It now compares what WSL can answer and keeps the
+  labelling check, so a correct WSL run is not reported as failing.
+- The Linux script lost its non-NVIDIA GPU source and its Wayland path. It again
+  uses `lspci` (compared by PCI id) and reads the preferred mode from sysfs —
+  the same source the estimate comes from, labelled as such, because comparing
+  against `xrandr`'s current mode would manufacture a mismatch.
+- `scripts/test_compare.py` adds eleven regression cases for the comparison:
+  BOM, malformed input exiting 2 rather than 1, a deselected module that must
+  not read as a match, fabricated extras, and supported/unsupported answers.
+  CI runs it.
+- The release notes claimed the collectors run in CI. What runs is the binary
+  and the default modules; no test compares their output, and `display` is never
+  run there because it is not a default module. Both documents say that now.
+
 ### Not verified
 
 Linux, Windows, WSL and Intel hardware, exactly as before. The scripts are how

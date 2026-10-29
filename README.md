@@ -6,7 +6,7 @@ A compact Rust CLI that displays real local system information, with a responsiv
 
 **Status:** this source is **v1.0.0-rc.1**, a release candidate prepared for GitHub only. No `v1.0.0-rc.1` tag or release exists yet; the steps and the remaining gates are in [docs/roadmap.md](docs/roadmap.md). Nothing is on crates.io, and no Homebrew, Scoop or winget package is published. The previous release, v0.1.0, was a seven-field pre-release.
 
-Verified by execution: macOS on Apple Silicon. The Intel macOS binary cross-compiles and runs under Rosetta 2, which is execution but not Intel hardware. Linux and Windows are built and tested natively in CI, and each runner smoke-tests its own packaged binary, so the collectors do execute there — but nothing compares their output with those platforms' own tools, and WSL and distributions other than Ubuntu are untested. See the [compatibility matrix](docs/compatibility.md) for the per-module evidence.
+Verified by execution: macOS on Apple Silicon. The Intel macOS binary cross-compiles and runs under Rosetta 2, which is execution but not Intel hardware. Linux and Windows are built and tested natively in CI, and each runner smoke-tests its own packaged binary, so the binary executes there and the default modules collect — but nothing compares their output with those platforms' own tools, `display` never runs in CI because it is not a default module, and WSL and distributions other than Ubuntu are untested. See the [compatibility matrix](docs/compatibility.md) for the per-module evidence.
 
 ## Features
 
@@ -149,7 +149,7 @@ cargo test --locked
 cargo build --release --locked
 ```
 
-Tests cover pure parsers, status/units, fixed rendering fixtures, long/wide/combining text, hostile terminal sequences, real CLI exits/streams and Unix pseudo-terminal color/width behavior. [CI](.github/workflows/ci.yml) runs format, lint, tests, a release build and a live JSON invocation on Ubuntu, macOS and Windows, plus a Rust 1.95 MSRV job and a packaging job; all five pass. A passing runner is one configuration per platform, not a distribution matrix — see the [validation record](docs/validation.md).
+Tests cover pure parsers, status/units, fixed rendering fixtures, long/wide/combining text, hostile terminal sequences, real CLI exits/streams and Unix pseudo-terminal color/width behavior. [CI](.github/workflows/ci.yml) runs format, lint, tests, a release build and a live JSON invocation on Ubuntu, macOS and Windows, plus a Rust 1.95 MSRV job, a packaging job and a JSON Schema job that uses an independent validator; all pass on the last pushed commit. A passing runner is one configuration per platform, not a distribution matrix — see the [validation record](docs/validation.md).
 
 The package has a small library for deterministic tests and a thin binary. Detection never draws, renderers never call system APIs, and every field keeps its provenance. Read [AGENTS.md](AGENTS.md) and [CONTRIBUTING.md](CONTRIBUTING.md) before contributing.
 

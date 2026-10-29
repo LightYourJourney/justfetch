@@ -54,7 +54,12 @@ try {
     $nativeJson = @{ tools = $tools; values = $values } | ConvertTo-Json -Depth 6
     [System.IO.File]::WriteAllText((Join-Path $work 'native.json'), $nativeJson, $utf8)
 
-    $python = Get-Command python3, python -ErrorAction SilentlyContinue | Select-Object -First 1
+    # The Store's `python` stub resolves but does not run; test each candidate.
+    $python = $null
+    foreach ($candidate in @(Get-Command python3, python -ErrorAction SilentlyContinue)) {
+        & $candidate.Source -c 'import sys' 2>$null
+        if ($LASTEXITCODE -eq 0) { $python = $candidate; break }
+    }
     if ($python) {
         & $python.Source (Join-Path $here 'compare.py') `
             --justfetch (Join-Path $work 'doc.json') --native (Join-Path $work 'native.json')

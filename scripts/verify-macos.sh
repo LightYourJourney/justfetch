@@ -4,7 +4,7 @@
 # Read-only and repeatable. Prints one line per module with a verdict:
 # match, mismatch, uncomparable or unsupported. Exit 1 on any mismatch.
 set -u
-here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+here=$(cd -- "$(dirname -- "$0")" && pwd)
 BIN=${BIN:-./target/release/justfetch}
 
 if ! command -v python3 >/dev/null 2>&1; then
@@ -24,7 +24,7 @@ trap 'rm -rf "$work"' EXIT HUP INT TERM
 
 # Native observations. Only non-identifying values are recorded: no serial
 # numbers, no user or host names.
-python3 - "$work" <<'PY'
+python3 - "$work" <<'PY' || { echo "failed to gather native observations" >&2; exit 2; }
 import json, re, subprocess, sys, pathlib
 
 work = pathlib.Path(sys.argv[1])
@@ -44,7 +44,7 @@ out = subprocess.run(["system_profiler", "SPDisplaysDataType"],
                      capture_output=True, text=True).stdout
 names = re.findall(r"Chipset Model: (.+)", out)
 if names:
-    values["gpu"] = [n.strip() for n in names]
+    values["gpu"] = {"names": [n.strip() for n in names]}
     tools["gpu"] = "system_profiler"
 
 # Packages: Homebrew's own list.

@@ -64,7 +64,9 @@ reason to wait forever.
    executed, without overstating either.
 4. The tag creates a **draft** prerelease; a maintainer publishes it.
 
-As of 2026-10-29 conditions 2 and 3 are met. Condition 1 needs the commit that
+The order of operations, and the commands, are in
+[release-checklist](release-checklist.md). As of 2026-10-29 conditions 2 and 3
+are met. Condition 1 needs the commit that
 carries these changes to pass CI — it is pushed and verified before tagging, not
 assumed. Condition 4 is the tag and the draft, both maintainer actions.
 
