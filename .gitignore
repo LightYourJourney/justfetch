@@ -1,3 +1,5 @@
 /target/
 /dist/
 /stage/
+__pycache__/
+*.pyc

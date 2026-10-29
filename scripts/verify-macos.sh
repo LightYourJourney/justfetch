@@ -48,7 +48,11 @@ if names:
     tools["gpu"] = "system_profiler"
 
 # Packages: Homebrew's own list.
+import shutil
+
 def count(args):
+    if not shutil.which(args[0]):
+        return None
     result = subprocess.run(args, capture_output=True, text=True)
     return len([line for line in result.stdout.splitlines() if line.strip()]) if result.returncode == 0 else None
 

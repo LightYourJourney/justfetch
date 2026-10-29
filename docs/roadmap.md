@@ -57,8 +57,8 @@ reason to wait forever.
 
 ### Gate A — publish the release candidate for public trial
 
-1. CI green on the exact commit that will be tagged (all five jobs, including
-   the independent JSON Schema job).
+1. CI green on the exact commit that will be tagged: the three native runners,
+   the MSRV job, the packaging job and the independent JSON Schema job.
 2. No known P0 or P1 defect.
 3. Release notes and compatibility matrix state what has and has not been
    executed, without overstating either.
@@ -84,28 +84,3 @@ assumed. Condition 4 is the tag and the draft, both maintainer actions.
 
 Until Gate B is met, the project stays a release candidate. Calling it stable
 without those steps would be a claim the evidence does not support.
-
-## v0.4 — Polish
-
-Broaden device/distro/WSL coverage, improve terminal heuristics and visual assets, measured performance refinement, compatibility/migration documentation. `--privacy` covers the identity fields already; broader redaction policy can grow with the later collectors.
-
-## v1.0 — Stable
-
-**State: v1.0.0-rc.1, release candidate.** Done: the CLI and JSON stability policy
-(README), five-target release automation with packaged-binary smoke tests and a
-counted `SHA256SUMS`, `cargo package` verification, the RustSec advisory check,
-`SECURITY.md`, and draft Homebrew and Scoop manifests in `packaging/`.
-
-Still open, and each one blocks turning the candidate into a release:
-
-1. Execute the newer collectors on real Linux and Windows machines and record
-   the output beside the native tools, as was done on macOS.
-2. Exercise Intel macOS on real hardware; the candidate binary has only run
-   under Rosetta 2.
-3. Publish to crates.io, or state that cargo distribution stays
-   `cargo install --path .` from a checkout. The name `justfetch` is absent from
-   the crates.io index as of 2026-10-28, which is a point-in-time observation,
-   not a reservation.
-4. Fill the Homebrew and Scoop manifests with checksums from the real assets and
-   submit them; nothing is submitted.
-5. Remove `--draft --prerelease` from the release workflow — two words — after 1–4.

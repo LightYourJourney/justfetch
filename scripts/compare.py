@@ -79,8 +79,11 @@ SHOWN = {
 def verdict(module, status, value, native):
     """Return (verdict, native-text) for one module."""
     if native is None:
-        if status in ("unsupported", "unavailable"):
+        if status == "unsupported":
             return "unsupported", "—"
+        if status == "unavailable":
+            # The tool could not answer either; that is not "not applicable".
+            return "uncomparable", "—"
         return "uncomparable", "—"
 
     if status in ("unsupported", "unavailable"):
@@ -124,6 +127,37 @@ def verdict(module, status, value, native):
     return "uncomparable", show(native)
 
 
+def check_inputs(document, native):
+    """Return a description of the first malformed input, or None.
+
+    The exit status distinguishes a mismatch (1) from a bad input (2); an
+    exception would be reported as 1 and look like a disagreement.
+    """
+    if not isinstance(document, dict):
+        return "the justfetch document is not an object"
+    for module in MODULES:
+        field = document.get(module)
+        if not isinstance(field, dict) or "status" not in field:
+            return f"`{module}` is missing or not an object"
+        if field["status"] == "available" and not isinstance(field.get("value"), dict):
+            return f"`{module}` says available without a value object"
+    values = native.get("values", {}) if isinstance(native, dict) else {}
+    if not isinstance(values, dict):
+        return "native `values` is not an object"
+    shapes = {"battery": dict, "packages": dict, "gpu": list, "display": list,
+              "desktop": str, "locale": str}
+    for module, expected in shapes.items():
+        value = values.get(module)
+        if value is not None and not isinstance(value, expected):
+            return f"native `{module}` is {type(value).__name__}, expected {expected.__name__}"
+    if isinstance(values.get("gpu"), list) and not all(isinstance(n, str) for n in values["gpu"]):
+        return "native `gpu` must be a list of strings"
+    if isinstance(values.get("packages"), dict) and not all(
+            isinstance(count, int) for count in values["packages"].values()):
+        return "native `packages` must map names to integers"
+    return None
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--justfetch", required=True)
@@ -131,10 +165,18 @@ def main():
     args = parser.parse_args()
 
     try:
-        document = json.load(open(args.justfetch))
-        native = json.load(open(args.native))
+        # utf-8-sig accepts a BOM: Windows PowerShell 5.1 writes one.
+        with open(args.justfetch, encoding="utf-8-sig") as handle:
+            document = json.load(handle)
+        with open(args.native, encoding="utf-8-sig") as handle:
+            native = json.load(handle)
     except (OSError, ValueError) as error:
         print(f"cannot read input: {error}", file=sys.stderr)
+        return 2
+
+    malformed = check_inputs(document, native)
+    if malformed:
+        print(f"malformed input: {malformed}", file=sys.stderr)
         return 2
 
     tools = native.get("tools", {})

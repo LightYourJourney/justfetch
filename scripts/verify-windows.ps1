@@ -13,9 +13,12 @@ if (-not (Test-Path $bin)) { Write-Error "Build first: cargo build --release --l
 $work = Join-Path ([System.IO.Path]::GetTempPath()) ("jf-windows-" + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $work | Out-Null
 try {
-    & $bin --format json --modules gpu,battery,display,packages,desktop,locale |
-        Out-File -Encoding utf8 (Join-Path $work 'doc.json')
+    $docJson = & $bin --format json --modules gpu,battery,display,packages,desktop,locale | Out-String
     if ($LASTEXITCODE -ne 0) { Write-Error "justfetch exited $LASTEXITCODE"; exit 2 }
+    # UTF-8 without a BOM: Windows PowerShell 5.1's Out-File adds one, and a BOM
+    # is not welcome in every JSON reader.
+    $utf8 = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText((Join-Path $work 'doc.json'), $docJson, $utf8)
 
     # Only non-identifying observations: percentages, adapter names, resolutions
     # and counts. No serial numbers, user names or addresses.
@@ -48,8 +51,8 @@ try {
     # locale is deliberately absent: justfetch reads GetUserDefaultLocaleName,
     # and comparing it with CultureInfo would compare the same source twice.
 
-    @{ tools = $tools; values = $values } | ConvertTo-Json -Depth 6 |
-        Out-File -Encoding utf8 (Join-Path $work 'native.json')
+    $nativeJson = @{ tools = $tools; values = $values } | ConvertTo-Json -Depth 6
+    [System.IO.File]::WriteAllText((Join-Path $work 'native.json'), $nativeJson, $utf8)
 
     $python = Get-Command python3, python -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($python) {
@@ -58,9 +61,17 @@ try {
         exit $LASTEXITCODE
     }
 
+    # Print the six modules only. The full document carries the user and host
+    # name in `identity`, and this script promises not to print those.
     Write-Host 'Python 3 is not installed, so the comparison cannot run. Raw values:'
-    Get-Content (Join-Path $work 'doc.json') | Write-Host
-    Get-Content (Join-Path $work 'native.json') | Write-Host
+    $doc = $docJson | ConvertFrom-Json
+    foreach ($module in 'gpu','battery','display','packages','desktop','locale') {
+        $field = $doc.$module
+        $detail = if ($field.PSObject.Properties['reason']) { $field.reason } else { $field.source }
+        Write-Host ("{0,-9} {1,-12} {2}" -f $module, $field.status, $detail)
+    }
+    Write-Host 'Platform observations:'
+    Get-Content (Join-Path $work 'native.json') -Raw | Write-Host
     exit 2
 }
 finally {

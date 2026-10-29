@@ -857,6 +857,26 @@ to agree.
 `justfetch 1.0.0-rc.1`, and the installed binary reports that version and emits a
 document with `os` and `gpu` available.
 
+### Review-round fixes
+
+- `compare.py` now reads UTF-8 with or without a BOM: Windows PowerShell 5.1's
+  `Out-File -Encoding utf8` writes one, which made the documented Windows
+  command fail at the comparison stage. The script writes its own JSON through
+  `UTF8Encoding($false)` as well.
+- The Windows fallback that runs when Python is missing used to dump the whole
+  document, including `identity` — user and host name — while the script claimed
+  to print only non-identifying values. It prints the six module statuses and
+  the platform observations now.
+- `compare.py` distinguishes a mismatch (1) from bad input (2): malformed
+  documents, wrong native shapes and missing files are rejected instead of
+  crashing into exit 1. A `native` GPU given as a string used to iterate its
+  characters and report a false match.
+- `verify-macos.sh` skips packages when `brew` is absent instead of throwing.
+- The CI rejection case changes only a deselected module's `status`, so it fails
+  on the state enum and nothing else.
+- The roadmap had the v0.4 and v1.0 sections twice; the stale copy is gone.
+- A committed `__pycache__` file was removed and ignored.
+
 ### Not verified
 
 Linux, Windows, WSL and Intel hardware, exactly as before. The scripts are how

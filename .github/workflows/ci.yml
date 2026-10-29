@@ -87,7 +87,10 @@ jobs:
           python3 - <<'PY'
           import json
           doc = json.load(open("partial.json"))
-          doc["os"] = {"status": "maybe"}
+          # Only the state is wrong: every other key stays, so the document can
+          # fail on nothing but the enum.
+          assert doc["host"]["status"] == "deselected"
+          doc["host"]["status"] = "maybe"
           json.dump(doc, open("broken.json", "w"))
           PY
           if check-jsonschema --schemafile docs/json-schema.json broken.json >/dev/null 2>&1; then
