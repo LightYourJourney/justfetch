@@ -158,7 +158,7 @@ prints one verdict per module:
 | `match` | justfetch and the platform tool agree |
 | `mismatch` | They disagree. This is a finding; please report it with the table |
 | `unsupported` | justfetch says the question does not apply, and the tool agrees there is nothing |
-| `inconclusive` | There is no comparison: one side has nothing. Includes justfetch reporting `unavailable` or `error` while the platform tool has an answer |
+| `inconclusive` | There is no comparison: one side has nothing — including justfetch reporting `unavailable` while the platform tool has an answer |
 | `error` | justfetch reported a failure. Always a finding |
 | `not covered` | The script gathered no observation for this module, and justfetch did not say the question does not apply |
 
@@ -187,8 +187,9 @@ scripts/verify-windows.ps1   # Windows, in PowerShell
 scripts/verify-wsl.sh        # inside WSL1/WSL2
 ```
 
-Exit status is 0 when nothing comparable disagreed, 1 on a mismatch and 2 on a
-setup problem. Paste the table into `docs/validation.md` with the date, the OS
+Exit status is 0 when nothing comparable disagreed, 1 on a mismatch or an error,
+2 on a setup problem, and 3 in strict mode when a covered module had no
+comparison. Paste the table into `docs/validation.md` with the date, the OS
 version and whether the machine was virtual.
 
 ## Exact memory definitions

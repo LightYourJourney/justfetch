@@ -1,9 +1,11 @@
 #!/bin/sh
 # Check justfetch's behaviour inside WSL1/WSL2.
 #
-# Two parts: the same comparison the Linux script does for the modules WSL can
-# answer (packages, locale), and a check that WSL is labelled and that the
-# modules with nothing to answer report no value.
+# Two parts: the comparison the Linux script does, in strict acceptance mode, for
+# the modules WSL can answer (packages, locale), and a check that WSL is
+# labelled and that the modules with nothing to answer report no value.
+# Exit status follows compare.py: 1 mismatch or error, 2 setup problem, 3 a
+# covered module had no comparison; a labelling failure is 1.
 set -u
 here=$(cd -- "$(dirname -- "$0")" && pwd)
 BIN=${BIN:-./target/release/justfetch}
@@ -88,5 +90,8 @@ print("WSL is labelled and the not-applicable modules report no value.")
 PY
 checked=$?
 
-[ "$compared" -eq 0 ] && [ "$checked" -eq 0 ] && exit 0
-exit 1
+# Keep compare.py's codes distinct: collapsing 2 or 3 into 1 would hide whether
+# the environment was wrong or the evidence was missing.
+if [ "$compared" -ne 0 ]; then exit "$compared"; fi
+if [ "$checked" -ne 0 ]; then exit 1; fi
+exit 0

@@ -1,8 +1,10 @@
 #!/bin/sh
 # Compare justfetch's macOS collectors with the system's own tools.
 #
-# Read-only and repeatable. Prints one line per module with a verdict:
-# match, mismatch, uncomparable or unsupported. Exit 1 on any mismatch.
+# Read-only and repeatable. Prints one line per module with a verdict: match,
+# mismatch, unsupported, inconclusive, error or not covered. Runs compare.py in
+# strict acceptance mode: exit 1 on a mismatch or error, 2 on a setup problem,
+# 3 when a covered module had no comparison.
 set -u
 here=$(cd -- "$(dirname -- "$0")" && pwd)
 BIN=${BIN:-./target/release/justfetch}

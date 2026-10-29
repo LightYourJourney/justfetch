@@ -37,11 +37,17 @@ try {
         $values['gpu'] = @{ names = @($adapters | ForEach-Object { $_.Name }) }
         $tools['gpu'] = 'Win32_VideoController'
     }
-    $withMode = $adapters | Where-Object { $_.CurrentHorizontalResolution } | Select-Object -First 1
-    if ($withMode) {
-        $values['display'] = @("$($withMode.CurrentHorizontalResolution)x$($withMode.CurrentVerticalResolution)")
+    # Every adapter with a mode, not just the first: justfetch enumerates all
+    # monitors, so a multi-monitor machine would otherwise never match.
+    $resolutions = @($adapters |
+        Where-Object { $_.CurrentHorizontalResolution } |
+        ForEach-Object { "$($_.CurrentHorizontalResolution)x$($_.CurrentVerticalResolution)" })
+    if ($resolutions.Count -gt 0) {
+        $values['display'] = $resolutions
         $tools['display'] = 'Win32_VideoController'
     }
+    # Adapter names come from a different API than Win32_VideoController's, so a
+    # GPU mismatch here is a wording difference more often than a defect.
 
     $scoop = Join-Path $env:USERPROFILE 'scoop\apps'
     if (Test-Path $scoop) {

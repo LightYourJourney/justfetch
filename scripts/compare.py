@@ -16,12 +16,16 @@ Each module gets one verdict:
 
   match         the two agree
   mismatch      they disagree — the interesting case
-  uncomparable  there was nothing to compare, or justfetch did not collect it
   unsupported   justfetch says the question does not apply, and the platform
                 tool agrees there is nothing
+  inconclusive  there is no comparison: one side has nothing
+  error         justfetch reported a failure; always a finding
+  not covered   the script gathered no observation, and justfetch did not say
+                the question does not apply
 
-Exit status: 0 when nothing mismatched, 1 when something did, 2 on bad input.
-Only non-identifying values are printed: counts, resolutions, names, locales.
+Exit status: 0 pass, 1 mismatch or error, 2 bad input, 3 (strict only) a covered
+module had no comparison. Only non-identifying values are printed: counts,
+resolutions, names, locales.
 """
 
 import argparse

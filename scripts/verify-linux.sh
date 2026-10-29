@@ -2,7 +2,9 @@
 # Compare justfetch's Linux collectors with the system's own tools.
 #
 # Read-only and repeatable. Prints one verdict per module: match, mismatch,
-# uncomparable or unsupported. Exit 1 on any mismatch, 2 on a setup problem.
+# unsupported, inconclusive, error or not covered. Runs compare.py in strict
+# acceptance mode: exit 1 on a mismatch or error, 2 on a setup problem, 3 when a
+# covered module had no comparison.
 #
 # Only non-identifying values are read: counts, percentages, adapter names,
 # resolutions and locales. No serial numbers, IP addresses or user names.

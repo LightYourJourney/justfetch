@@ -90,18 +90,20 @@ jobs:
           mkdir -p artifact
           tar -xzf ./*.tar.gz -C artifact
           binary=$(find artifact -type f -name justfetch | head -1)
-          "$binary" --format json > run.json
-          grep -A1 '"os": {' run.json | grep -q '"status": "available"'
-          grep -A1 '"memory": {' run.json | grep -q '"status": "available"'
+          run="${RUNNER_TEMP}/justfetch-run.json"
+          "$binary" --format json > "$run"
+          grep -A1 '"os": {' "$run" | grep -q '"status": "available"'
+          grep -A1 '"memory": {' "$run" | grep -q '"status": "available"'
       - name: Run the packaged binary (windows)
         if: matrix.native && runner.os == 'Windows'
         shell: pwsh
         run: |
           Expand-Archive -Path (Get-ChildItem *.zip)[0].FullName -DestinationPath artifact
           $binary = Get-ChildItem artifact -Recurse -Filter justfetch.exe | Select-Object -First 1
-          & $binary.FullName --format json > run.json
+          $run = Join-Path $env:RUNNER_TEMP 'justfetch-run.json'
+          & $binary.FullName --format json > $run
           if ($LASTEXITCODE -ne 0) { throw "packaged justfetch exited $LASTEXITCODE" }
-          $json = Get-Content run.json -Raw
+          $json = Get-Content $run -Raw
           foreach ($field in 'os', 'memory') {
             if (-not ($json -match ('"' + $field + '": \{\s*"status": "available"'))) {
               throw "$field is not available in the packaged binary"

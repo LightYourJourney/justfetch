@@ -956,25 +956,34 @@ category and without reproducing the values:
 | Category | What was there |
 | --- | --- |
 | Account identity | the OS user name and the machine's host name, as strings |
+| Filesystem | the `disk` row's path, which is the same account's home directory |
 | Network | one RFC 1918 address on the local interface |
 | System description | OS version, hardware model, package counts, and the source strings |
 
-No home-directory path, no public address, no credential, no serial number. They
-were produced by running the binary in the repository root for the schema check
-and swept in by `git add -A`.
+That is the whole of it: no public address, no credential, no serial number, no
+file other than the home directory itself. The home path matters because it
+names the account a second time, so this is an identity disclosure and not only
+a machine fingerprint. The files were produced by running the binary in the
+repository root for the schema check and swept in by `git add -A`.
 
-They are deleted and ignored as of `95b8667`. The CI schema job now writes its
-documents to `$RUNNER_TEMP`, outside the checkout, so a future `git add -A`
-cannot pick them up.
+They are deleted and ignored as of `95b8667`. The CI schema job, the native
+smoke test and the release smoke test now write their documents to
+`$RUNNER_TEMP`, outside the checkout, so a future `git add -A` cannot pick them
+up; `.gitignore` keeps the names for anyone reproducing the steps locally.
 
 **Residual risk.** The files remain in the history of `d21356e` through
-`74c5506` and in the tree of the `v1.0.0-rc.1` tag, which is public. Removing
-them means rewriting published history and moving a published tag — destructive,
-and worse than the exposure: the account name is already the commit author and
-the host name follows a default-looking pattern. The decision is to leave them,
-say so here, and not carry them forward. A maintainer who wants them gone
-completely has to rewrite the branch and re-tag, which is a separate, approved
-operation.
+`74c5506` and in the tree of the `v1.0.0-rc.1` tag, which is public. What is
+exposed is an operating-system account name, a host name, a home directory path
+and a private address. The OS account name is not the commit author's name or
+address, so it is not already public through the commit metadata — this round
+previously said otherwise and was wrong.
+
+Removing them means rewriting published history and moving a published tag:
+destructive, requires the maintainer's explicit approval, and breaks any clone
+or checksum taken against the tag. The decision is to leave them, state the
+exposure accurately here, and not carry them forward. The alternative — a
+rewrite plus a re-tag — is specified as a separate, approved operation rather
+than done quietly.
 
 ### Packaging
 

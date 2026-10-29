@@ -4,7 +4,10 @@
 __pycache__/
 *.pyc
 
-# Written by the CI schema job (and locally when reproducing it)
+# Run output written into the checkout. The CI jobs write to $RUNNER_TEMP
+# now; these entries are for anyone reproducing the steps locally.
 /full.json
 /partial.json
 /broken.json
+/smoke.json
+/run.json

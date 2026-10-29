@@ -39,12 +39,14 @@ jobs:
           set -eu
           binary="target/release/justfetch"
           [ -f "$binary.exe" ] && binary="$binary.exe"
-          "$binary" --format json > smoke.json
-          grep -q '"schema_version": 1' smoke.json
+          # Outside the checkout: the document names the runner's account.
+          smoke="${RUNNER_TEMP}/justfetch-smoke.json"
+          "$binary" --format json > "$smoke"
+          grep -q '"schema_version": 1' "$smoke"
           # Named fields, not "some field is available": a detector that fails
           # outright would otherwise leave this step green.
-          grep -A1 '"os": {' smoke.json | grep -q '"status": "available"'
-          grep -A1 '"memory": {' smoke.json | grep -q '"status": "available"'
+          grep -A1 '"os": {' "$smoke" | grep -q '"status": "available"'
+          grep -A1 '"memory": {' "$smoke" | grep -q '"status": "available"'
 
   msrv:
     name: MSRV / 1.95.0
