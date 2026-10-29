@@ -6,7 +6,7 @@
 
 > **本文件是简体中文摘要。** [README.md](README.md) 是权威版本；两者冲突时以英文版为准。
 
-**状态：** 当前源码是 **v1.0.0-rc.1 发布候选**，仅存在于 GitHub，**未发布到 crates.io**，也**没有**可用的 Homebrew / Scoop 正式清单。已在 Apple Silicon macOS 上实际运行验证；Intel macOS 二进制可交叉构建并在 Rosetta 下运行；Linux 与 Windows 由 CI 原生构建并跑测试，但 Phase 12 新增的采集器尚未在这两个平台上真实执行。详见 [兼容性矩阵](docs/compatibility.md)。
+**状态：** 当前源码是 **v1.0.0-rc.1 发布候选**，已作为 GitHub prerelease 发布，**未发布到 crates.io**，也**没有**可用的 Homebrew / Scoop 正式清单。已在 Apple Silicon macOS 上实际运行验证；Intel macOS 二进制可交叉构建并在 Rosetta 下运行；Linux 与 Windows 由 CI 原生构建并跑测试，但 Phase 12 新增的采集器尚未在这两个平台上真实执行。详见 [兼容性矩阵](docs/compatibility.md)。
 
 ## 功能
 

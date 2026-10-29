@@ -65,9 +65,8 @@ reason to wait forever.
 4. The tag creates a **draft** prerelease; a maintainer publishes it.
 
 The order of operations, and the commands, are in
-[release-checklist](release-checklist.md). As of 2026-10-30 conditions 1, 2 and
-3 are met: `d21356e` passed all six CI jobs. Condition 4 is the tag and the
-draft, both maintainer actions.
+[release-checklist](release-checklist.md). All four were met on 2026-10-30: `d21356e` passed all six CI jobs, the tag was
+pushed, and its draft prerelease was reviewed and published.
 
 ### Gate B — declare v1.0 stable
 

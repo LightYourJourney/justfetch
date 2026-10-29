@@ -897,6 +897,22 @@ document with `os` and `gpu` available.
   and the default modules; no test compares their output, and `display` is never
   run there because it is not a default module. Both documents say that now.
 
+### The published candidate
+
+`v1.0.0-rc.1` was tagged on `6dd54e9` and its release workflow (run 40912501661)
+built all five targets and created a draft prerelease. The draft was checked
+before publishing: six assets, `SHA256SUMS` verified with `shasum -a 256 -c`,
+each archive containing the binary, `LICENSE` and `README.md`, the file types
+matching their targets (Mach-O arm64 and x86-64, ELF aarch64 and x86-64, PE32+),
+and both macOS binaries reporting `1.0.0-rc.1` — the x86-64 one under Rosetta
+emitting a valid document. The release was then published as a prerelease.
+
+One known cosmetic inconsistency: the `README.md` inside those archives is the
+one at the tagged commit, which says no tag or release exists yet. It was true of
+that commit and is false of the published release. Correcting it means a new
+tag; the next release carries the fixed text, and `README.md` on `main` was
+updated the same day.
+
 ### CI
 
 `d21356e` passed all six jobs on GitHub Actions (run 40911175646): the three

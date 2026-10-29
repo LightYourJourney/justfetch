@@ -4,7 +4,7 @@
 
 A compact Rust CLI that displays real local system information, with a responsive ASCII layout and structured JSON. It runs offline, requires no configuration or administrator access, and does not call other fetch tools.
 
-**Status:** this source is **v1.0.0-rc.1**, a release candidate prepared for GitHub only. No `v1.0.0-rc.1` tag or release exists yet; the steps and the remaining gates are in [docs/roadmap.md](docs/roadmap.md). Nothing is on crates.io, and no Homebrew, Scoop or winget package is published. The previous release, v0.1.0, was a seven-field pre-release.
+**Status:** this source is **v1.0.0-rc.1**, a release candidate published as a GitHub prerelease: [v1.0.0-rc.1](https://github.com/LightYourJourney/justfetch/releases/tag/v1.0.0-rc.1). The remaining gates for calling it stable are in [docs/roadmap.md](docs/roadmap.md); installation is in [docs/release-checklist.md](docs/release-checklist.md). Nothing is on crates.io, and no Homebrew, Scoop or winget package is published. The previous release, v0.1.0, was a seven-field pre-release.
 
 Verified by execution: macOS on Apple Silicon. The Intel macOS binary cross-compiles and runs under Rosetta 2, which is execution but not Intel hardware. Linux and Windows are built and tested natively in CI, and each runner smoke-tests its own packaged binary, so the binary executes there and the default modules collect — but nothing compares their output with those platforms' own tools, `display` never runs in CI because it is not a default module, and WSL and distributions other than Ubuntu are untested. See the [compatibility matrix](docs/compatibility.md) for the per-module evidence.
 

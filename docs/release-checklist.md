@@ -13,7 +13,10 @@ operations.
 | Release notes and matrix state what was and was not executed | Met |
 | The tag creates a draft prerelease | In place in the workflow; publishing stays a maintainer action |
 
-**Go** for the tag. Step 1 below is already done; start at step 2.
+Steps 1 to 5 below were carried out on 2026-10-30: `d21356e` passed CI, the tag
+was pushed, the workflow produced five archives plus `SHA256SUMS`, every checksum
+verified, and the release was published as a prerelease at
+<https://github.com/LightYourJourney/justfetch/releases/tag/v1.0.0-rc.1>.
 
 ## Publishing the candidate
 
