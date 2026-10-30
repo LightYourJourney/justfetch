@@ -54,7 +54,7 @@ checks that `environment.kind` says `wsl`.
 | macOS ARM64 | Supported and tested; not in the default module list | CoreGraphics: `1470x956 @60Hz`, built in, matching the logical size macOS reports. Executed on Mac15,12. The query costs ~60 ms on this host (WindowServer round trip), so it is opt-in |
 | macOS Intel | Implemented, untested | Same API |
 | Linux | Implemented, untested | DRM connectors and their preferred mode, **marked estimated**: sysfs does not know which mode the compositor is using. Monitor names are connector names (`card0-eDP-1`), not panel names |
-| Windows | Implemented, untested | `EnumDisplayMonitors` with `GetMonitorInfoW`; the desktop rectangle is the resolution, and the refresh rate comes from `EnumDisplaySettingsW`. `verify-windows.ps1` compares monitors through `Screen.AllScreens` after `SetProcessDPIAware`, which is the same rectangle; it does not compare refresh rate, because `Screen` exposes none |
+| Windows | Implemented, untested | `EnumDisplayMonitors` with `GetMonitorInfoW`; the desktop rectangle is the resolution, and the refresh rate comes from `EnumDisplaySettingsW`. `verify-windows.ps1` compares monitors through `Screen.AllScreens` after `SetProcessDPIAware`; it does not compare refresh rate, because `Screen` exposes none |
 
 `DisplayInfo` carries a `definition` saying what `width`/`height` measure,
 because the platforms differ; `kind` is `built_in` or `unknown` only, since

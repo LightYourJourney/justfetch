@@ -1145,7 +1145,8 @@ the machines they exist for:
   simulated one.
 - `verify-wsl.sh` declared `battery` and `display` unconditionally, which the
   new contract forbids: an absence must be a look that came back empty. Every
-  declaration now reads sysfs and gives up when a read fails.
+  declaration now reads sysfs and gives up when a read fails, and the GPU check
+  accounts for a passed-through `/dev/dxg` rather than assuming none exists.
 - `verify-linux.sh` could declare the GPU absent when `lspci` had *failed*
   rather than found nothing, and the battery absent without confirming the read
   succeeded. Both require a successful look now. Its battery and display
@@ -1212,6 +1213,19 @@ instead of a list, truncating the JSON with `-Depth 1`, renaming a module key,
 and making `compare.py` always exit 0. Each makes the step exit 1; restoring
 returns exit 0.
 
+Two of the cases go further than structure, because the review found the first
+version stopped short:
+
+- A **stock Windows** document — an adapter and a monitor, no battery, no Scoop,
+  no desktop — must pass strict. Without it the script could keep exiting 3 on a
+  machine with nothing wrong except a package manager it does not use.
+- `JF_SCOOP_APPS` drives the collector's own Scoop branch, so "declare it absent
+  when the directory is missing" and "count two apps when there are two" are
+  tested on any host. Deleting the `absent += 'packages'` line makes the
+  self-test exit 1.
+- An undeclared gap must exit 3, which is the strict-only code the script
+  promises and otherwise never reaches.
+
 The previous round's defect was precisely a list that was computed and never
 written. A later round can reintroduce it, but not without this step failing.
 
@@ -1231,8 +1245,17 @@ Three different quantities were easy to confuse, so each is named:
 | --- | --- | --- |
 | Adapter | `EnumDisplayDevicesW`, one entry per adapter | `Win32_VideoController`, one per adapter — compared by name, and a mismatch is a wording difference more often than a defect |
 | Monitor | `EnumDisplayMonitors` + `GetMonitorInfoW`, one entry per monitor | `Screen.AllScreens`, one per monitor — same unit |
-| Resolution | `rcMonitor` width and height, physical pixels | `Screen.Bounds` after `SetProcessDPIAware`, which is the same rectangle when the process is DPI aware |
+| Resolution | `rcMonitor` width and height | `Screen.Bounds` after `SetProcessDPIAware` |
 | Refresh rate | `EnumDisplaySettingsW` per monitor device | **not compared**: `Screen` exposes no refresh rate, and the script does not invent one |
+
+Under display scaling the resolutions may differ even on a correct machine:
+justfetch has no DPI-awareness manifest, so `GetMonitorInfoW` returns
+virtualized coordinates for it, while the verifier calls `SetProcessDPIAware`
+first. A resolution mismatch on a scaled display is therefore a limitation of
+the comparison, not necessarily a defect. A GPU name mismatch has a similar
+cause — `Win32_VideoController` and `EnumDisplayDevicesW` word the same adapter
+differently — so either should be reviewed in diagnostic mode before being
+filed.
 
 ### Release workflow: candidate and stable are derived, not hardcoded
 

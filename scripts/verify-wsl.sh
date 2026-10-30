@@ -39,12 +39,46 @@ import glob, json, os, pathlib, shutil, subprocess, sys
 work = pathlib.Path(sys.argv[1])
 values, tools, absent, not_applicable = {}, {}, [], []
 
-# WSL has no battery or display of its own: those belong to the Windows host and
-# no Linux interface exposes them. GPU depends: WSL2 with a GPU passthrough has
-# /dev/dxg but no DRM card, so a missing DRM card is the evidence for both.
-absent.extend(["battery", "display"])
-if not glob.glob("/sys/class/drm/card[0-9]*"):
-    absent.append("gpu")
+# Every absence is a look that came back empty, not an assumption about WSL.
+# WSL2 can pass a GPU through (`/dev/dxg`), so the GPU check is its own.
+def read_dir(path):
+    try:
+        return os.listdir(path)
+    except OSError:
+        return None
+
+supplies = read_dir("/sys/class/power_supply")
+if supplies is not None:
+    present = False
+    for name in supplies:
+        try:
+            if open(f"/sys/class/power_supply/{name}/type").read().strip() == "Battery":
+                present = True
+        except OSError:
+            supplies = None
+            break
+    if supplies is not None and not present:
+        absent.append("battery")
+
+drm = read_dir("/sys/class/drm")
+if drm is not None:
+    connected = False
+    for name in drm:
+        if "-" not in name:
+            continue
+        try:
+            if open(f"/sys/class/drm/{name}/status").read().strip() == "connected":
+                connected = True
+        except OSError:
+            drm = None
+            break
+    if drm is not None and not connected:
+        absent.append("display")
+    # A DRM card means a GPU is present; without one, and with no DXG device
+    # passed through either, there is nothing to report.
+    has_card = any(n.startswith("card") and n[4:].isdigit() for n in drm or [])
+    if drm is not None and not has_card and not os.path.exists("/dev/dxg"):
+        absent.append("gpu")
 
 # No desktop-session variables: WSLg may set WAYLAND_DISPLAY for applications,
 # but justfetch's desktop module reads the desktop variables, so match that.

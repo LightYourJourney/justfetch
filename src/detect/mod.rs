@@ -64,8 +64,6 @@ fn terminal() -> Detection<TerminalInfo> {
     }
 }
 
-/// Collect only what `selection` asks for. Anything else is reported as
-/// deselected, and its collector is never called.
 /// Turn what the CPU adapter reported into a detection.
 ///
 /// `brand` is `None` when the adapter has no name — on ARM64 Linux the kernel
@@ -74,7 +72,7 @@ fn terminal() -> Detection<TerminalInfo> {
 /// then `unavailable` and the known core count is discarded, because
 /// `CpuInfo.name` is required by the v1 JSON contract. Preserving the count
 /// would mean making the name optional, which is a v1.1 schema decision.
-pub(crate) fn cpu_from(brand: Option<&str>, cores: std::io::Result<usize>) -> Detection<CpuInfo> {
+fn cpu_detection(brand: Option<&str>, cores: std::io::Result<usize>) -> Detection<CpuInfo> {
     let name = brand.map(str::trim).filter(|name| !name.is_empty());
     match (name, cores) {
         (Some(name), Ok(logical_cores)) => Detection::available(
@@ -93,14 +91,17 @@ pub(crate) fn cpu_from(brand: Option<&str>, cores: std::io::Result<usize>) -> De
     }
 }
 
+/// Collect only what `selection` asks for. Anything else is reported as
+/// deselected, and its collector is never called.
 pub fn collect(selection: &[ModuleId]) -> SystemSnapshot {
     let data = platform::collect(selection);
     // Enumerating processors is not free, so it happens only for a CPU row.
     let cpu = if_selected(selection, ModuleId::Cpu, || {
         let mut system = System::new();
         system.refresh_cpu_list(CpuRefreshKind::nothing());
-        cpu_from(
-            system.cpus().first().map(|cpu| cpu.brand().trim()),
+        // `cpu_detection` trims, so the adapter's brand is passed as-is.
+        cpu_detection(
+            system.cpus().first().map(|cpu| cpu.brand()),
             crate::platform::logical_cpu_count(system.cpus().len()),
         )
     });
@@ -157,12 +158,12 @@ mod cpu_tests {
     /// land by accident.
     #[test]
     fn an_unnamed_cpu_is_unavailable_even_with_a_known_core_count() {
-        let detection = cpu_from(None, Ok(4));
+        let detection = cpu_detection(None, Ok(4));
         assert_eq!(
             detection,
             Detection::unavailable("CPU brand not exposed by the system adapter")
         );
-        let detection = cpu_from(Some("   "), Ok(4));
+        let detection = cpu_detection(Some("   "), Ok(4));
         assert_eq!(
             detection,
             Detection::unavailable("CPU brand not exposed by the system adapter")
@@ -171,26 +172,23 @@ mod cpu_tests {
 
     #[test]
     fn a_named_cpu_reports_both_fields() {
-        let detection = cpu_from(Some("Apple M3"), Ok(8));
-        assert_eq!(
-            detection,
-            Detection::available(
-                CpuInfo {
-                    name: "Apple M3".to_owned(),
-                    logical_cores: 8,
-                },
-                if cfg!(windows) {
-                    "sysinfo CPU brand + GetActiveProcessorCount(all groups)"
-                } else {
-                    "sysinfo CPU native adapter"
-                },
-            )
-        );
+        // The values, not the source string: restating the source expression
+        // here would only assert that the test copies the implementation.
+        let detection = cpu_detection(Some("  Apple M3  "), Ok(8));
+        let Detection::Available {
+            value, confidence, ..
+        } = detection
+        else {
+            panic!("a named CPU with a core count should be available");
+        };
+        assert_eq!(value.name, "Apple M3", "the brand is trimmed");
+        assert_eq!(value.logical_cores, 8);
+        assert_eq!(confidence, Confidence::Confirmed);
     }
 
     #[test]
     fn a_failed_core_count_is_an_error_not_an_absence() {
-        let detection = cpu_from(
+        let detection = cpu_detection(
             Some("Apple M3"),
             Err(std::io::Error::other("no processors reported")),
         );

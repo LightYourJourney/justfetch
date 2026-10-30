@@ -40,11 +40,19 @@ function Get-SelfTestObservation {
             battery = @{ percent = 80 }
             display = @('1920x1080')
         }
-        # desktop was checked and found absent; locale and packages cannot be
+        # desktop and packages were checked and found absent; locale cannot be
         # compared here. Both lists must survive into the file compare.py reads.
-        absent = @('desktop')
-        not_applicable = @('locale', 'packages')
+        absent = @('desktop', 'packages')
+        not_applicable = @('locale')
     }
+}
+
+# One definition of "no desktop session", used by the collector and by the
+# self-test that checks the collector's conclusion reached the file. Two copies
+# of this list would let one go stale while the other still passed.
+function Test-NoDesktopSession {
+    $vars = @('XDG_CURRENT_DESKTOP', 'XDG_SESSION_DESKTOP', 'DESKTOP_SESSION', 'WAYLAND_DISPLAY')
+    -not ($vars | Where-Object { [Environment]::GetEnvironmentVariable($_) })
 }
 
 function Get-WindowsObservation {
@@ -113,11 +121,25 @@ public static extern bool SetProcessDPIAware();
 
     # USERPROFILE is always set on Windows; the guard lets the self-test exercise
     # this function's shape on a host that has no Windows environment.
-    if ($env:USERPROFILE) {
-        $scoop = Join-Path $env:USERPROFILE 'scoop\apps'
+    # `JF_SCOOP_APPS` lets the self-test drive this branch on a host that is not
+    # Windows. Without it the collector's Scoop logic could only be tested by
+    # owning a Windows machine, which is how the Phase 17 defect survived.
+    $scoop = if ($env:JF_SCOOP_APPS) {
+        $env:JF_SCOOP_APPS
+    } elseif ($env:USERPROFILE) {
+        Join-Path $env:USERPROFILE 'scoop\apps'
+    } else {
+        $null
+    }
+    if ($scoop) {
         if (Test-Path $scoop) {
             $values['packages'] = @{ scoop = @(Get-ChildItem $scoop -Directory).Count }
             $tools['packages'] = 'scoop/apps'
+        } else {
+            # Looked and found nothing: that is what justfetch's "unsupported"
+            # rests on. Without this, a stock Windows machine reports a gap and
+            # fails strict for a package manager it does not use.
+            $absent += 'packages'
         }
     }
 
@@ -127,8 +149,7 @@ public static extern bool SetProcessDPIAware();
 
     # Windows has no desktop environment in justfetch's sense. Evidence: none of
     # the variables a desktop session exports are present.
-    $sessionVars = @('XDG_CURRENT_DESKTOP', 'XDG_SESSION_DESKTOP', 'DESKTOP_SESSION', 'WAYLAND_DISPLAY')
-    if (-not ($sessionVars | Where-Object { [Environment]::GetEnvironmentVariable($_) })) {
+    if (Test-NoDesktopSession) {
         $absent += 'desktop'
     }
 
@@ -222,15 +243,35 @@ try {
         }
         # Keys alone are not enough: the Phase 17 defect was a list that stayed
         # empty because the line that filled it was never reached. What the
-        # collector is expected to conclude on this host must be in the file.
-        # `locale` is declared unconditionally; `desktop` only when no session
-        # variable is set, which is the condition repeated here.
+        # collector concludes on this host must reach the file.
         if ($back.not_applicable -notcontains 'locale') {
             $failures += "the collector's not_applicable list does not carry locale"
         }
-        $sessionSet = @('XDG_CURRENT_DESKTOP', 'XDG_SESSION_DESKTOP', 'DESKTOP_SESSION', 'WAYLAND_DISPLAY') |
-            Where-Object { [Environment]::GetEnvironmentVariable($_) }
-        if (-not $sessionSet -and ($back.absent -notcontains 'desktop')) {
+
+        # The collector's own branches, driven through the seam rather than
+        # restated: a machine with no Scoop must declare it absent, and one with
+        # two apps must report the count.
+        $missing = Join-Path $work 'no-scoop-here'
+        $env:JF_SCOOP_APPS = $missing
+        $withoutScoop = Get-WindowsObservation
+        if ($withoutScoop.absent -notcontains 'packages') {
+            $failures += 'the collector does not declare packages absent when Scoop is missing'
+        }
+        $env:JF_SCOOP_APPS = $null
+
+        $withScoop = Join-Path $work 'scoop-apps'
+        New-Item -ItemType Directory -Path (Join-Path $withScoop 'app-one') -Force | Out-Null
+        New-Item -ItemType Directory -Path (Join-Path $withScoop 'app-two') -Force | Out-Null
+        $env:JF_SCOOP_APPS = $withScoop
+        $producedScoop = Get-WindowsObservation
+        if ($producedScoop.values['packages']['scoop'] -ne 2) {
+            $failures += "the collector did not count two Scoop apps (got $($producedScoop.values['packages']['scoop']))"
+        }
+        if ($producedScoop.absent -contains 'packages') {
+            $failures += 'the collector declares packages absent while Scoop has apps'
+        }
+        $env:JF_SCOOP_APPS = $null
+        if ((Test-NoDesktopSession) -and ($back.absent -notcontains 'desktop')) {
             $failures += "the collector's absent list does not carry desktop"
         }
         & $python.Source $compare --justfetch $docPath --native $producedPath | Out-Null
@@ -244,6 +285,55 @@ try {
         [System.IO.File]::WriteAllText($docPath, $wrong, $utf8)
         & $python.Source $compare --strict --justfetch $docPath --native $nativePath | Out-Null
         if ($LASTEXITCODE -ne 1) { $failures += "a mismatched document exited $LASTEXITCODE, expected 1" }
+
+        # The combination the script exists for: a stock Windows machine with no
+        # Scoop, no battery and no desktop environment must pass strict. Building
+        # it here rather than trusting the collector on this host is the point —
+        # the Phase 17 style of defect was a correct component and a failing run.
+        # A desktop machine: an adapter and a monitor, no battery, no Scoop, no
+        # desktop environment. justfetch reports the first two as values and the
+        # rest as unsupported.
+        $stockDoc = @'
+{"schema_version":1,"environment":{"kind":"native"},
+ "gpu":{"status":"available","value":{"devices":[{"name":"Test Adapter","vendor":"Test","id":null,"driver":null,"kind":"discrete"}]},"source":"t","confidence":"confirmed"},
+ "battery":{"status":"unsupported","reason":"no battery"},
+ "display":{"status":"available","value":{"displays":[{"name":null,"width":1920,"height":1080,"refresh_hz":60,"primary":true,"kind":"unknown"}],"definition":"t"},"source":"t","confidence":"confirmed"},
+ "packages":{"status":"unsupported","reason":"no package manager"},
+ "desktop":{"status":"unsupported","reason":"no desktop"},
+ "locale":{"status":"available","value":{"process":"en-US","process_source":"GetUserDefaultLocaleName","system":"en-US","system_source":"GetUserDefaultLocaleName"},"source":"t","confidence":"confirmed"}}
+'@
+        $stockNative = [ordered]@{
+            tools = [ordered]@{ gpu = 'self-test'; display = 'self-test' }
+            values = [ordered]@{
+                gpu = @{ names = @('Test Adapter') }
+                display = @('1920x1080')
+            }
+            absent = @('battery', 'desktop', 'packages')
+            not_applicable = @('locale')
+        }
+        $stockDocPath = Join-Path $work 'stock-doc.json'
+        $stockNativePath = Join-Path $work 'stock-native.json'
+        [System.IO.File]::WriteAllText($stockDocPath, $stockDoc, $utf8)
+        [System.IO.File]::WriteAllText($stockNativePath, ($stockNative | ConvertTo-Json -Depth 6), $utf8)
+        & $python.Source $compare --strict --justfetch $stockDocPath --native $stockNativePath | Out-Null
+        $stockCode = $LASTEXITCODE
+        if ($stockCode -ne 0) {
+            $failures += "a stock Windows machine exited $stockCode, expected 0 (gap in the evidence lists)"
+        }
+
+        # And strict must reject a run where a module has neither observation nor
+        # declaration: exit 3 is the code this script promises and never used to
+        # reach.
+        $gapNative = [ordered]@{
+            tools = [ordered]@{}; values = [ordered]@{}
+            absent = @('desktop'); not_applicable = @('locale')
+        }
+        $gapPath = Join-Path $work 'gap-native.json'
+        [System.IO.File]::WriteAllText($gapPath, ($gapNative | ConvertTo-Json -Depth 6), $utf8)
+        & $python.Source $compare --strict --justfetch $stockDocPath --native $gapPath | Out-Null
+        if ($LASTEXITCODE -ne 3) {
+            $failures += "an undeclared gap exited $LASTEXITCODE, expected 3"
+        }
 
         if ($failures.Count -gt 0) {
             Write-Host 'self-test FAILED:'

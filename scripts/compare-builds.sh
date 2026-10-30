@@ -7,11 +7,18 @@
 #
 #   scripts/compare-builds.sh /path/to/justfetch-vX-aarch64-apple-darwin.tar.gz
 #
-# Exit 0 when every non-volatile field is identical, 1 when one differs.
+# Exit 0 when every non-volatile field is identical, 1 when one differs,
+# 2 on a setup problem (missing archive, no interpreter, no build).
 set -u
+here=$(cd -- "$(dirname -- "$0")" && pwd)
 archive=${1:-}
 if [ -z "$archive" ] || [ ! -f "$archive" ]; then
   echo "usage: $0 <published-archive.tar.gz>" >&2
+  exit 2
+fi
+
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "python3 is required for the comparison" >&2
   exit 2
 fi
 
@@ -22,10 +29,15 @@ tar -xzf "$archive" -C "$work" || { echo "cannot extract $archive" >&2; exit 2; 
 released=$(find "$work" -type f -name justfetch | head -1)
 [ -x "$released" ] || { echo "no binary in $archive" >&2; exit 2; }
 
-./target/release/justfetch --format json > "$work/current.json" || exit 2
+current=${BIN:-$here/../target/release/justfetch}
+if [ ! -x "$current" ]; then
+  echo "Build first: cargo build --release --locked (looked for $current)" >&2
+  exit 2
+fi
+"$current" --format json > "$work/current.json" || exit 2
 "$released" --format json > "$work/released.json" || exit 2
 
-/usr/bin/python3 - "$work/current.json" "$work/released.json" <<'PY'
+python3 - "$work/current.json" "$work/released.json" <<'PY'
 import json, sys
 
 current = json.load(open(sys.argv[1]))
