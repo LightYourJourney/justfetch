@@ -42,10 +42,17 @@ case "$version" in
   *-*) kind="prerelease" ;;
   *)   kind="stable" ;;
 esac
-grep -q 'stage="--prerelease"' .github/workflows/release.yml \
-  && grep -q '^            \*-\*) stage="--prerelease"' .github/workflows/release.yml \
-  && note "release marker derives from the version ($version -> $kind)" \
-  || bad "the workflow does not derive --prerelease from the version"
+# Both arms are checked: a candidate must be marked and a final version must
+# not be. Testing only the candidate arm let a stable release publish as a
+# prerelease without this script noticing.
+rc_arm='^[[:space:]]*\*-\*\)[[:space:]]*stage="--prerelease"'
+stable_arm='^[[:space:]]*\*\)[[:space:]]*stage=""'
+if grep -Eq "$rc_arm" .github/workflows/release.yml \
+   && grep -Eq "$stable_arm" .github/workflows/release.yml; then
+  note "release marker derives from the version ($version -> $kind)"
+else
+  bad "the workflow does not derive --prerelease from the version"
+fi
 
 grep -q "github.event_name == 'push'" .github/workflows/release.yml \
   && note "release job requires a push event" || bad "release job does not require a push event"

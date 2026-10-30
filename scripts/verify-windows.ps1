@@ -220,6 +220,19 @@ try {
                 $failures += "the collector's output loses `$key when serialized"
             }
         }
+        # Keys alone are not enough: the Phase 17 defect was a list that stayed
+        # empty because the line that filled it was never reached. What the
+        # collector is expected to conclude on this host must be in the file.
+        # `locale` is declared unconditionally; `desktop` only when no session
+        # variable is set, which is the condition repeated here.
+        if ($back.not_applicable -notcontains 'locale') {
+            $failures += "the collector's not_applicable list does not carry locale"
+        }
+        $sessionSet = @('XDG_CURRENT_DESKTOP', 'XDG_SESSION_DESKTOP', 'DESKTOP_SESSION', 'WAYLAND_DISPLAY') |
+            Where-Object { [Environment]::GetEnvironmentVariable($_) }
+        if (-not $sessionSet -and ($back.absent -notcontains 'desktop')) {
+            $failures += "the collector's absent list does not carry desktop"
+        }
         & $python.Source $compare --justfetch $docPath --native $producedPath | Out-Null
         $shapeCode = $LASTEXITCODE
         if ($shapeCode -eq 2) {

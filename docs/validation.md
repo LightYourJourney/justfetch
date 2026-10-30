@@ -1206,8 +1206,11 @@ fixed values, writes it the same way a real run does, and then:
 4. mutates the document to disagree and requires exit 1.
 
 It needs no Windows API, so CI runs it on every push. Verified here that it has
-teeth: deleting the `absent` line from the collector makes the step exit 1 with
-"self-test FAILED", and restoring it returns exit 0.
+teeth, by breaking it in each way a later edit could: deleting the `absent` line
+from the collector, deleting the `not_applicable` line, returning a scalar
+instead of a list, truncating the JSON with `-Depth 1`, renaming a module key,
+and making `compare.py` always exit 0. Each makes the step exit 1; restoring
+returns exit 0.
 
 The previous round's defect was precisely a list that was computed and never
 written. A later round can reintroduce it, but not without this step failing.
@@ -1237,8 +1240,10 @@ Three different quantities were easy to confuse, so each is named:
 `--prerelease` flag is now derived from the version — a `-rc.N` version is
 marked prerelease, a final one is not — so a stable version cannot be published
 as a candidate by forgetting to edit the workflow. `scripts/check-release.sh`
-reads the same rule and reports which mode the tree is in; a version bump to
-`1.0.0` without `docs/release-notes/v1.0.0.md` fails the check immediately.
+checks both arms of that rule and reports which mode the tree is in; changing
+the stable arm to `--prerelease` makes it fail, which is how the guard was
+tested. A version bump to `1.0.0` without `docs/release-notes/v1.0.0.md` fails
+the check immediately.
 
 ### CPU on an unidentified ARM part: a pinned regression
 
@@ -1253,8 +1258,27 @@ a v1.1 schema decision. The test exists so that change happens deliberately.
 
 ### Source equivalence with the published candidate
 
-The CPU change touched product code after `v1.0.0-rc.1` was published. Built
-from this tree and compared with the published `aarch64-apple-darwin` archive on
-the same machine: every non-volatile field is identical, `cpu` included. The
-refactor is behaviour-preserving on macOS; Linux was not re-run because the
-virtual machine was removed after Phase 17.
+The CPU change touched product code after `v1.0.0-rc.1` was published, so the
+question is whether the binary a user would get from this tree still behaves the
+same. `scripts/compare-builds.sh` answers it without network access:
+
+```sh
+gh release download v1.0.0-rc.1 --pattern "*aarch64-apple-darwin.tar.gz" --dir /tmp/rc
+cargo build --release --locked
+scripts/compare-builds.sh /tmp/rc/*.tar.gz
+```
+
+It compares every field except the five that legitimately change between two
+runs on the same machine — `uptime`, `memory`, `swap`, `battery`, `disk` — and
+fails if any other differs. Run on 2026-10-30 the output was:
+
+```
+compared: cpu, desktop, display, environment, gpu, host, identity, kernel,
+          local_ip, locale, os, packages, schema_version, shell, terminal
+excluded as volatile: battery, disk, memory, swap, uptime
+identical on every non-volatile field
+```
+
+`cpu` is inside the compared set, so the refactor is shown not to have changed
+it. This covers macOS only; Linux was not re-run because the virtual machine was
+removed after Phase 17.
