@@ -34,8 +34,19 @@ grep -q "Check the tag matches the crate version" .github/workflows/release.yml 
   && note "tag/version gate present" || bad "no tag/version gate"
 grep -q -- "--draft" .github/workflows/release.yml \
   && note "release is a draft" || bad "release is not a draft"
-grep -q -- "--prerelease" .github/workflows/release.yml \
-  && note "release is marked prerelease" || bad "release is not marked prerelease"
+
+# The candidate/stable marker must follow the version, not be hardcoded: a
+# `-rc.N` version published as stable, or a final version published as a
+# prerelease, is worse than failing here.
+case "$version" in
+  *-*) kind="prerelease" ;;
+  *)   kind="stable" ;;
+esac
+grep -q 'stage="--prerelease"' .github/workflows/release.yml \
+  && grep -q '^            \*-\*) stage="--prerelease"' .github/workflows/release.yml \
+  && note "release marker derives from the version ($version -> $kind)" \
+  || bad "the workflow does not derive --prerelease from the version"
+
 grep -q "github.event_name == 'push'" .github/workflows/release.yml \
   && note "release job requires a push event" || bad "release job does not require a push event"
 

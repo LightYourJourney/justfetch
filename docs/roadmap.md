@@ -81,7 +81,9 @@ published.
    writing, with the Rosetta evidence named as the substitute.
 4. A decision on crates.io: publish, or state that installation is
    `cargo install --path .` from a checkout.
-5. `--draft --prerelease` is removed from the release workflow.
+5. The prerelease marker follows the version: tagging `v1.0.0` publishes as
+   stable without anyone editing the workflow, and `--draft` still holds
+   publication for a maintainer. This one is done.
 
 Until Gate B is met, the project stays a release candidate. Calling it stable
 without those steps would be a claim the evidence does not support.

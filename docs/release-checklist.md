@@ -59,10 +59,17 @@ start again — a published version number cannot be reused.
 
 ## Gate B — turning the candidate into v1.0
 
-1. Public trial done and every defect it surfaced closed.
-2. The two external verification runs above.
-3. Intel macOS exercised on hardware, or its absence accepted in writing.
-4. A crates.io decision.
-5. `--draft --prerelease` removed from the workflow.
+| Item | State | What closes it |
+| --- | --- | --- |
+| 1. Public trial done, defects closed | **Open** | Feedback from users of `v1.0.0-rc.1` |
+| 2. Linux and Windows cross-checked on real machines | **Half open** | Linux was done on an Ubuntu 26.04 arm64 virtual machine (2026-10-30); a physical Linux machine and any Windows machine remain. `verify-windows.ps1` has only run its `-SelfTest` seam |
+| 3. Intel macOS on hardware, or its absence accepted | **Open** | One run of `verify-macos.sh` on an Intel Mac, or a written decision to accept the Rosetta evidence |
+| 4. crates.io decision | **Satisfied in writing** | Nothing is published, and `cargo install --path .` from a checkout is documented as the installation |
+| 5. Prerelease marker removed | **No longer a manual step** | The workflow derives `--prerelease` from the version, so tagging `v1.0.0` publishes as stable automatically; `--draft` stays |
 
-Until then the project is a release candidate, and the release notes say so.
+Item 5 changed shape rather than closing: the flag is no longer something a
+maintainer must remember to delete, and `scripts/check-release.sh` reports which
+mode the tree is in.
+
+Until 1 to 3 are closed the project is a release candidate, and the release
+notes say so.

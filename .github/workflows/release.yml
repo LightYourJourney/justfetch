@@ -156,16 +156,24 @@ jobs:
             echo "SHA256SUMS lists $listed files but $archives archives exist"
             exit 1
           fi
-      # --draft is the gate: the workflow assembles and verifies, and a
-      # maintainer publishes. --prerelease stays until the real-hardware
-      # verification in docs/roadmap.md is done; removing both words is the
-      # change that turns a candidate into a release.
+      # --draft is always the gate: the workflow assembles and verifies, and a
+      # maintainer publishes. --prerelease follows the version: a `-rc.N`
+      # tag is a candidate and must be marked as one, a final version must not
+      # be. Deriving it from the tag means the two cannot drift apart, and
+      # removing --draft is the only change a maintainer makes to publish.
       - name: Create the draft release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -eu
+          version=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
+          case "$version" in
+            *-*) stage="--prerelease"; kind="prerelease" ;;
+            *)   stage="";             kind="stable" ;;
+          esac
+          echo "version $version: creating a draft $kind"
           gh release create "${GITHUB_REF_NAME}" \
             --title "justfetch ${GITHUB_REF_NAME}" \
             --notes-file "docs/release-notes/${GITHUB_REF_NAME}.md" \
-            --draft --prerelease \
+            --draft $stage \
             dist/*

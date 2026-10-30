@@ -78,6 +78,11 @@ jobs:
       # if the two ever disagree, the schema or the document is wrong.
       - name: The comparison scripts behave
         run: python3 scripts/test_compare.py
+      # The Windows verifier and compare.py are tested separately by the lines
+      # above; this is the only place the two are exercised together, and it
+      # needs no Windows API, so it runs here rather than only on Windows.
+      - name: The Windows verifier's contract with the comparator
+        run: pwsh -NoProfile -File scripts/verify-windows.ps1 -SelfTest
       - name: Validate real documents
         run: |
           set -eu

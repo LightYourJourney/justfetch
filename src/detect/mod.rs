@@ -66,35 +66,43 @@ fn terminal() -> Detection<TerminalInfo> {
 
 /// Collect only what `selection` asks for. Anything else is reported as
 /// deselected, and its collector is never called.
+/// Turn what the CPU adapter reported into a detection.
+///
+/// `brand` is `None` when the adapter has no name — on ARM64 Linux the kernel
+/// exposes `CPU part: 0x000` for a generic virtual CPU, which sysinfo cannot map
+/// to a name, and `/proc/cpuinfo` carries no `model name` either. The module is
+/// then `unavailable` and the known core count is discarded, because
+/// `CpuInfo.name` is required by the v1 JSON contract. Preserving the count
+/// would mean making the name optional, which is a v1.1 schema decision.
+pub(crate) fn cpu_from(brand: Option<&str>, cores: std::io::Result<usize>) -> Detection<CpuInfo> {
+    let name = brand.map(str::trim).filter(|name| !name.is_empty());
+    match (name, cores) {
+        (Some(name), Ok(logical_cores)) => Detection::available(
+            CpuInfo {
+                name: name.to_owned(),
+                logical_cores,
+            },
+            if cfg!(windows) {
+                "sysinfo CPU brand + GetActiveProcessorCount(all groups)"
+            } else {
+                "sysinfo CPU native adapter"
+            },
+        ),
+        (_, Err(error)) => Detection::error("logical processor count", ErrorCode::ApiFailed, error),
+        (None, _) => Detection::unavailable("CPU brand not exposed by the system adapter"),
+    }
+}
+
 pub fn collect(selection: &[ModuleId]) -> SystemSnapshot {
     let data = platform::collect(selection);
     // Enumerating processors is not free, so it happens only for a CPU row.
     let cpu = if_selected(selection, ModuleId::Cpu, || {
         let mut system = System::new();
         system.refresh_cpu_list(CpuRefreshKind::nothing());
-        match (
-            system
-                .cpus()
-                .first()
-                .filter(|cpu| !cpu.brand().trim().is_empty()),
+        cpu_from(
+            system.cpus().first().map(|cpu| cpu.brand().trim()),
             crate::platform::logical_cpu_count(system.cpus().len()),
-        ) {
-            (Some(cpu), Ok(logical_cores)) => Detection::available(
-                CpuInfo {
-                    name: cpu.brand().trim().to_owned(),
-                    logical_cores,
-                },
-                if cfg!(windows) {
-                    "sysinfo CPU brand + GetActiveProcessorCount(all groups)"
-                } else {
-                    "sysinfo CPU native adapter"
-                },
-            ),
-            (_, Err(error)) => {
-                Detection::error("logical processor count", ErrorCode::ApiFailed, error)
-            }
-            (None, _) => Detection::unavailable("CPU brand not exposed by the system adapter"),
-        }
+        )
     });
     let shell = if_selected(selection, ModuleId::Shell, shell::collect);
     let variable = if cfg!(windows) { "USERNAME" } else { "USER" };
@@ -133,5 +141,62 @@ pub fn collect(selection: &[ModuleId]) -> SystemSnapshot {
         shell,
         terminal: if_selected(selection, ModuleId::Terminal, terminal),
         local_ip: data.local_ip,
+    }
+}
+
+#[cfg(test)]
+mod cpu_tests {
+    use super::*;
+
+    /// The ARM64 Linux virtual machine case: the kernel reports `CPU part: 0x000`,
+    /// sysinfo has no name to map it to and `/proc/cpuinfo` has no `model name`,
+    /// so the adapter yields an empty brand while the core count is known.
+    ///
+    /// This pins the v1.0 behaviour — `unavailable`, cores discarded — so a v1.1
+    /// change to keep the count has to change this test on purpose rather than
+    /// land by accident.
+    #[test]
+    fn an_unnamed_cpu_is_unavailable_even_with_a_known_core_count() {
+        let detection = cpu_from(None, Ok(4));
+        assert_eq!(
+            detection,
+            Detection::unavailable("CPU brand not exposed by the system adapter")
+        );
+        let detection = cpu_from(Some("   "), Ok(4));
+        assert_eq!(
+            detection,
+            Detection::unavailable("CPU brand not exposed by the system adapter")
+        );
+    }
+
+    #[test]
+    fn a_named_cpu_reports_both_fields() {
+        let detection = cpu_from(Some("Apple M3"), Ok(8));
+        assert_eq!(
+            detection,
+            Detection::available(
+                CpuInfo {
+                    name: "Apple M3".to_owned(),
+                    logical_cores: 8,
+                },
+                if cfg!(windows) {
+                    "sysinfo CPU brand + GetActiveProcessorCount(all groups)"
+                } else {
+                    "sysinfo CPU native adapter"
+                },
+            )
+        );
+    }
+
+    #[test]
+    fn a_failed_core_count_is_an_error_not_an_absence() {
+        let detection = cpu_from(
+            Some("Apple M3"),
+            Err(std::io::Error::other("no processors reported")),
+        );
+        assert!(
+            matches!(detection, Detection::Error { .. }),
+            "{detection:?}"
+        );
     }
 }

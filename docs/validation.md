@@ -1029,9 +1029,22 @@ and stay unverified rather than inferred.
 
 | Platform | Kind | How |
 | --- | --- | --- |
-| macOS 26.6.2, Mac15,12 (Apple M3) | Physical, bare metal | `scripts/verify-macos.sh` |
-| Ubuntu 26.04.1 LTS, kernel 7.0.0-34-generic, aarch64 | Virtual machine (QEMU on the same host) | `scripts/verify-linux.sh` against the published `aarch64-unknown-linux-gnu` archive |
-| Windows 11, WSL1/WSL2, Intel macOS | Not reachable | Unverified; the scripts are the procedure |
+| macOS 26.6.2, Mac15,12 (Apple M3) | Physical hardware, bare metal | `scripts/verify-macos.sh` |
+| Ubuntu 26.04.1 LTS, kernel 7.0.0-34-generic, aarch64 | **Virtual machine** (QEMU on the same host) | `scripts/verify-linux.sh` against the published `aarch64-unknown-linux-gnu` archive |
+| Ubuntu x86-64, macOS, Windows runners | Native CI, not interactive | `cargo test` and the packaged-binary smoke test |
+| Windows 11, WSL1/WSL2, Intel macOS | Not reachable | **Unverified.** The scripts are the procedure, not evidence |
+
+Four kinds of evidence appear in this file and they are not interchangeable:
+
+- **Physical hardware**: a real machine, for macOS only so far.
+- **Virtual machine**: a real kernel with virtual hardware. Package and locale
+  checks are meaningful there; battery, GPU and display are usually absent, so
+  those rows exercise the absence paths rather than the collectors.
+- **Native CI**: the real binary runs on a real runner and its default modules
+  collect, but nothing compares the values with the platform's own tools.
+- **Simulated**: fixed documents fed to `compare.py`, and the Windows verifier's
+  `-SelfTest`. These test the seam between components and prove nothing about a
+  platform.
 
 The Linux run used the **published release artifact**, not a local build: its
 `SHA256SUMS` entry verified before it ran. That is the strongest form of this
@@ -1110,6 +1123,9 @@ backing evidence, a device with no id riding along with one that has one, a
 declared `not comparable` module, an undeclared gap, an `unavailable` where the
 platform answered, and an all-unsupported run that must never pass.
 
+The suite stands at 183 Rust tests, 31 comparison tests and the Windows verifier
+self-test after this round.
+
 ### Review round on the real-hardware work
 
 The review reproduced both runs and found two scripts that would have failed on
@@ -1168,3 +1184,77 @@ Windows 11, WSL1/WSL2, Intel macOS on real hardware, multi-GPU or multi-monitor
 machines, a graphical Linux desktop, and remote-desktop sessions. The comparator
 handles duplicate devices and the scripts declare what they cannot compare, but
 none of those configurations was executed.
+
+## Windows verifier contract round (2026-10-30)
+
+Phase 18. Windows and WSL were not reachable, so this round could not add the
+evidence they need. What it could do is remove the possibility that the Windows
+verifier and the comparator are each correct and still fail together — which is
+exactly the defect the previous round shipped.
+
+### The seam is now tested
+
+`scripts/verify-windows.ps1 -SelfTest` builds the observation document from
+fixed values, writes it the same way a real run does, and then:
+
+1. runs `compare.py --strict` on a document that should match, and requires
+   exit 0;
+2. reads `native.json` back and requires the `absent` and `not_applicable`
+   lists, with their contents, to survive serialization;
+3. calls the real collector function, serializes its output, and requires every
+   key to survive and the comparator not to reject it as malformed;
+4. mutates the document to disagree and requires exit 1.
+
+It needs no Windows API, so CI runs it on every push. Verified here that it has
+teeth: deleting the `absent` line from the collector makes the step exit 1 with
+"self-test FAILED", and restoring it returns exit 0.
+
+The previous round's defect was precisely a list that was computed and never
+written. A later round can reintroduce it, but not without this step failing.
+
+### What the self-test does not prove
+
+Nothing about Windows itself. `Get-CimInstance`, `Screen.AllScreens` and
+`SetProcessDPIAware` are never called on a CI runner, so their availability,
+their return shapes and the multi-monitor behaviour remain unverified until
+someone runs the script on Windows. The self-test proves only that whatever
+those calls return will be written in a form the comparator accepts.
+
+### Display: adapters, monitors, resolution and refresh
+
+Three different quantities were easy to confuse, so each is named:
+
+| Quantity | justfetch | Verifier |
+| --- | --- | --- |
+| Adapter | `EnumDisplayDevicesW`, one entry per adapter | `Win32_VideoController`, one per adapter — compared by name, and a mismatch is a wording difference more often than a defect |
+| Monitor | `EnumDisplayMonitors` + `GetMonitorInfoW`, one entry per monitor | `Screen.AllScreens`, one per monitor — same unit |
+| Resolution | `rcMonitor` width and height, physical pixels | `Screen.Bounds` after `SetProcessDPIAware`, which is the same rectangle when the process is DPI aware |
+| Refresh rate | `EnumDisplaySettingsW` per monitor device | **not compared**: `Screen` exposes no refresh rate, and the script does not invent one |
+
+### Release workflow: candidate and stable are derived, not hardcoded
+
+`--draft` stays in both cases; publishing remains a maintainer action. The
+`--prerelease` flag is now derived from the version — a `-rc.N` version is
+marked prerelease, a final one is not — so a stable version cannot be published
+as a candidate by forgetting to edit the workflow. `scripts/check-release.sh`
+reads the same rule and reports which mode the tree is in; a version bump to
+`1.0.0` without `docs/release-notes/v1.0.0.md` fails the check immediately.
+
+### CPU on an unidentified ARM part: a pinned regression
+
+`cpu_from` was extracted from the collection path so the decision can be tested
+without a machine that reproduces it. Three cases are pinned: an empty brand
+with a known core count is `unavailable` and the count is discarded; a named
+CPU reports both fields; a failed core count is an `error`, not an absence.
+
+The first is the v1.0 behaviour, recorded as such. Keeping the core count when
+the name is unknown means making `CpuInfo.name` optional in the JSON contract —
+a v1.1 schema decision. The test exists so that change happens deliberately.
+
+### Source equivalence with the published candidate
+
+The CPU change touched product code after `v1.0.0-rc.1` was published. Built
+from this tree and compared with the published `aarch64-apple-darwin` archive on
+the same machine: every non-volatile field is identical, `cpu` included. The
+refactor is behaviour-preserving on macOS; Linux was not re-run because the
+virtual machine was removed after Phase 17.
