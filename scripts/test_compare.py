@@ -261,6 +261,37 @@ class Compare(unittest.TestCase):
         result = self.run_compare(doc, native)
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
 
+    def test_a_declared_not_comparable_module_does_not_fail_strict(self):
+        doc = document(**AVAILABLE)
+        doc["display"] = {"status": "available",
+                          "value": {"displays": [{"width": 1470, "height": 956}],
+                                    "definition": "x"},
+                          "source": "x", "confidence": "confirmed"}
+        native = copy.deepcopy(NATIVE)
+        del native["values"]["display"]
+        native["not_applicable"] = ["display"]
+        result = self.run_compare(doc, native, strict=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        display = [l for l in result.stdout.splitlines() if l.startswith("display")][0]
+        self.assertIn("not comparable", display)
+
+    def test_an_undeclared_gap_fails_strict(self):
+        doc = document(**AVAILABLE)
+        native = copy.deepcopy(NATIVE)
+        del native["values"]["display"]
+        result = self.run_compare(doc, native, strict=True)
+        self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
+        display = [l for l in result.stdout.splitlines() if l.startswith("display")][0]
+        self.assertIn("not covered", display)
+
+    def test_unavailable_where_the_platform_answered_is_inconclusive(self):
+        doc = document(**AVAILABLE)
+        doc["battery"] = {"status": "unavailable", "reason": "read failed"}
+        result = self.run_compare(doc, NATIVE, strict=True)
+        self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
+        battery = [l for l in result.stdout.splitlines() if l.startswith("battery")][0]
+        self.assertIn("inconclusive", battery)
+
     def test_strict_accepts_a_full_match(self):
         result = self.run_compare(document(**AVAILABLE), NATIVE, strict=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

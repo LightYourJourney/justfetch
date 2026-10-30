@@ -20,8 +20,8 @@ Each module gets one verdict:
                 tool agrees there is nothing
   inconclusive  there is no comparison: one side has nothing
   error         justfetch reported a failure; always a finding
-  not covered   the script gathered no observation, and justfetch did not say
-                the question does not apply
+  not comparable the script declared it cannot compare this module here
+  not covered    no observation and no declaration: a gap in this run
 
 Exit status: 0 pass, 1 mismatch or error, 2 bad input, 3 strict only — a module
 had neither an observation nor a declared exclusion, or nothing was confirmed at
@@ -146,22 +146,21 @@ def no_observation(module, native):
     return module == "battery" and isinstance(native, dict) and "percent" not in native
 
 
-def evaluate(module, field, native, absent):
+def evaluate(module, field, native, absent, not_applicable):
     """Return (justfetch text, native text, verdict).
 
-    The verdicts are the ones the acceptance procedure uses:
+    The verdicts, and what each one means for acceptance:
 
-      match         the two agree
-      mismatch      they disagree
-      unsupported   justfetch says not applicable, and the script checked that
-                    it really is (`absent` lists the modules it verified absent)
-      inconclusive  there is no comparison — either side has nothing
-      error         justfetch reported a failure; always a finding
+      match          the two agree
+      mismatch       they disagree
+      unsupported    justfetch says not applicable, and the script checked
+                     (`absent` lists the modules it looked for and did not find)
+      inconclusive   covered, but this module had nothing to compare
+      not comparable the script declared it cannot compare this module here
+      not covered    no observation and no declaration: a gap in this run
+      error          justfetch reported a failure; always a finding
 
-    `unsupported` without that independent check is `not covered`: justfetch
-    saying "not applicable" on its own is a claim, not evidence. A module the
-    script declared it cannot compare (`--not-applicable`) is reported as
-    `not comparable` and does not count against the run.
+    Every verdict is decided here, so `main` only counts them.
     """
     status = field.get("status")
     value = field.get("value") or {}
@@ -173,21 +172,24 @@ def evaluate(module, field, native, absent):
 
     if status == "available":
         text = TEXTS[module](value)
-        if native is None:
-            return text, "—", "inconclusive"
-        return text, show(native), "match" if compare(module, value, native) else "mismatch"
+        if native is not None:
+            return text, show(native), "match" if compare(module, value, native) else "mismatch"
+        return text, "—", "not comparable" if module in not_applicable else "not covered"
 
     if status == "unsupported":
         if native is not None:
             # The platform has an answer justfetch declined to give.
             return status, show(native), "mismatch"
         if module in absent:
-            # The script looked and found nothing; that is evidence.
+            # The script looked and found nothing: that is the evidence.
             return status, "—", "unsupported"
-        # Nothing was observed either way: the claim stands unverified.
-        return status, "—", "inconclusive"
-    # unavailable, redacted, deselected: no value on our side.
-    return status, show(native) if native is not None else "—", "inconclusive"
+        return status, "—", "not comparable" if module in not_applicable else "not covered"
+
+    # unavailable, redacted, deselected: justfetch has no value here.
+    if native is not None:
+        # The platform has an answer justfetch did not produce.
+        return status, show(native), "inconclusive"
+    return status, "—", "not comparable" if module in not_applicable else "not covered"
 
 
 def check_inputs(document, native):
@@ -325,24 +327,24 @@ def main():
     not_applicable = set(native.get("not_applicable", []))
 
     # A module is covered when there is evidence behind its verdict: the
-    # platform tool produced an observation, or the script checked and found
-    # nothing to observe. justfetch saying "unsupported" is not evidence by
-    # itself — that is what the `absent` list exists to supply.
-    covered = {
-        module
-        for module in MODULES
-        if not no_observation(module, values.get(module)) or module in absent
-    }
-
     print(f"{'module':10} {'justfetch':34} {'platform tool':34} verdict")
     print("-" * 92)
-    counts = {"match": 0, "mismatch": 0, "unsupported": 0, "inconclusive": 0, "error": 0}
+    counts = {
+        "match": 0,
+        "mismatch": 0,
+        "unsupported": 0,
+        "inconclusive": 0,
+        "error": 0,
+    }
+    uncovered, not_comparable = [], []
     for module in MODULES:
         ours, theirs, result = evaluate(
-            module, document[module], values.get(module), absent
+            module, document[module], values.get(module), absent, not_applicable
         )
-        if result == "inconclusive" and module not in covered:
-            result = "not comparable" if module in not_applicable else "not covered"
+        if result == "not covered":
+            uncovered.append(module)
+        elif result == "not comparable":
+            not_comparable.append(module)
         else:
             counts[result] += 1
         tool = tools.get(module)
@@ -351,16 +353,15 @@ def main():
         print(f"{module:10} {show(ours):34} {theirs:34} {result}")
 
     print("-" * 92)
-    uncovered = [module for module in MODULES if module not in covered]
-    gaps = [module for module in uncovered if module not in not_applicable]
+    covered = len(MODULES) - len(uncovered) - len(not_comparable)
     print(
-        f"covered {len(covered)}/{len(MODULES)}: "
+        f"covered {covered}/{len(MODULES)}: "
         f"{counts['match']} match, {counts['unsupported']} unsupported, "
         f"{counts['inconclusive']} inconclusive, {counts['mismatch']} mismatch, "
         f"{counts['error']} error"
-        + (f"; declared not comparable: {', '.join(sorted(not_applicable))}"
-           if not_applicable else "")
-        + (f"; gap: {', '.join(gaps)}" if gaps else "")
+        + (f"; declared not comparable: {', '.join(not_comparable)}"
+           if not_comparable else "")
+        + (f"; gap: {', '.join(uncovered)}" if uncovered else "")
     )
 
     if counts["mismatch"] or counts["error"]:
@@ -377,10 +378,10 @@ def main():
         )
         return 3
 
-    if args.strict and gaps:
+    if args.strict and uncovered:
         print(
-            f"{len(gaps)} module(s) had neither an observation nor a declaration "
-            f"that they cannot be compared here: {', '.join(gaps)}. "
+            f"{len(uncovered)} module(s) had neither an observation nor a declaration "
+            f"that they cannot be compared here: {', '.join(uncovered)}. "
             "Strict mode treats that as missing evidence."
         )
         return 3

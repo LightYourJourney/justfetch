@@ -1104,9 +1104,11 @@ Two things that no amount of static review would have produced:
   compare (`not_applicable`) with the reason in the script, so an exclusion is a
   decision on record rather than a silent gap.
 
-27 comparison tests cover these, including two identical displays in both
+31 comparison tests cover these, including two identical displays in both
 directions, two identical GPU ids, an `unsupported` claim with and without
-backing evidence, and an all-unsupported run that must never pass.
+backing evidence, a device with no id riding along with one that has one, a
+declared `not comparable` module, an undeclared gap, an `unavailable` where the
+platform answered, and an all-unsupported run that must never pass.
 
 ### Review round on the real-hardware work
 
@@ -1125,13 +1127,18 @@ the machines they exist for:
   comparable because justfetch reads the same source a comparison would use.
   The Windows document shape was checked against the comparator with a
   simulated one.
-- `verify-wsl.sh` declared neither `gpu` nor `desktop`; both have evidence
-  checks now.
+- `verify-wsl.sh` declared `battery` and `display` unconditionally, which the
+  new contract forbids: an absence must be a look that came back empty. Every
+  declaration now reads sysfs and gives up when a read fails.
 - `verify-linux.sh` could declare the GPU absent when `lspci` had *failed*
-  rather than found nothing, and the battery absent without checking that
-  `/sys/class/power_supply` was readable. Both require a successful look now.
+  rather than found nothing, and the battery absent without confirming the read
+  succeeded. Both require a successful look now. Its battery and display
+  evidence also matches what the collector accepts: any supply whose `type` is
+  Battery, and "no connector is connected" rather than "no card exists".
 - `compare.py` dropped devices with no `id` when comparing by PCI id, so an
-  invented device with no id rode along unnoticed. Every device counts now.
+  invented device with no id rode along unnoticed. Every device counts now. Its
+  verdict is also decided in one place: `evaluate` returns the final verdict
+  instead of `main` relabelling a provisional one.
 
 ### Finding for v1.1: CPU on an unidentified ARM part
 

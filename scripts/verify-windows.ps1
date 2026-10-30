@@ -27,14 +27,21 @@ try {
     $absent = @()
     $notApplicable = @()
 
-    $battery = Get-CimInstance -ClassName Win32_Battery -ErrorAction SilentlyContinue | Select-Object -First 1
-    if (-not $battery) {
-        # No battery class instance is the CIM way of saying "no battery".
-        $absent += 'battery'
-    }
-    if ($battery) {
-        $values['battery'] = @{ percent = [int]$battery.EstimatedChargeRemaining }
-        $tools['battery'] = 'Win32_Battery'
+    # A failed CIM query is not evidence of absence: `-ErrorAction SilentlyContinue`
+    # returns nothing either way, so the query is attempted explicitly and only a
+    # successful empty result may declare the battery absent.
+    try {
+        $batteryQuery = @(Get-CimInstance -ClassName Win32_Battery -ErrorAction Stop)
+        $battery = $batteryQuery | Select-Object -First 1
+        if (-not $battery) {
+            # The class exists and lists nothing: this machine has no battery.
+            $absent += 'battery'
+        } else {
+            $values['battery'] = @{ percent = [int]$battery.EstimatedChargeRemaining }
+            $tools['battery'] = 'Win32_Battery'
+        }
+    } catch {
+        Write-Warning "Win32_Battery could not be queried: $_"
     }
 
     $adapters = @(Get-CimInstance -ClassName Win32_VideoController -ErrorAction SilentlyContinue)
@@ -43,17 +50,31 @@ try {
         $values['gpu'] = @{ names = @($adapters | ForEach-Object { $_.Name }) }
         $tools['gpu'] = 'Win32_VideoController'
     }
-    # Every adapter with a mode, not just the first: justfetch enumerates all
-    # monitors, so a multi-monitor machine would otherwise never match.
-    $resolutions = @($adapters |
-        Where-Object { $_.CurrentHorizontalResolution } |
-        ForEach-Object { "$($_.CurrentHorizontalResolution)x$($_.CurrentVerticalResolution)" })
-    if ($resolutions.Count -gt 0) {
-        $values['display'] = $resolutions
-        $tools['display'] = 'Win32_VideoController'
+    # justfetch lists monitors (EnumDisplayMonitors), not adapters, so the
+    # comparison uses the same unit. Win32_VideoController reports one mode per
+    # adapter and cannot see two monitors on one GPU.
+    try {
+        Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop
+        # GetMonitorInfoW reports physical pixels; the managed Bounds are DPI
+        # virtualized unless the process is DPI aware, so ask for that first.
+        $null = Add-Type -Namespace Jf -Name Dpi -MemberDefinition @'
+[System.Runtime.InteropServices.DllImport("user32.dll")]
+public static extern bool SetProcessDPIAware();
+'@ -ErrorAction Stop
+        [Jf.Dpi]::SetProcessDPIAware() | Out-Null
+        $screens = @([System.Windows.Forms.Screen]::AllScreens)
+        if ($screens.Count -gt 0) {
+            $values['display'] = @($screens | ForEach-Object {
+                "$($_.Bounds.Width)x$($_.Bounds.Height)" })
+            $tools['display'] = 'Screen.AllScreens'
+        }
+    } catch {
+        # Without the WinForms assembly there is no monitor-level API here.
+        $notApplicable += 'display'
+        Write-Warning "monitor enumeration unavailable: $_"
     }
-    # Adapter names come from a different API than Win32_VideoController's, so a
-    # GPU mismatch here is a wording difference more often than a defect.
+    # Adapter names come from a different API than justfetch's EnumDisplayDevicesW,
+    # so a GPU mismatch here is a wording difference more often than a defect.
 
     $scoop = Join-Path $env:USERPROFILE 'scoop\apps'
     if (Test-Path $scoop) {
@@ -72,7 +93,12 @@ try {
         $absent += 'desktop'
     }
 
-    $nativeJson = @{ tools = $tools; values = $values } | ConvertTo-Json -Depth 6
+    # The evidence lists must reach compare.py, or an `unsupported` verdict has
+    # nothing behind it and `not comparable` declarations are lost.
+    $nativeJson = @{
+        tools = $tools; values = $values
+        absent = @($absent); not_applicable = @($notApplicable)
+    } | ConvertTo-Json -Depth 6
     [System.IO.File]::WriteAllText((Join-Path $work 'native.json'), $nativeJson, $utf8)
 
     # The Store's `python` stub resolves but does not run; test each candidate.

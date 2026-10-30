@@ -41,12 +41,23 @@ def run(cmd):
     result = subprocess.run(cmd, capture_output=True, text=True)
     return result.stdout if result.returncode == 0 else ""
 
-# Battery: the first system battery in sysfs. The directory existing with no
-# battery entry is what "this machine has no battery" looks like.
-batteries = sorted(glob.glob("/sys/class/power_supply/BAT*"))
-if not batteries and os.path.isdir("/sys/class/power_supply"):
-    # The directory is readable and lists no battery: that is the evidence.
-    absent.append("battery")
+# Battery: justfetch accepts any supply whose `type` is Battery, so the script
+# looks the same way rather than globbing BAT*.
+supplies = os.listdir("/sys/class/power_supply") if os.path.isdir("/sys/class/power_supply") else None
+batteries = []
+if supplies is not None:
+    for name in supplies:
+        path = f"/sys/class/power_supply/{name}"
+        try:
+            kind = open(f"{path}/type").read().strip()
+        except OSError:
+            supplies = None  # could not look: no claim either way
+            break
+        if kind == "Battery":
+            batteries.append(path)
+    if supplies is not None and not batteries:
+        # Read successfully and listed no battery: that is the evidence.
+        absent.append("battery")
 for bat in batteries:
     try:
         scope = open(f"{bat}/scope").read().strip()
@@ -125,19 +136,34 @@ if resolutions:
     values["display"] = resolutions
     tools["display"] = "sysfs modes (same source as the estimate)"
 
-# No connected connector is evidence that nothing is attached, but only when
-# sysfs was readable: `/sys/class/drm` exists but exposes no card at all.
-if not resolutions and os.path.isdir("/sys/class/drm") and not glob.glob("/sys/class/drm/card[0-9]*"):
-    absent.append("display")
+# justfetch reports `unsupported` when no connector is connected, so the
+# evidence is exactly that: every connector was readable and none is connected.
+drm = os.listdir("/sys/class/drm") if os.path.isdir("/sys/class/drm") else None
+if drm is not None and not resolutions:
+    readable = True
+    for name in drm:
+        if "-" not in name:
+            continue
+        try:
+            if open(f"/sys/class/drm/{name}/status").read().strip() == "connected":
+                readable = False  # a connected connector the first pass missed
+                break
+        except OSError:
+            readable = False
+            break
+    if readable:
+        absent.append("display")
 
 # Desktop and locale: what the session actually exported.
 desktop = os.environ.get("XDG_CURRENT_DESKTOP", "").split(":")[-1]
 if desktop:
     values["desktop"] = desktop
     tools["desktop"] = "XDG_CURRENT_DESKTOP"
-elif not os.environ.get("XDG_SESSION_DESKTOP") and not os.environ.get("DESKTOP_SESSION"):
-    # No session variables at all: a headless session or a plain TTY. justfetch
-    # reports unavailable or unsupported there, and this is the evidence.
+elif not any(os.environ.get(name) for name in
+             ("XDG_SESSION_DESKTOP", "DESKTOP_SESSION",
+              "SWAYSOCK", "HYPRLAND_INSTANCE_SIGNATURE")):
+    # Every variable src/detect/desktop.rs reads is unset. justfetch reports
+    # unsupported on a TTY and unavailable otherwise; this is the evidence.
     absent.append("desktop")
 for key in ("LC_ALL", "LC_MESSAGES", "LANG"):
     if os.environ.get(key):

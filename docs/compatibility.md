@@ -30,7 +30,7 @@ GPU are reported that way.
 | --- | --- | --- | --- | --- |
 | macOS ARM64 | Complete | Native build/test/release | Apple M3 / Mac15,12 / macOS 26.6.2 locally; Apple M1 (Virtual) / VirtualMac2,1 on the macOS runner. All fields available at the time of that run; `battery` was added later and verified locally (below) | Executed: run 40301536939 |
 | macOS Intel | Complete | Cross-compiled locally and executed under Rosetta 2 on Apple Silicon; not run on Intel hardware | Not tested on Intel hardware | macOS runner is ARM64; no Intel runner |
-| Linux ARM64 | Complete | Passed cargo check (Rust 1.98.1; no cross link/run) | Executed in the release workflow: the packaged archive ran on an ARM64 runner and reported `os` and `memory` available. Not exercised interactively, and no distribution was tested | Release workflow run 40304542365 |
+| Linux ARM64 | Complete | Passed cargo check (Rust 1.98.1; no cross link/run) | Executed twice: the packaged archive on a CI ARM64 runner (`os`, `memory` available), and the published `aarch64-unknown-linux-gnu` archive on Ubuntu 26.04.1 aarch64 under QEMU, where `verify-linux.sh` matched packages against `dpkg-query` (675) and locale against `LANG`, and confirmed four absences (no battery, no DRM card, no connected connector, no desktop session) | Release run 40304542365; validation record 2026-10-30 |
 | Linux x86-64 | Complete | Passed cargo check (Rust 1.98.1; no link/run) | Executed on Ubuntu 24.04 (Azure VM, kernel 6.17.0-1022-azure), then re-run in CI with the eleven-field build: all eleven fields then available, os-release and proc parsers live, parent-shell path exercised. `battery` added later and not yet run on Linux | Executed: run 38604699769, then 40301536939 |
 | Windows x86-64 | Complete | GNU-target cargo check (Rust 1.98.1; no link/run) | Executed on Windows Server 2025 Datacenter build 26100, MSVC toolchain, then re-run in CI with the eleven-field build: nine fields available, `swap` unsupported, and `terminal` unavailable because a CI job has no terminal environment; registry OS name, GlobalMemoryStatusEx and ToolHelp parent snapshot live | Executed: run 38604699769, then 40301536939 |
 | WSL1 | Linux adapter, WSL detection/semantic safeguards | Pure parser fixtures only | Not tested in WSL1 | No WSL runner; `scripts/verify-wsl.sh` is the procedure |
@@ -45,7 +45,7 @@ TTY it is `unavailable` (the variables are absent, not the concept), and under a
 plain TTY it is `unsupported`. The script accepts exactly those states, and
 checks that `environment.kind` says `wsl`.
 
-"Executed" means the release binary ran on a real kernel of that platform and returned the JSON above; it does not mean every distribution, device or hardware configuration has been tried. What the runners establish is that the Linux `os-release`/`proc`/sysfs and parent-shell paths and the Windows registry/memory/ToolHelp paths work on at least one real system each. Arch, Debian, Fedora, Gentoo, openSUSE, NixOS, Intel Macs, WSL and container guests remain unexercised. ARM64 Linux has had one non-interactive run, described in its row, which is not a distribution or interactive check.
+"Executed" means the release binary ran on a real kernel of that platform and returned the JSON above; it does not mean every distribution, device or hardware configuration has been tried. What the runners establish is that the Linux `os-release`/`proc`/sysfs and parent-shell paths and the Windows registry/memory/ToolHelp paths work on at least one real system each. Arch, Debian, Fedora, Gentoo, openSUSE, NixOS, Intel Macs, WSL and container guests remain unexercised. ARM64 Linux has had one CI run and one Ubuntu 26.04 run under QEMU, both non-interactive; neither is an interactive desktop check, and no ARM64 hardware was used.
 
 ### Display (Phase 12)
 
@@ -197,7 +197,12 @@ scripts/verify-wsl.sh        # inside WSL1/WSL2
 
 Exit status is 0 when nothing comparable disagreed, 1 on a mismatch or an error,
 2 on a setup problem, and 3 in strict mode when a module has neither an
-observation nor a declared exclusion, or when the run confirmed nothing at all. Paste the table into `docs/validation.md` with the date, the OS
+observation nor a declared exclusion, or when the run confirmed nothing at all.
+
+The scripts declare two kinds of absence: `absent` means the script looked and
+found nothing, and only that makes an `unsupported` verdict count; `not
+comparable` means the script cannot compare the module on this platform, with
+the reason written in the script. Paste the table into `docs/validation.md` with the date, the OS
 version and whether the machine was virtual.
 
 ## Exact memory definitions
