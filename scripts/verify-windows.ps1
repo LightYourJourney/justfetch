@@ -25,6 +25,7 @@ try {
     $values = [ordered]@{}
     $tools = [ordered]@{}
     $absent = @()
+    $notApplicable = @()
 
     $battery = Get-CimInstance -ClassName Win32_Battery -ErrorAction SilentlyContinue | Select-Object -First 1
     if (-not $battery) {
@@ -60,8 +61,16 @@ try {
         $tools['packages'] = 'scoop/apps'
     }
 
-    # locale is deliberately absent: justfetch reads GetUserDefaultLocaleName,
+    # locale is declared not comparable: justfetch reads GetUserDefaultLocaleName,
     # and comparing it with CultureInfo would compare the same source twice.
+    $notApplicable += 'locale'
+
+    # Windows has no desktop environment in justfetch's sense. Evidence: none of
+    # the variables a desktop session exports are present.
+    $sessionVars = @('XDG_CURRENT_DESKTOP', 'XDG_SESSION_DESKTOP', 'DESKTOP_SESSION', 'WAYLAND_DISPLAY')
+    if (-not ($sessionVars | Where-Object { [Environment]::GetEnvironmentVariable($_) })) {
+        $absent += 'desktop'
+    }
 
     $nativeJson = @{ tools = $tools; values = $values } | ConvertTo-Json -Depth 6
     [System.IO.File]::WriteAllText((Join-Path $work 'native.json'), $nativeJson, $utf8)

@@ -1108,6 +1108,31 @@ Two things that no amount of static review would have produced:
 directions, two identical GPU ids, an `unsupported` claim with and without
 backing evidence, and an all-unsupported run that must never pass.
 
+### Review round on the real-hardware work
+
+The review reproduced both runs and found two scripts that would have failed on
+the machines they exist for:
+
+- `verify-macos.sh` parsed `pmset`'s state as the first word after the
+  semicolon. "finishing charge" became `finishing`, which is not a state, so a
+  machine on AC that had not yet topped out reported a battery mismatch. The
+  phrase is mapped now, and an unrecognised phrase is left out of the comparison
+  instead of being forced into a state. The "no battery" test also looked for
+  the wrong phrase; `pmset` prints "No batteries available."
+- `verify-windows.ps1` declared neither `desktop` nor `locale`, so a correct
+  Windows run would have ended at exit 3 with a gap. `desktop` is declared
+  absent on evidence (no desktop-session variables), `locale` is declared not
+  comparable because justfetch reads the same source a comparison would use.
+  The Windows document shape was checked against the comparator with a
+  simulated one.
+- `verify-wsl.sh` declared neither `gpu` nor `desktop`; both have evidence
+  checks now.
+- `verify-linux.sh` could declare the GPU absent when `lspci` had *failed*
+  rather than found nothing, and the battery absent without checking that
+  `/sys/class/power_supply` was readable. Both require a successful look now.
+- `compare.py` dropped devices with no `id` when comparing by PCI id, so an
+  invented device with no id rode along unnoticed. Every device counts now.
+
 ### Finding for v1.1: CPU on an unidentified ARM part
 
 On this VM `cpu` is `unavailable` — "CPU brand not exposed by the system
@@ -1117,8 +1142,13 @@ adapter" — while the machine plainly has four cores. sysinfo 0.39.6 maps an AR
 
 Two consequences worth recording:
 
-- It is a property of this VM's CPU identification, not of ARM64 Linux: real ARM
-  hardware reports a part id, and the mapping hits.
+- It is at least partly a property of this VM: it reports `CPU part: 0x000`,
+  which no table can map. Whether real ARM hardware is unaffected is *not*
+  established here — sysinfo 0.39.6's part table is finite (its own comment asks
+  maintainers to keep extending it), so an unmapped part on real hardware with no
+  `model name` would produce the same `unavailable`. Treating this as
+  VM-specific is a hypothesis, not a finding; it needs one run on real ARM
+  hardware to settle.
 - When the brand is unknown, `CpuInfo` carries a required `name`, so the whole
   module becomes `unavailable` and the known core count is discarded. Preserving
   the count would mean making `name` optional in the JSON contract — a v1.1

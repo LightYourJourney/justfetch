@@ -44,7 +44,8 @@ def run(cmd):
 # Battery: the first system battery in sysfs. The directory existing with no
 # battery entry is what "this machine has no battery" looks like.
 batteries = sorted(glob.glob("/sys/class/power_supply/BAT*"))
-if not batteries:
+if not batteries and os.path.isdir("/sys/class/power_supply"):
+    # The directory is readable and lists no battery: that is the evidence.
     absent.append("battery")
 for bat in batteries:
     try:
@@ -90,7 +91,8 @@ if names:
     values["gpu"] = {"names": names}
     tools["gpu"] = "/proc/driver/nvidia"
 elif shutil.which("lspci"):
-    for line in run(["lspci", "-nn"]).splitlines():
+    listing = subprocess.run(["lspci", "-nn"], capture_output=True, text=True)
+    for line in (listing.stdout if listing.returncode == 0 else "").splitlines():
         if not re.search(r"(VGA compatible|3D controller|Display controller)", line):
             continue
         token = re.search(r"\[([0-9a-fA-F]{4}:[0-9a-fA-F]{4})\]", line)
@@ -100,9 +102,10 @@ elif shutil.which("lspci"):
     if ids:
         values["gpu"] = {"ids": ids, "names": names}
         tools["gpu"] = "lspci -nn"
-    elif shutil.which("lspci") and not glob.glob("/sys/class/drm/card[0-9]*"):
-        # No DRM card and lspci lists no display adapter: the machine really has
-        # none, which is what justfetch's "unsupported" claims.
+    elif (shutil.which("lspci") and listing.returncode == 0 and not names
+          and not glob.glob("/sys/class/drm/card[0-9]*")):
+        # lspci ran, listed no display adapter, and sysfs has no DRM card: the
+        # machine really has none, which is what justfetch's "unsupported" claims.
         absent.append("gpu")
 
 # Display: sysfs knows the preferred mode, which is what Linux reports. The

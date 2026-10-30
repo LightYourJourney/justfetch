@@ -37,25 +37,38 @@ work = pathlib.Path(sys.argv[1])
 values, tools, absent, not_applicable = {}, {}, [], []
 
 # macOS has no desktop environment or window manager in justfetch's sense. The
-# independent check: none of the variables a desktop session sets are present,
-# and there is no Wayland socket — which is what "no DE here" means in practice.
+# independent check: none of the variables a desktop session sets are present.
 session_vars = ("XDG_CURRENT_DESKTOP", "XDG_SESSION_DESKTOP", "DESKTOP_SESSION",
                 "SWAYSOCK", "HYPRLAND_INSTANCE_SIGNATURE", "WAYLAND_DISPLAY")
 if not any(os.environ.get(name) for name in session_vars):
     absent.append("desktop")
 
-# The battery check distinguishes "no battery" from "could not read". pmset
-# prints "no batteries" on a desktop Mac.
+# The battery check distinguishes "no battery" from "could not read". On a Mac
+# with no battery pmset prints "No batteries available."
 battery_out = subprocess.run(["pmset", "-g", "batt"], capture_output=True, text=True).stdout
-if "no battery" in battery_out.lower():
+if "no batter" in battery_out.lower():
     absent.append("battery")
 
 # Battery: pmset reports "87%; discharging; ...".
-match = re.search(r"(\d+)%;\s*(\w+)", battery_out)
+match = re.search(r"(\d+)%;\s*([^;]+)", battery_out)
 if match:
-    values["battery"] = {"percent": int(match.group(1)),
-                         "state": {"charged": "full", "charging": "charging",
-                                   "discharging": "discharging"}.get(match.group(2), "unknown")}
+    # pmset's state phrases: "charged", "charging", "finishing charge",
+    # "discharging", "AC attached". Split on whitespace and map the first word
+    # that carries meaning, so "finishing charge" is charging, not "finishing".
+    phrase = match.group(2).strip().lower()
+    if phrase.startswith("finishing") or phrase.startswith("charging"):
+        state = "charging"
+    elif phrase.startswith("charged") or phrase.startswith("full"):
+        state = "full"
+    elif phrase.startswith("discharging"):
+        state = "discharging"
+    elif phrase.startswith("ac attached"):
+        state = "unknown"  # plugged in, pmset reports no charge state
+    else:
+        state = None  # do not compare a state we cannot name
+    values["battery"] = {"percent": int(match.group(1)), "state": state}
+    if state is None:
+        del values["battery"]["state"]
     tools["battery"] = "pmset"
 
 # GPU: the chipset model line.

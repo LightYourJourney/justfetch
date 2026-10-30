@@ -196,8 +196,8 @@ scripts/verify-wsl.sh        # inside WSL1/WSL2
 ```
 
 Exit status is 0 when nothing comparable disagreed, 1 on a mismatch or an error,
-2 on a setup problem, and 3 in strict mode when a covered module had no
-comparison. Paste the table into `docs/validation.md` with the date, the OS
+2 on a setup problem, and 3 in strict mode when a module has neither an
+observation nor a declared exclusion, or when the run confirmed nothing at all. Paste the table into `docs/validation.md` with the date, the OS
 version and whether the machine was virtual.
 
 ## Exact memory definitions

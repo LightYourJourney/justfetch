@@ -252,6 +252,15 @@ class Compare(unittest.TestCase):
         result = self.run_compare(doc, native)
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
 
+    def test_a_device_with_no_id_cannot_ride_along(self):
+        # An extra device that identifies as nothing must not be ignored.
+        doc = document(**AVAILABLE)
+        doc["gpu"]["value"]["devices"] = [{"id": "10de:2684"}, {"name": "Fake Extra"}]
+        native = copy.deepcopy(NATIVE)
+        native["values"]["gpu"] = {"ids": ["10de:2684"]}
+        result = self.run_compare(doc, native)
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+
     def test_strict_accepts_a_full_match(self):
         result = self.run_compare(document(**AVAILABLE), NATIVE, strict=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

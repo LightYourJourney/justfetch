@@ -34,14 +34,23 @@ trap 'rm -rf "$work"' EXIT HUP INT TERM
   || { echo "justfetch failed" >&2; exit 2; }
 
 python3 - "$work" <<'PY' || { echo "failed to gather native observations" >&2; exit 2; }
-import json, os, pathlib, shutil, subprocess, sys
+import glob, json, os, pathlib, shutil, subprocess, sys
 
 work = pathlib.Path(sys.argv[1])
 values, tools, absent, not_applicable = {}, {}, [], []
 
 # WSL has no battery or display of its own: those belong to the Windows host and
-# no Linux interface exposes them. That is what `absent` records.
+# no Linux interface exposes them. GPU depends: WSL2 with a GPU passthrough has
+# /dev/dxg but no DRM card, so a missing DRM card is the evidence for both.
 absent.extend(["battery", "display"])
+if not glob.glob("/sys/class/drm/card[0-9]*"):
+    absent.append("gpu")
+
+# No desktop-session variables: WSLg may set WAYLAND_DISPLAY for applications,
+# but justfetch's desktop module reads the desktop variables, so match that.
+if not any(os.environ.get(name) for name in
+           ("XDG_CURRENT_DESKTOP", "XDG_SESSION_DESKTOP", "DESKTOP_SESSION")):
+    absent.append("desktop")
 
 if shutil.which("dpkg-query"):
     result = subprocess.run(["dpkg-query", "-W", "-f=${db:Status-Abbrev}\\n"],

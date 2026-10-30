@@ -23,9 +23,10 @@ Each module gets one verdict:
   not covered   the script gathered no observation, and justfetch did not say
                 the question does not apply
 
-Exit status: 0 pass, 1 mismatch or error, 2 bad input, 3 (strict only) a covered
-module had no comparison. Only non-identifying values are printed: counts,
-resolutions, names, locales.
+Exit status: 0 pass, 1 mismatch or error, 2 bad input, 3 strict only — a module
+had neither an observation nor a declared exclusion, or nothing was confirmed at
+all. Only non-identifying values are printed: counts, resolutions, names,
+locales.
 """
 
 import argparse
@@ -102,14 +103,19 @@ def compare(module, value, native):
         devices = value.get("devices") or []
         # Multisets, not sets: two identical adapters are two adapters, and a
         # document reporting one of them must not match a machine with two.
+        # Every device counts, including one with neither id nor name — a device
+        # that identifies as nothing cannot match an identified one.
         if native.get("ids"):
             ours = Counter(
-                str(d.get("id", "")).lower() for d in devices if d.get("id")
+                str(device["id"]).lower()
+                if device.get("id")
+                else f"\0{device.get('name') or ''}"
+                for device in devices
             )
             return bool(ours) and ours == Counter(str(i).lower() for i in native["ids"])
         ours = Counter(
-            (device.get("name") or "").strip().lower() for device in devices
-            if (device.get("name") or "").strip()
+            (device.get("name") or "").strip().lower() or "\0"
+            for device in devices
         )
         theirs = Counter(
             name.strip().lower() for name in native.get("names", []) if name.strip()
