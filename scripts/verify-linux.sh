@@ -35,14 +35,18 @@ python3 - "$work" <<'PY' || { echo "failed to gather native observations" >&2; e
 import glob, json, os, pathlib, re, shutil, subprocess, sys
 
 work = pathlib.Path(sys.argv[1])
-values, tools = {}, {}
+values, tools, absent, not_applicable = {}, {}, [], []
 
 def run(cmd):
     result = subprocess.run(cmd, capture_output=True, text=True)
     return result.stdout if result.returncode == 0 else ""
 
-# Battery: the first system battery in sysfs.
-for bat in sorted(glob.glob("/sys/class/power_supply/BAT*")):
+# Battery: the first system battery in sysfs. The directory existing with no
+# battery entry is what "this machine has no battery" looks like.
+batteries = sorted(glob.glob("/sys/class/power_supply/BAT*"))
+if not batteries:
+    absent.append("battery")
+for bat in batteries:
     try:
         scope = open(f"{bat}/scope").read().strip()
         if scope and scope != "System":
@@ -96,6 +100,10 @@ elif shutil.which("lspci"):
     if ids:
         values["gpu"] = {"ids": ids, "names": names}
         tools["gpu"] = "lspci -nn"
+    elif shutil.which("lspci") and not glob.glob("/sys/class/drm/card[0-9]*"):
+        # No DRM card and lspci lists no display adapter: the machine really has
+        # none, which is what justfetch's "unsupported" claims.
+        absent.append("gpu")
 
 # Display: sysfs knows the preferred mode, which is what Linux reports. The
 # current mode lives in the compositor, so comparing against xrandr would
@@ -114,18 +122,29 @@ if resolutions:
     values["display"] = resolutions
     tools["display"] = "sysfs modes (same source as the estimate)"
 
+# No connected connector is evidence that nothing is attached, but only when
+# sysfs was readable: `/sys/class/drm` exists but exposes no card at all.
+if not resolutions and os.path.isdir("/sys/class/drm") and not glob.glob("/sys/class/drm/card[0-9]*"):
+    absent.append("display")
+
 # Desktop and locale: what the session actually exported.
 desktop = os.environ.get("XDG_CURRENT_DESKTOP", "").split(":")[-1]
 if desktop:
     values["desktop"] = desktop
     tools["desktop"] = "XDG_CURRENT_DESKTOP"
+elif not os.environ.get("XDG_SESSION_DESKTOP") and not os.environ.get("DESKTOP_SESSION"):
+    # No session variables at all: a headless session or a plain TTY. justfetch
+    # reports unavailable or unsupported there, and this is the evidence.
+    absent.append("desktop")
 for key in ("LC_ALL", "LC_MESSAGES", "LANG"):
     if os.environ.get(key):
         values["locale"] = os.environ[key]
         tools["locale"] = key
         break
 
-(work / "native.json").write_text(json.dumps({"tools": tools, "values": values}, indent=2))
+(work / "native.json").write_text(json.dumps(
+    {"tools": tools, "values": values, "absent": absent,
+     "not_applicable": not_applicable}, indent=2))
 PY
 
 python3 "$here/compare.py" --strict --justfetch "$work/doc.json" --native "$work/native.json"

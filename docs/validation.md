@@ -1019,3 +1019,115 @@ Twenty comparison tests cover the counterexamples: an error with native data, an
 module, an extra display, empty observations, a malformed document, the wrong
 native shape and fabricated extra adapters or managers. The schema tests are
 separate and validate documents, not comparisons.
+
+## Real-hardware round (2026-10-30)
+
+Phase 17. Two real platforms were reachable from this machine; the rest are not,
+and stay unverified rather than inferred.
+
+### Platforms
+
+| Platform | Kind | How |
+| --- | --- | --- |
+| macOS 26.6.2, Mac15,12 (Apple M3) | Physical, bare metal | `scripts/verify-macos.sh` |
+| Ubuntu 26.04.1 LTS, kernel 7.0.0-34-generic, aarch64 | Virtual machine (QEMU on the same host) | `scripts/verify-linux.sh` against the published `aarch64-unknown-linux-gnu` archive |
+| Windows 11, WSL1/WSL2, Intel macOS | Not reachable | Unverified; the scripts are the procedure |
+
+The Linux run used the **published release artifact**, not a local build: its
+`SHA256SUMS` entry verified before it ran. That is the strongest form of this
+evidence available here — it tests the binary a user would download.
+
+### macOS run
+
+```
+gpu        Apple M3                      {"names": ["Apple M3"]} (system_profiler)  match
+battery    84% charging                  {"percent": 84, ...} (pmset)               match
+display    1470x956                      —                    not comparable
+packages   homebrew formulae 884, ...    {"homebrew formulae": 884, ...} (brew list) match
+desktop    unsupported                   —                    unsupported
+locale     zh_CN.UTF-8                   zh_CN.UTF-8 ($LANG)                        match
+covered 5/6: 4 match, 1 unsupported; declared not comparable: display
+```
+
+`desktop` is `unsupported` only because the script independently checked that no
+desktop-session variable or Wayland socket exists. `display` is declared not
+comparable by the script: justfetch reports the current mode's logical points,
+`system_profiler` the panel.
+
+### Ubuntu 26.04 aarch64 run
+
+Session: SSH, `XDG_SESSION_TYPE=tty`, no desktop variables, no
+`/sys/class/power_supply` entries, no DRM card, `lspci` lists no display
+adapter — a headless machine with no battery, which is exactly the combination
+this round was meant to cover.
+
+```
+gpu        unsupported                   —                    unsupported
+battery    unsupported                   —                    unsupported
+display    unsupported                   —                    unsupported
+packages   dpkg 675                      {"dpkg": 675} (dpkg-query)  match
+desktop    unsupported                   —                    unsupported
+locale     C.UTF-8                       C.UTF-8 (LANG)       match
+covered 6/6: 2 match, 4 unsupported
+```
+
+The four `unsupported` verdicts are backed by independent observations, not by
+justfetch's own claim: no DRM card and no PCI display device, no
+`power_supply` entry, no connector, no session variables. The two `match`
+verdicts are real counts — `dpkg-query` and the `/var/lib/dpkg/status` parse
+agree at 675.
+
+### What the real Linux run changed
+
+Two things that no amount of static review would have produced:
+
+1. The GPU and display checks had no way to record a *verified absence*, so a
+   headless machine produced a coverage gap instead of a verdict. The script now
+   records `absent` when it has looked and found nothing, and `compare.py`
+   refuses to count an `unsupported` claim that no observation backs.
+2. The same run produced the comparator fixes below. Both were found by running,
+   not by reading.
+
+### Comparator changes
+
+- **Duplicate devices.** `display` and `gpu` compared sets, so two identical
+  monitors collapsed into one — a document reporting a single display would have
+  matched a machine with two. Both compare multisets now (`Counter`).
+- **`unsupported` without evidence.** A module marked `unsupported` counted as
+  covered even when the script had observed nothing. It now counts only when the
+  script lists it in `absent`, having looked and found nothing.
+- **Zero valid comparisons.** Strict mode accepted a run where every module was
+  unsupported or unobserved. It now requires at least one confirmed match, and
+  fails (exit 3) when a module has neither an observation nor a declaration that
+  it cannot be compared here.
+- **Declared exclusions.** The platform scripts declare modules they cannot
+  compare (`not_applicable`) with the reason in the script, so an exclusion is a
+  decision on record rather than a silent gap.
+
+27 comparison tests cover these, including two identical displays in both
+directions, two identical GPU ids, an `unsupported` claim with and without
+backing evidence, and an all-unsupported run that must never pass.
+
+### Finding for v1.1: CPU on an unidentified ARM part
+
+On this VM `cpu` is `unavailable` — "CPU brand not exposed by the system
+adapter" — while the machine plainly has four cores. sysinfo 0.39.6 maps an ARM
+`CPU part` (0xd03 → Cortex-A53 and so on) to a brand and falls back to
+`model name`; this VM reports `CPU part: 0x000`, so neither source yields a name.
+
+Two consequences worth recording:
+
+- It is a property of this VM's CPU identification, not of ARM64 Linux: real ARM
+  hardware reports a part id, and the mapping hits.
+- When the brand is unknown, `CpuInfo` carries a required `name`, so the whole
+  module becomes `unavailable` and the known core count is discarded. Preserving
+  the count would mean making `name` optional in the JSON contract — a v1.1
+  change, not one to make at a release candidate. Filed here as a known
+  limitation rather than fixed.
+
+### Not covered by this round
+
+Windows 11, WSL1/WSL2, Intel macOS on real hardware, multi-GPU or multi-monitor
+machines, a graphical Linux desktop, and remote-desktop sessions. The comparator
+handles duplicate devices and the scripts declare what they cannot compare, but
+none of those configurations was executed.

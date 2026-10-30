@@ -37,7 +37,11 @@ python3 - "$work" <<'PY' || { echo "failed to gather native observations" >&2; e
 import json, os, pathlib, shutil, subprocess, sys
 
 work = pathlib.Path(sys.argv[1])
-values, tools = {}, {}
+values, tools, absent, not_applicable = {}, {}, [], []
+
+# WSL has no battery or display of its own: those belong to the Windows host and
+# no Linux interface exposes them. That is what `absent` records.
+absent.extend(["battery", "display"])
 
 if shutil.which("dpkg-query"):
     result = subprocess.run(["dpkg-query", "-W", "-f=${db:Status-Abbrev}\\n"],
@@ -53,7 +57,9 @@ for key in ("LC_ALL", "LC_MESSAGES", "LANG"):
         tools["locale"] = key
         break
 
-(work / "native.json").write_text(json.dumps({"tools": tools, "values": values}, indent=2))
+(work / "native.json").write_text(json.dumps(
+    {"tools": tools, "values": values, "absent": absent,
+     "not_applicable": not_applicable}, indent=2))
 PY
 
 python3 "$here/compare.py" --strict --justfetch "$work/doc.json" --native "$work/native.json"

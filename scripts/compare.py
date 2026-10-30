@@ -31,6 +31,7 @@ resolutions, names, locales.
 import argparse
 import json
 import sys
+from collections import Counter
 
 MODULES = ["gpu", "battery", "display", "packages", "desktop", "locale"]
 
@@ -99,19 +100,27 @@ def compare(module, value, native):
         return bool(native) and ours == native
     if module == "gpu":
         devices = value.get("devices") or []
-        # PCI ids are exact; names are the fallback where the platform has none.
+        # Multisets, not sets: two identical adapters are two adapters, and a
+        # document reporting one of them must not match a machine with two.
         if native.get("ids"):
-            ours = {str(d.get("id", "")).lower() for d in devices if d.get("id")}
-            return bool(ours) and ours == {str(i).lower() for i in native["ids"]}
-        ours = gpu_text(value).lower()
-        names = [name.strip().lower() for name in native.get("names", []) if name.strip()]
-        # Every adapter the platform reports appears in ours, and ours reports
-        # no adapter the platform does not — a fabricated extra fails the count.
-        return bool(names) and len(names) == len(devices) and all(n in ours for n in names)
-    if module == "display":
-        ours = {f"{unit['width']}x{unit['height']}" for unit in value.get("displays", [])}
-        theirs = {str(resolution) for resolution in native}
+            ours = Counter(
+                str(d.get("id", "")).lower() for d in devices if d.get("id")
+            )
+            return bool(ours) and ours == Counter(str(i).lower() for i in native["ids"])
+        ours = Counter(
+            (device.get("name") or "").strip().lower() for device in devices
+            if (device.get("name") or "").strip()
+        )
+        theirs = Counter(
+            name.strip().lower() for name in native.get("names", []) if name.strip()
+        )
         return bool(ours) and ours == theirs
+    if module == "display":
+        # Also multisets: two monitors at the same resolution are two monitors.
+        ours = Counter(
+            f"{unit['width']}x{unit['height']}" for unit in value.get("displays", [])
+        )
+        return bool(ours) and ours == Counter(str(resolution) for resolution in native)
     if module in ("desktop", "locale"):
         ours, theirs = TEXTS[module](value).lower(), str(native).lower()
         return bool(ours) and bool(theirs) and (theirs in ours or ours in theirs)
@@ -131,16 +140,22 @@ def no_observation(module, native):
     return module == "battery" and isinstance(native, dict) and "percent" not in native
 
 
-def evaluate(module, field, native):
+def evaluate(module, field, native, absent):
     """Return (justfetch text, native text, verdict).
 
     The verdicts are the ones the acceptance procedure uses:
 
       match         the two agree
       mismatch      they disagree
-      unsupported   justfetch says not applicable, and the platform tool agrees
+      unsupported   justfetch says not applicable, and the script checked that
+                    it really is (`absent` lists the modules it verified absent)
       inconclusive  there is no comparison — either side has nothing
       error         justfetch reported a failure; always a finding
+
+    `unsupported` without that independent check is `not covered`: justfetch
+    saying "not applicable" on its own is a claim, not evidence. A module the
+    script declared it cannot compare (`--not-applicable`) is reported as
+    `not comparable` and does not count against the run.
     """
     status = field.get("status")
     value = field.get("value") or {}
@@ -157,10 +172,14 @@ def evaluate(module, field, native):
         return text, show(native), "match" if compare(module, value, native) else "mismatch"
 
     if status == "unsupported":
-        if native is None:
+        if native is not None:
+            # The platform has an answer justfetch declined to give.
+            return status, show(native), "mismatch"
+        if module in absent:
+            # The script looked and found nothing; that is evidence.
             return status, "—", "unsupported"
-        # The platform has an answer justfetch declined to give.
-        return status, show(native), "mismatch"
+        # Nothing was observed either way: the claim stands unverified.
+        return status, "—", "inconclusive"
     # unavailable, redacted, deselected: no value on our side.
     return status, show(native) if native is not None else "—", "inconclusive"
 
@@ -187,6 +206,13 @@ def check_inputs(document, native):
         return "the native file is not an object"
     if not isinstance(native.get("tools", {}), dict):
         return "native `tools` is not an object"
+    for key in ("absent", "not_applicable"):
+        names = native.get(key, [])
+        if not isinstance(names, list) or not all(isinstance(m, str) for m in names):
+            return f"native `{key}` must be a list of module names"
+        unknown = [m for m in names if m not in MODULES]
+        if unknown:
+            return f"native `{key}` names unknown modules: {', '.join(unknown)}"
     values = native.get("values", {})
     if not isinstance(values, dict):
         return "native `values` is not an object"
@@ -289,24 +315,28 @@ def main():
 
     tools = native.get("tools", {})
     values = native.get("values", {})
+    absent = set(native.get("absent", []))
+    not_applicable = set(native.get("not_applicable", []))
 
-    # A module is covered when the platform tool produced something for it, or
-    # when justfetch says the question does not apply — both are verdicts with
-    # evidence behind them. A module with neither is reported as not covered.
+    # A module is covered when there is evidence behind its verdict: the
+    # platform tool produced an observation, or the script checked and found
+    # nothing to observe. justfetch saying "unsupported" is not evidence by
+    # itself — that is what the `absent` list exists to supply.
     covered = {
         module
         for module in MODULES
-        if not no_observation(module, values.get(module))
-        or document[module]["status"] == "unsupported"
+        if not no_observation(module, values.get(module)) or module in absent
     }
 
     print(f"{'module':10} {'justfetch':34} {'platform tool':34} verdict")
     print("-" * 92)
     counts = {"match": 0, "mismatch": 0, "unsupported": 0, "inconclusive": 0, "error": 0}
     for module in MODULES:
-        ours, theirs, result = evaluate(module, document[module], values.get(module))
+        ours, theirs, result = evaluate(
+            module, document[module], values.get(module), absent
+        )
         if result == "inconclusive" and module not in covered:
-            result = "not covered"
+            result = "not comparable" if module in not_applicable else "not covered"
         else:
             counts[result] += 1
         tool = tools.get(module)
@@ -316,12 +346,15 @@ def main():
 
     print("-" * 92)
     uncovered = [module for module in MODULES if module not in covered]
+    gaps = [module for module in uncovered if module not in not_applicable]
     print(
         f"covered {len(covered)}/{len(MODULES)}: "
         f"{counts['match']} match, {counts['unsupported']} unsupported, "
         f"{counts['inconclusive']} inconclusive, {counts['mismatch']} mismatch, "
         f"{counts['error']} error"
-        + (f"; not covered: {', '.join(uncovered)}" if uncovered else "")
+        + (f"; declared not comparable: {', '.join(sorted(not_applicable))}"
+           if not_applicable else "")
+        + (f"; gap: {', '.join(gaps)}" if gaps else "")
     )
 
     if counts["mismatch"] or counts["error"]:
@@ -338,8 +371,28 @@ def main():
         )
         return 3
 
+    if args.strict and gaps:
+        print(
+            f"{len(gaps)} module(s) had neither an observation nor a declaration "
+            f"that they cannot be compared here: {', '.join(gaps)}. "
+            "Strict mode treats that as missing evidence."
+        )
+        return 3
+
+    # Acceptance needs at least one value the two sides actually agreed on.
+    # Otherwise "everything was unsupported or unobserved" would pass as a run.
+    if args.strict and counts["match"] == 0:
+        print(
+            "strict mode needs at least one confirmed match; this run compared "
+            "nothing, so it is not acceptance evidence."
+        )
+        return 3
+
     if args.strict:
-        print("Strict: every covered module matched or was genuinely unsupported.")
+        print(
+            f"Strict: {counts['match']} confirmed match(es); the rest were "
+            "verified absent or unsupported."
+        )
     else:
         print("Diagnostic: no disagreement found. 'inconclusive', 'not covered' and 'unsupported' are not passes; use --strict for acceptance.")
     return 0

@@ -31,14 +31,27 @@ trap 'rm -rf "$work"' EXIT HUP INT TERM
 # Native observations. Only non-identifying values are recorded: no serial
 # numbers, no user or host names.
 python3 - "$work" <<'PY' || { echo "failed to gather native observations" >&2; exit 2; }
-import json, re, subprocess, sys, pathlib
+import json, os, re, subprocess, sys, pathlib, shutil
 
 work = pathlib.Path(sys.argv[1])
-values, tools = {}, {}
+values, tools, absent, not_applicable = {}, {}, [], []
+
+# macOS has no desktop environment or window manager in justfetch's sense. The
+# independent check: none of the variables a desktop session sets are present,
+# and there is no Wayland socket — which is what "no DE here" means in practice.
+session_vars = ("XDG_CURRENT_DESKTOP", "XDG_SESSION_DESKTOP", "DESKTOP_SESSION",
+                "SWAYSOCK", "HYPRLAND_INSTANCE_SIGNATURE", "WAYLAND_DISPLAY")
+if not any(os.environ.get(name) for name in session_vars):
+    absent.append("desktop")
+
+# The battery check distinguishes "no battery" from "could not read". pmset
+# prints "no batteries" on a desktop Mac.
+battery_out = subprocess.run(["pmset", "-g", "batt"], capture_output=True, text=True).stdout
+if "no battery" in battery_out.lower():
+    absent.append("battery")
 
 # Battery: pmset reports "87%; discharging; ...".
-out = subprocess.run(["pmset", "-g", "batt"], capture_output=True, text=True).stdout
-match = re.search(r"(\d+)%;\s*(\w+)", out)
+match = re.search(r"(\d+)%;\s*(\w+)", battery_out)
 if match:
     values["battery"] = {"percent": int(match.group(1)),
                          "state": {"charged": "full", "charging": "charging",
@@ -54,8 +67,6 @@ if names:
     tools["gpu"] = "system_profiler"
 
 # Packages: Homebrew's own list.
-import shutil
-
 def count(args):
     if not shutil.which(args[0]):
         return None
@@ -71,17 +82,18 @@ if formulae is not None:
     tools["packages"] = "brew list"
 
 # Locale: the process locale the shell exported.
-import os
 if os.environ.get("LANG"):
     values["locale"] = os.environ["LANG"]
     tools["locale"] = "$LANG"
 
-# Display is deliberately absent: justfetch reports the current mode's logical
-# points while system_profiler reports the panel, so they are different
-# quantities and comparing them would manufacture a mismatch.
-# Desktop is absent because macOS has no desktop environment in this sense.
+# Display is declared not comparable: justfetch reports the current mode's
+# logical points while system_profiler reports the panel, so they are different
+# quantities and a comparison would manufacture a mismatch.
+not_applicable.append("display")
 
-(work / "native.json").write_text(json.dumps({"tools": tools, "values": values}, indent=2))
+(work / "native.json").write_text(json.dumps(
+    {"tools": tools, "values": values, "absent": absent,
+     "not_applicable": not_applicable}, indent=2))
 PY
 
 python3 "$here/compare.py" --strict --justfetch "$work/doc.json" --native "$work/native.json"

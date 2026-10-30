@@ -160,7 +160,8 @@ prints one verdict per module:
 | `unsupported` | justfetch says the question does not apply, and the tool agrees there is nothing |
 | `inconclusive` | There is no comparison: one side has nothing — including justfetch reporting `unavailable` while the platform tool has an answer |
 | `error` | justfetch reported a failure. Always a finding |
-| `not covered` | The script gathered no observation for this module, and justfetch did not say the question does not apply |
+| `not covered` | The script gathered no observation for this module and did not declare it out of scope. In strict mode this is a failure |
+| `not comparable` | The script declared it cannot compare this module here, and the reason is in the script |
 
 Two modes, and the difference matters for acceptance:
 
@@ -171,9 +172,16 @@ Two modes, and the difference matters for acceptance:
   codes: `0` pass, `1` mismatch or error, `2` bad input or setup problem, `3`
   strict only, coverage incomplete.
 
-A module is *covered* when the platform tool produced something for it, or when
-justfetch says the question does not apply. The summary line names the modules
-that were not covered, so a gap is visible rather than silent.
+A module is *covered* when the platform tool produced an observation, or when
+the script checked and found nothing (`absent`). justfetch saying "unsupported"
+is not evidence by itself. Strict mode also requires at least one confirmed
+match: a run that compared nothing is not acceptance evidence.
+
+Multi-device fields compare as multisets, so two identical monitors or two
+identical adapters must be reported as two.
+
+The summary line names what was excluded and what was missing, so a gap is
+visible rather than silent.
 
 The scripts are read-only, need `python3` for the comparison, write nothing
 outside a temporary directory they remove, and print only non-identifying values

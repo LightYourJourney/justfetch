@@ -24,8 +24,13 @@ try {
     # and counts. No serial numbers, user names or addresses.
     $values = [ordered]@{}
     $tools = [ordered]@{}
+    $absent = @()
 
     $battery = Get-CimInstance -ClassName Win32_Battery -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $battery) {
+        # No battery class instance is the CIM way of saying "no battery".
+        $absent += 'battery'
+    }
     if ($battery) {
         $values['battery'] = @{ percent = [int]$battery.EstimatedChargeRemaining }
         $tools['battery'] = 'Win32_Battery'
