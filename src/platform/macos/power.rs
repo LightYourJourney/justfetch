@@ -1,6 +1,12 @@
 //! Battery and mains state from IOKit's power-source tree.
 
-use super::*;
+use super::cf::*;
+use crate::model::*;
+use std::ffi::CStr;
+use std::ptr;
+
+// IOKit is the only supported source for battery state on macOS. There is no
+// sysctl for it and the alternative, `pmset`, is a subprocess.
 
 #[link(name = "IOKit", kind = "framework")]
 unsafe extern "C" {
@@ -9,7 +15,9 @@ unsafe extern "C" {
     fn IOPSGetPowerSourceDescription(blob: CFTypeRef, source: CFTypeRef) -> CFDictionaryRef;
 }
 
-pub(super) fn power_value(description: CFDictionaryRef, key: &CStr) -> Option<CFTypeRef> {
+/// Read one value from an IOKit power-source description. The key is created
+/// and released here; the description belongs to the caller's blob.
+fn power_value(description: CFDictionaryRef, key: &CStr) -> Option<CFTypeRef> {
     // SAFETY: the key is a valid NUL-terminated string and `key` is only used
     // for the duration of the call. A null result is checked by the caller.
     let key_ref = unsafe { CFStringCreateWithCString(ptr::null(), key.as_ptr(), CF_UTF8) };
@@ -23,13 +31,7 @@ pub(super) fn power_value(description: CFDictionaryRef, key: &CStr) -> Option<CF
     (!value.is_null()).then_some(value)
 }
 
-/// Copy a Core Foundation string into a Rust `String`. The caller checks the
-/// type first and keeps ownership, so nothing is released here.
-///
-/// The buffer is sized from the string itself rather than fixed: a fixed 256
-/// bytes silently turned a long battery name into a different value and a long
-/// locale into a missing one.
-pub(super) fn power_string(description: CFDictionaryRef, key: &CStr) -> Option<String> {
+fn power_string(description: CFDictionaryRef, key: &CStr) -> Option<String> {
     let value = power_value(description, key)?;
     if !is_type(value, string_type()) {
         return None;
@@ -38,7 +40,7 @@ pub(super) fn power_string(description: CFDictionaryRef, key: &CStr) -> Option<S
     cf_string(value)
 }
 
-pub(super) fn power_int(description: CFDictionaryRef, key: &CStr) -> Option<i32> {
+fn power_int(description: CFDictionaryRef, key: &CStr) -> Option<i32> {
     let value = power_value(description, key)?;
     if !is_type(value, number_type()) {
         return None;
@@ -50,7 +52,7 @@ pub(super) fn power_int(description: CFDictionaryRef, key: &CStr) -> Option<i32>
     (ok != 0).then_some(out)
 }
 
-pub(super) fn power_bool(description: CFDictionaryRef, key: &CStr) -> Option<bool> {
+fn power_bool(description: CFDictionaryRef, key: &CStr) -> Option<bool> {
     let value = power_value(description, key)?;
     if !is_type(value, boolean_type()) {
         return None;

@@ -129,16 +129,12 @@ function Get-WindowsObservation {
     # comparison uses that unit. Win32_VideoController reports one mode per
     # adapter and cannot see two monitors on one GPU.
     #
-    # Limits, written down rather than guessed at: `Screen.Bounds` is in
-    # physical pixels once the process calls SetProcessDPIAware. justfetch has
-    # no DPI manifest, so GetMonitorInfoW gives *it* virtualized coordinates
-    # under display scaling — the two can legitimately disagree on a scaled
-    # display, and that is a limit of the comparison, not a defect. Refresh rate
-    # is not compared at all: Screen has no equivalent.
-    # Only compare at 100% scaling. justfetch has no DPI manifest, so
-    # GetMonitorInfoW gives it virtualized coordinates while this process is DPI
-    # aware; on a scaled display the two describe different rectangles and a
-    # comparison would report a mismatch that is not a defect.
+    # Limits, written down rather than guessed at. `Screen.Bounds` is in
+    # physical pixels once the process calls SetProcessDPIAware, but justfetch
+    # has no DPI manifest, so GetMonitorInfoW gives *it* virtualized
+    # coordinates: under display scaling the two describe different rectangles.
+    # The comparison therefore runs only at 100% scaling, and refresh rate is
+    # never compared because Screen has no equivalent.
     $scaling = (Get-ItemProperty 'HKCU:\Control Panel\Desktop\WindowMetrics' `
         -Name AppliedDPI -ErrorAction SilentlyContinue).AppliedDPI
     if ($scaling -and $scaling -ne 96) {

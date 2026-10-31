@@ -1,6 +1,24 @@
 //! Uptime, memory, swap and the sysctl reader they share.
 
-use super::*;
+use crate::model::*;
+unsafe extern "C" {
+    // libc exposes the other Mach primitives but not this ownership operation.
+    fn mach_port_deallocate(
+        task: libc::mach_port_t,
+        name: libc::mach_port_t,
+    ) -> libc::kern_return_t;
+    // Nor this one. libc does export vm_page_size, but it holds the page size
+    // this process was built for: under Rosetta that is the x86 4096, while the
+    // counters host_statistics64 returns are in the host's 16384-byte pages.
+    // Asking the host is the only value that matches the counters it gave us.
+    fn host_page_size(host: libc::host_t, out: *mut libc::vm_size_t) -> libc::kern_return_t;
+}
+use std::ffi::CStr;
+use std::ptr;
+use std::{
+    io, mem,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 pub(super) fn sysctl_string(name: &CStr) -> Detection<String> {
     let source = format!("sysctl {}", name.to_string_lossy());

@@ -1,9 +1,12 @@
 //! Graphics adapters from the IOKit registry.
 
-use super::*;
+use super::cf::*;
+use crate::model::*;
+use std::ffi::CStr;
+use std::ptr;
 
 /// An IORegistry object, retained by the call that returned it.
-type IoObject = u32;
+type IoObject = libc::mach_port_t;
 
 /// The IORegistry main port is always zero; the constant exists for the name.
 const IO_MAIN_PORT: libc::mach_port_t = 0;
@@ -25,9 +28,9 @@ unsafe extern "C" {
     ) -> CFTypeRef;
 }
 
-/// Read one value from an IOKit power-source description. The key is created
-/// and released here; the description belongs to the caller's blob.
-pub(super) fn registry_string(entry: IoObject, key: &CStr) -> Option<String> {
+/// One string property of an IOKit registry entry. The returned value is an
+/// owned copy and is released here.
+fn registry_string(entry: IoObject, key: &CStr) -> Option<String> {
     // SAFETY: the key is a valid NUL-terminated string used only for this call.
     let key_ref = unsafe { CFStringCreateWithCString(ptr::null(), key.as_ptr(), CF_UTF8) };
     if key_ref.is_null() {

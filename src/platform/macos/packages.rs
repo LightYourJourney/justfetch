@@ -1,6 +1,6 @@
 //! Homebrew's installed formulae and casks.
 
-use super::*;
+use crate::model::{Detection, PackageManager, PackagesInfo};
 
 /// Homebrew's installed formulae and casks. The count is directories in each
 /// prefix's Cellar and Caskroom: a formula with several versions installed is

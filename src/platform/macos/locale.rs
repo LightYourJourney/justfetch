@@ -1,6 +1,8 @@
 //! The system locale from CoreFoundation preferences.
 
-use super::*;
+use super::cf::*;
+use crate::model::*;
+use std::ptr;
 
 // --- Locale --------------------------------------------------------------
 
@@ -19,7 +21,7 @@ unsafe extern "C" {
 
 /// The system's `AppleLocale`, read through preferences rather than by running
 /// `defaults`. `None` when the domain has no such key.
-pub(super) fn system_locale() -> Option<String> {
+fn system_locale() -> Option<String> {
     // SAFETY: the key is a valid NUL-terminated string used only for this call.
     let key = unsafe { CFStringCreateWithCString(ptr::null(), c"AppleLocale".as_ptr(), CF_UTF8) };
     if key.is_null() {
