@@ -299,9 +299,7 @@ pub(crate) fn colour_style(colour: Option<Colour>, depth: Depth) -> Style {
     }
 }
 
-/// One coloured run of text. Styling is attached after all widths are known, so
-/// an escape can never shift a column.
-use super::rows::*;
+use super::rows::{column_lines, emit, field_rows, joined, logo_line, minimal_lines, trim_end};
 
 #[cfg(test)]
 mod tests {

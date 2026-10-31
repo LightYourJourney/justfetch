@@ -118,7 +118,10 @@ fn battery() -> Detection<BatteryInfo> {
     let entries = match std::fs::read_dir(root) {
         Ok(entries) => entries,
         Err(error) => {
-            return Detection::unavailable(format!("{} cannot be read: {error}", root.display()));
+            return Detection::unavailable(format!(
+                "{} could not be read: {error}",
+                root.display()
+            ));
         }
     };
     let text = |path: &std::path::Path| {
@@ -218,7 +221,10 @@ fn gpu() -> Detection<GpuInfo> {
     let entries = match std::fs::read_dir(root) {
         Ok(entries) => entries,
         Err(error) => {
-            return Detection::unavailable(format!("{} cannot be read: {error}", root.display()));
+            return Detection::unavailable(format!(
+                "{} could not be read: {error}",
+                root.display()
+            ));
         }
     };
     let mut devices = Vec::new();
@@ -285,7 +291,10 @@ fn display() -> Detection<DisplayInfo> {
     let entries = match std::fs::read_dir(root) {
         Ok(entries) => entries,
         Err(error) => {
-            return Detection::unavailable(format!("{} cannot be read: {error}", root.display()));
+            return Detection::unavailable(format!(
+                "{} could not be read: {error}",
+                root.display()
+            ));
         }
     };
     let mut displays = Vec::new();

@@ -981,7 +981,10 @@ mod tests {
             let _ = file.write_all(&vec![b'a'; 4096]);
         });
         let error = read_limited(&path, 1024).unwrap_err();
+        // `tempdir` only clears on the next run; a FIFO left in the temp
+        // directory is clutter that never goes away.
         let _ = writer.join();
+        let _ = std::fs::remove_file(&path);
         assert!(error.to_string().contains("limit"), "{error}");
     }
 

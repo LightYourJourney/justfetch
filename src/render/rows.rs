@@ -9,7 +9,7 @@ use crate::model::*;
 use crate::module::ModuleId;
 use anstyle::Style;
 
-pub(super) struct Span {
+struct Span {
     text: String,
     style: Style,
 }
@@ -140,7 +140,7 @@ pub(super) fn minimal_lines(
     lines
 }
 
-pub(super) struct RowStyles {
+struct RowStyles {
     label: Style,
     value: Style,
     emphasis: Style,
@@ -149,7 +149,7 @@ pub(super) struct RowStyles {
 /// Lay one row out into `lines`. Both arrangements with a label column use
 /// this: `column_lines` pads the label to the column and takes the configured
 /// separator, `minimal_lines` passes the label's own width and `": "`.
-pub(super) fn row_lines(
+fn row_lines(
     lines: &mut Vec<Line>,
     row: &Row,
     label_width: usize,
@@ -211,7 +211,7 @@ pub(super) fn row_lines(
 }
 
 /// A value run, with the `~` that marks an estimate given the emphasis role.
-pub(super) fn push_value(line: &mut Line, text: &str, value_style: Style, emphasis_style: Style) {
+fn push_value(line: &mut Line, text: &str, value_style: Style, emphasis_style: Style) {
     match text.strip_prefix("~ ") {
         Some(rest) => {
             line.push("~ ", emphasis_style);
@@ -221,7 +221,7 @@ pub(super) fn push_value(line: &mut Line, text: &str, value_style: Style, emphas
     }
 }
 
-pub(super) fn title_lines(title: &str, columns: usize, style: Style) -> Vec<Line> {
+fn title_lines(title: &str, columns: usize, style: Style) -> Vec<Line> {
     wrap(title, columns)
         .into_iter()
         .map(|chunk| {
@@ -232,12 +232,12 @@ pub(super) fn title_lines(title: &str, columns: usize, style: Style) -> Vec<Line
         .collect()
 }
 
-pub(super) fn divider_rule(title: &str, columns: usize, unicode: bool) -> String {
+fn divider_rule(title: &str, columns: usize, unicode: bool) -> String {
     let glyph = if unicode { "─" } else { "-" };
     glyph.repeat(width(title).clamp(12, 40).min(columns))
 }
 
-pub(super) fn swatch_line(palette: &Palette<'_>, columns: usize) -> Line {
+fn swatch_line(palette: &Palette<'_>, columns: usize) -> Line {
     let dot = if palette.unicode { "●" } else { "o" };
     let count = columns.div_ceil(2).min(8).min(palette.theme.swatches.len());
     let mut line = Line::new();
@@ -300,7 +300,7 @@ pub(super) fn field_rows(
 
 /// The composed value for one module. One arm per module: adding a module is a
 /// compile error here rather than a row that silently renders nothing.
-pub(super) fn value_for(snapshot: &SystemSnapshot, module: ModuleId) -> String {
+fn value_for(snapshot: &SystemSnapshot, module: ModuleId) -> String {
     match module {
         ModuleId::Os => {
             let name = display(&snapshot.os, |os| match &os.version {

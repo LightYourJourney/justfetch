@@ -144,24 +144,24 @@ function Get-WindowsObservation {
     if ($scaling -and $scaling -ne 96) {
         $notApplicable += 'display'
     } else {
-    try {
-        Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop
-        $null = Add-Type -Namespace Jf -Name Dpi -MemberDefinition @'
+        try {
+            Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop
+            $null = Add-Type -Namespace Jf -Name Dpi -MemberDefinition @'
 [System.Runtime.InteropServices.DllImport("user32.dll")]
 public static extern bool SetProcessDPIAware();
 '@ -ErrorAction Stop
-        [Jf.Dpi]::SetProcessDPIAware() | Out-Null
-        $screens = @([System.Windows.Forms.Screen]::AllScreens)
-        if ($screens.Count -gt 0) {
-            $values['display'] = @($screens | ForEach-Object {
-                "$($_.Bounds.Width)x$($_.Bounds.Height)" })
-            $tools['display'] = 'Screen.AllScreens'
+            [Jf.Dpi]::SetProcessDPIAware() | Out-Null
+            $screens = @([System.Windows.Forms.Screen]::AllScreens)
+            if ($screens.Count -gt 0) {
+                $values['display'] = @($screens | ForEach-Object {
+                    "$($_.Bounds.Width)x$($_.Bounds.Height)" })
+                $tools['display'] = 'Screen.AllScreens'
+            }
+        } catch {
+            # Without the WinForms assembly there is no monitor-level API here.
+            $notApplicable += 'display'
+            Write-Warning "monitor enumeration unavailable: $_"
         }
-    } catch {
-        # Without the WinForms assembly there is no monitor-level API here.
-        $notApplicable += 'display'
-        Write-Warning "monitor enumeration unavailable: $_"
-    }
     }
     # Adapter names come from a different API than justfetch's EnumDisplayDevicesW,
     # so a GPU mismatch here is a wording difference more often than a defect.

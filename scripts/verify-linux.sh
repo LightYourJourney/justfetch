@@ -93,10 +93,9 @@ if managers:
 
 # GPU: every display-class device, by PCI id. lspci is the only source that
 # lists a hybrid machine's integrated adapter as well as its discrete one, so it
-# is consulted first; the NVIDIA procfs name only enriches the table for the
-# human reading it. Comparing names alone failed a correct Optimus laptop,
+# is consulted first. Comparing names alone failed a correct Optimus laptop,
 # because justfetch reports the integrated adapter with no name.
-names, ids = [], []
+ids = []
 listing = None
 if shutil.which("lspci"):
     listing = subprocess.run(["lspci", "-nn"], capture_output=True, text=True)
@@ -106,7 +105,6 @@ if shutil.which("lspci"):
         token = re.search(r"\[([0-9a-fA-F]{4}:[0-9a-fA-F]{4})\]", line)
         if token:
             ids.append(token.group(1))
-        names.append(line.split(": ", 1)[-1].strip())
 nvidia = []
 for path in glob.glob("/proc/driver/nvidia/gpus/*/information"):
     for line in open(path, errors="replace"):

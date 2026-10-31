@@ -546,7 +546,7 @@ fn packages() -> Detection<PackagesInfo> {
             );
         }
         Err(error) => {
-            return Detection::unavailable(format!("scoop/apps cannot be read: {error}"));
+            return Detection::unavailable(format!("scoop/apps could not be read: {error}"));
         }
     };
     let count = entries
