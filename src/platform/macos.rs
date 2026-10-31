@@ -606,15 +606,7 @@ fn system_locale() -> Option<String> {
 }
 
 fn locale() -> Detection<LocaleInfo> {
-    let var = |name: &str| std::env::var(name).ok();
-    let lc_all = var("LC_ALL");
-    let lc_messages = var("LC_MESSAGES");
-    let lang = var("LANG");
-    let process = crate::detect::locale::process_locale(
-        lc_all.as_deref(),
-        lc_messages.as_deref(),
-        lang.as_deref(),
-    );
+    let process = crate::detect::locale::process_from_env();
     let system = system_locale();
     crate::detect::locale::build(process, system, "CFPreferences AppleLocale")
 }

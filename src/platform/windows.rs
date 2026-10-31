@@ -574,15 +574,7 @@ fn packages() -> Detection<PackagesInfo> {
 fn locale() -> Detection<LocaleInfo> {
     use windows_sys::Win32::Globalization::GetUserDefaultLocaleName;
 
-    let var = |name: &str| std::env::var(name).ok();
-    let lc_all = var("LC_ALL");
-    let lc_messages = var("LC_MESSAGES");
-    let lang = var("LANG");
-    let process = crate::detect::locale::process_locale(
-        lc_all.as_deref(),
-        lc_messages.as_deref(),
-        lang.as_deref(),
-    );
+    let process = crate::detect::locale::process_from_env();
     // LOCALE_NAME_MAX_LENGTH is 85, including the terminator.
     let mut buffer = [0_u16; 85];
     // SAFETY: the buffer holds the documented maximum length and the size is

@@ -442,15 +442,7 @@ fn desktop() -> Detection<DesktopInfo> {
 /// the file the distribution maintains for it. The two are different things and
 /// are reported separately.
 fn locale() -> Detection<LocaleInfo> {
-    let var = |name: &str| std::env::var(name).ok();
-    let lc_all = var("LC_ALL");
-    let lc_messages = var("LC_MESSAGES");
-    let lang = var("LANG");
-    let process = crate::detect::locale::process_locale(
-        lc_all.as_deref(),
-        lc_messages.as_deref(),
-        lang.as_deref(),
-    );
+    let process = crate::detect::locale::process_from_env();
     // systemd distributions keep it in /etc/locale.conf; Debian's own file is
     // the fallback. A missing file means the platform has no separate default;
     // a file that exists but cannot be read means the default is unknown, and

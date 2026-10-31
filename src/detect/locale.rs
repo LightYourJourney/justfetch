@@ -3,6 +3,16 @@
 //! `LC_ALL` overrides everything, then `LC_MESSAGES`, then `LANG`. An empty
 //! value is unset, which is why the filter is here rather than at each caller.
 
+/// The process locale from the POSIX variables, with the source that supplied
+/// it. Every platform reads the same three variables in the same order.
+pub fn process_from_env() -> Option<(String, &'static str)> {
+    let var = |name: &str| std::env::var(name).ok();
+    let lc_all = var("LC_ALL");
+    let lc_messages = var("LC_MESSAGES");
+    let lang = var("LANG");
+    process_locale(lc_all.as_deref(), lc_messages.as_deref(), lang.as_deref())
+}
+
 pub fn process_locale(
     lc_all: Option<&str>,
     lc_messages: Option<&str>,
