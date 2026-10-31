@@ -141,6 +141,42 @@ fn plain_text_and_no_logo() {
     }
 }
 
+/// The visual settings were mapped from the configuration into `Options` with
+/// no test reading the result: hardcoding the layout, forcing the logo on, or
+/// dropping the accent kept the whole suite green.
+#[test]
+fn a_named_logo_is_drawn_and_none_is_not() {
+    let drawn = run(&["--no-color", "--modules", "os", "--logo", "macos"]);
+    assert!(drawn.status.success());
+    let drawn = String::from_utf8(drawn.stdout).unwrap();
+    let absent = run(&["--no-color", "--modules", "os", "--logo", "none"]);
+    assert!(absent.status.success());
+    let absent = String::from_utf8(absent.stdout).unwrap();
+
+    assert!(
+        drawn.lines().count() > absent.lines().count(),
+        "a logo should add lines: drawn {drawn:?} absent {absent:?}"
+    );
+    assert!(
+        !absent.lines().any(|line| line.starts_with(' ')),
+        "with no logo every row starts at column zero: {absent:?}"
+    );
+}
+
+#[test]
+fn the_layout_changes_the_arrangement() {
+    let classic = run(&["--no-color", "--modules", "os,host", "--layout", "classic"]);
+    let compact = run(&["--no-color", "--modules", "os,host", "--layout", "compact"]);
+    assert!(classic.status.success() && compact.status.success());
+    let classic = String::from_utf8(classic.stdout).unwrap();
+    let compact = String::from_utf8(compact.stdout).unwrap();
+    assert_ne!(
+        classic.lines().count(),
+        compact.lines().count(),
+        "two layouts produced the same shape: {classic:?} / {compact:?}"
+    );
+}
+
 #[test]
 fn privacy_withholds_identity_and_addresses() {
     let out = run(&["--privacy", "--format", "json"]);

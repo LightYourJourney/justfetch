@@ -79,7 +79,7 @@ verified for it.
 - Bound and clean user artwork: 32 KiB, 40 lines and 160 columns per line, escape sequences stripped, trailing spaces removed, empty refused. Custom theme files are limited to 16 KiB and validated key by key.
 - The artwork is shaded between the theme's two logo colours when both are set and the terminal can express the intermediate shades; named colours are not blended into invented ones.
 - JSON output is untouched by any of these settings. `schema_version` stays 1.
-- 171 tests, up from 87.
+- 171 tests, up from 87. (The suite is 188 at HEAD; this entry records the tagged build.)
 
 ## 0.1.0 — pre-release
 

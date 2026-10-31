@@ -3,7 +3,8 @@
 # Read-only and repeatable. Prints one verdict per module: match, mismatch,
 # unsupported, inconclusive, not comparable or not covered. Runs compare.py in
 # strict acceptance mode: exit 1 on a mismatch or error, 2 on a setup problem,
-# 3 when a module has neither an observation nor a declared exclusion.
+# 3 when a module has neither an observation nor a declared exclusion, or when
+# nothing was confirmed at all.
 #
 # The comparison needs Python 3 (scripts/compare.py). Without it the raw
 # observations are printed and the script exits 2.
@@ -101,9 +102,12 @@ function Get-WindowsObservation {
             Select-Object -First 1
         if (-not $battery) {
             $absent += 'battery'
-        } else {
+        } elseif ($null -ne $battery.EstimatedChargeRemaining) {
             $values['battery'] = @{ percent = [int]$battery.EstimatedChargeRemaining }
             $tools['battery'] = 'Win32_Battery'
+        } else {
+            # A battery with no percentage is not a battery at 0%.
+            $notApplicable += 'battery'
         }
     } catch {
         Write-Warning "Win32_Battery could not be queried: $_"
@@ -131,6 +135,15 @@ function Get-WindowsObservation {
     # under display scaling — the two can legitimately disagree on a scaled
     # display, and that is a limit of the comparison, not a defect. Refresh rate
     # is not compared at all: Screen has no equivalent.
+    # Only compare at 100% scaling. justfetch has no DPI manifest, so
+    # GetMonitorInfoW gives it virtualized coordinates while this process is DPI
+    # aware; on a scaled display the two describe different rectangles and a
+    # comparison would report a mismatch that is not a defect.
+    $scaling = (Get-ItemProperty 'HKCU:\Control Panel\Desktop\WindowMetrics' `
+        -Name AppliedDPI -ErrorAction SilentlyContinue).AppliedDPI
+    if ($scaling -and $scaling -ne 96) {
+        $notApplicable += 'display'
+    } else {
     try {
         Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop
         $null = Add-Type -Namespace Jf -Name Dpi -MemberDefinition @'
@@ -148,6 +161,7 @@ public static extern bool SetProcessDPIAware();
         # Without the WinForms assembly there is no monitor-level API here.
         $notApplicable += 'display'
         Write-Warning "monitor enumeration unavailable: $_"
+    }
     }
     # Adapter names come from a different API than justfetch's EnumDisplayDevicesW,
     # so a GPU mismatch here is a wording difference more often than a defect.
@@ -203,7 +217,7 @@ try {
         $docJson = New-SelfTestDocument | ConvertTo-Json -Depth 8 -Compress
         $observation = Get-SelfTestObservation
     } else {
-        $bin = if ($env:BIN) { $env:BIN } else { Join-Path (Get-Location) 'target\release\justfetch.exe' }
+        $bin = if ($env:BIN) { $env:BIN } else { Join-Path $here '..\target\release\justfetch.exe' }
         if (-not (Test-Path $bin)) {
             Write-Error "Build first: cargo build --release --locked (looked for $bin)"
             exit 2

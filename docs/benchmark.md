@@ -4,7 +4,7 @@ What justfetch costs to run, measured on one machine, with the raw evidence comm
 
 The short version: on this machine under interactive load, **wall-clock time is not a reproducible measurement** — it swings by more than 2x between rounds. Instruction counts are, to within about 2%. The current baseline is therefore reported in instructions and CPU time first, with wall clock shown only as a load-contaminated upper bound.
 
-## Current baseline — 2026-10-26
+## Earlier baseline — 2026-10-26 (eleven fields; superseded by the Phase 13 measurement below)
 
 Apple M3 (8 logical cores), 16 GiB, macOS 26.6.2 / Darwin 25.6.0 arm64. Homebrew rustc/cargo 1.99.0. Build: `cargo build --release --locked`, thin LTO, one codegen unit, stripped, no extra `RUSTFLAGS`. Hyperfine 2.0.0. Release binary **831,984 bytes**, reporting eleven fields.
 

@@ -681,7 +681,7 @@ only.
 ### Packaging
 
 `cargo package --locked` builds the crate from exactly the published file list:
-79 files after anchoring the `include` patterns to the repository root (the
+79 files after anchoring the `include` patterns to the repository root, not counting cargo's own `.cargo_vcs_info.json` (the
 unanchored `LICENSE`/`README.md` entries had been picking up copies staged for
 the release archives), and it compiled from the packaged sources.
 
@@ -737,7 +737,7 @@ Six modules, run on the MacBook Air and compared with the system's own answer:
 | GPU | `Apple M3` | `system_profiler`: `Chipset Model: Apple M3` |
 | Battery | `87% (discharging)` | `pmset -g batt`: `87%; discharging; 2:04 remaining` |
 | Display | `1470x956 @60Hz (built-in)` | CoreGraphics mode; the panel is 2560x1664, explained in compatibility.md |
-| Packages | `homebrew formulae 883, homebrew casks 44` | `brew list --formula` 883, `--cask` 44 |
+| Packages | `homebrew formulae 883, homebrew casks 44` | `brew list --formula` 883, `--cask` 44 (recorded as an observation; the comparison now declares packages not comparable, since a formula at two versions makes the two counts differ by design) |
 | Desktop | `Unsupported` | macOS has no desktop environment in this sense |
 | Locale | `zh_CN.UTF-8 (LANG), system zh_CN` | `$LANG`, `defaults read -g AppleLocale` |
 

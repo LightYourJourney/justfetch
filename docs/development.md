@@ -91,7 +91,7 @@ Prepared, not automated:
    action; removing `--draft --prerelease` is what would make a tag publish
    directly.
 
-`packaging/` holds draft Homebrew, Scoop and winget manifests. They are not
+`packaging/` holds draft Homebrew and Scoop manifests. They are not
 published, and their checksums must be regenerated from the real release assets
 before anyone does publish them.
 

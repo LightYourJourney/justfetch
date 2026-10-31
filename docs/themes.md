@@ -97,8 +97,9 @@ lines take the primary and the last take the secondary.
 
 `justfetch themes` lists them with a colour preview: the theme's name is drawn
 in its title colour, followed by its palette and a sample of the label, value,
-rule, emphasis and artwork colours (`Aa Aa ── ~ ██`), with a one-line
-description wrapped to the terminal width.
+rule, emphasis and artwork colours (`Aa Aa ── ~ ██`); the four themes that also ship a second artwork colour print
+it after the first (`Aa Aa ── ~ ██ ██`). A one-line description follows, wrapped
+to the terminal width.
 `justfetch --format json themes` returns the same list as JSON.
 `--theme NAME` selects one; `[theme] name` does the same in a file. `catppuccin`
 is accepted for `catppuccin-mocha`, and `tokyonight` for `tokyo-night`.

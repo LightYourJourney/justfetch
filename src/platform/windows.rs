@@ -251,8 +251,14 @@ fn local_ip() -> Detection<LocalIpInfo> {
 }
 
 /// # Safety
-/// `pointer` must point at a NUL-terminated UTF-16 string, or the scan stops at
-/// the first NUL within 1024 code units.
+/// `pointer` must be non-null and point at a readable UTF-16 buffer of at least
+/// 1024 code units, or at a NUL-terminated string shorter than that.
+///
+/// The bound is what makes the reads sound: without a stated length the scan
+/// would read past a buffer that has no terminator inside 1024 units. Every
+/// caller passes a Windows-owned NUL-terminated string, for which the first
+/// clause holds; a caller with an unterminated buffer must pass a shorter
+/// length instead of relying on this function.
 unsafe fn wide_to_string(pointer: *const u16) -> String {
     let mut length = 0;
     // SAFETY: the caller guarantees the string starts at `pointer`; the bound
@@ -530,10 +536,18 @@ fn packages() -> Detection<PackagesInfo> {
         return Detection::unavailable("USERPROFILE is not set, so Scoop's directory is unknown");
     };
     let apps = std::path::PathBuf::from(home).join("scoop").join("apps");
-    let Ok(entries) = std::fs::read_dir(&apps) else {
-        return Detection::unsupported(
-            "No Scoop installation was found, and winget has no local package database to read",
-        );
+    let entries = match std::fs::read_dir(&apps) {
+        Ok(entries) => entries,
+        // Absent means no Scoop; unreadable means the directory is there and
+        // the count is unknown, which is not the same claim.
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Detection::unsupported(
+                "No Scoop installation was found, and winget has no local package database to read",
+            );
+        }
+        Err(error) => {
+            return Detection::unavailable(format!("scoop/apps cannot be read: {error}"));
+        }
     };
     let count = entries
         .flatten()
@@ -594,17 +608,21 @@ pub fn collect(selection: &[ModuleId]) -> PlatformData {
         .then(|| System::kernel_version().filter(|s| !s.is_empty()))
         .flatten();
     let os = if_selected(selection, ModuleId::Os, || {
+        // The product name and the build come from two registry values. A
+        // missing build does not make the name unknown — `version` is optional
+        // in the model — so the name is reported on its own rather than the
+        // whole row being lost.
         match (System::long_os_version(), &build) {
-            (Some(name), Some(build)) => Detection::available(
+            (Some(name), version) => Detection::available(
                 OsInfo {
                     family: OsFamily::Windows,
                     name,
-                    version: Some(format!("build {build}")),
+                    version: version.as_ref().map(|build| format!("build {build}")),
                     id: Some("windows".into()),
                 },
                 "sysinfo Windows version registry",
             ),
-            _ => Detection::unavailable("Windows product name or build registry value unavailable"),
+            (None, _) => Detection::unavailable("Windows product name registry value unavailable"),
         }
     });
     let kernel = if_selected(selection, ModuleId::Kernel, || match build {

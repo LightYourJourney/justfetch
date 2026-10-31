@@ -10,7 +10,7 @@
 # resolutions and locales. No serial numbers, IP addresses or user names.
 set -u
 here=$(cd -- "$(dirname -- "$0")" && pwd)
-BIN=${BIN:-./target/release/justfetch}
+BIN=${BIN:-$here/../target/release/justfetch}
 
 if ! command -v python3 >/dev/null 2>&1; then
   echo "python3 is required for the comparison" >&2
@@ -91,17 +91,14 @@ if managers:
     values["packages"] = managers
     tools["packages"] = ", ".join(manager_tools)
 
-# GPU: PCI ids are exact, so compare those when the platform shows them; the
-# name is for the human reading the table.
+# GPU: every display-class device, by PCI id. lspci is the only source that
+# lists a hybrid machine's integrated adapter as well as its discrete one, so it
+# is consulted first; the NVIDIA procfs name only enriches the table for the
+# human reading it. Comparing names alone failed a correct Optimus laptop,
+# because justfetch reports the integrated adapter with no name.
 names, ids = [], []
-for path in glob.glob("/proc/driver/nvidia/gpus/*/information"):
-    for line in open(path, errors="replace"):
-        if line.startswith("Model:"):
-            names.append(line.split(":", 1)[1].strip())
-if names:
-    values["gpu"] = {"names": names}
-    tools["gpu"] = "/proc/driver/nvidia"
-elif shutil.which("lspci"):
+listing = None
+if shutil.which("lspci"):
     listing = subprocess.run(["lspci", "-nn"], capture_output=True, text=True)
     for line in (listing.stdout if listing.returncode == 0 else "").splitlines():
         if not re.search(r"(VGA compatible|3D controller|Display controller)", line):
@@ -110,14 +107,22 @@ elif shutil.which("lspci"):
         if token:
             ids.append(token.group(1))
         names.append(line.split(": ", 1)[-1].strip())
-    if ids:
-        values["gpu"] = {"ids": ids, "names": names}
-        tools["gpu"] = "lspci -nn"
-    elif (shutil.which("lspci") and listing.returncode == 0 and not names
-          and not glob.glob("/sys/class/drm/card[0-9]*")):
-        # lspci ran, listed no display adapter, and sysfs has no DRM card: the
-        # machine really has none, which is what justfetch's "unsupported" claims.
-        absent.append("gpu")
+nvidia = []
+for path in glob.glob("/proc/driver/nvidia/gpus/*/information"):
+    for line in open(path, errors="replace"):
+        if line.startswith("Model:"):
+            nvidia.append(line.split(":", 1)[1].strip())
+if ids:
+    values["gpu"] = {"ids": ids}
+    tools["gpu"] = "lspci -nn"
+elif nvidia:
+    # No PCI ids from lspci: fall back to the names procfs gives.
+    values["gpu"] = {"names": nvidia}
+    tools["gpu"] = "/proc/driver/nvidia"
+elif listing is not None and listing.returncode == 0 and not glob.glob("/sys/class/drm/card[0-9]*"):
+    # lspci ran, listed no display adapter, and sysfs has no DRM card: the
+    # machine really has none, which is what justfetch's "unsupported" claims.
+    absent.append("gpu")
 
 # Display: sysfs knows the preferred mode, which is what Linux reports. The
 # current mode lives in the compositor, so comparing against xrandr would

@@ -350,7 +350,14 @@ impl FileConfig {
                 }
                 parsed.push((module, value));
             }
-            config.labels = parsed;
+            // Layered per key, like every other setting: a --config file that
+            // names `labels.os` must not drop `labels.cpu` from the user file.
+            for (module, value) in parsed {
+                match config.labels.iter_mut().find(|(seen, _)| *seen == module) {
+                    Some((_, existing)) => *existing = value,
+                    None => config.labels.push((module, value)),
+                }
+            }
         }
         Ok(())
     }
@@ -379,12 +386,21 @@ fn read_limited(path: &Path, limit: usize) -> Result<String, ConfigError> {
             format!("file is {size} bytes; the limit is {limit}"),
         ));
     }
-    let bytes = std::fs::read(path)
+    // Read through a bounded reader rather than `fs::read`: a FIFO, a device or
+    // a file that grows between the metadata call and the read would otherwise
+    // be loaded in full before this function rejects it. The metadata check
+    // above only saves the common case.
+    use std::io::Read;
+    let mut bytes = Vec::with_capacity(size.min(limit as u64) as usize);
+    std::fs::File::open(path)
+        .map_err(|error| ConfigError::at(path, format!("cannot read: {error}")))?
+        .take(limit as u64 + 1)
+        .read_to_end(&mut bytes)
         .map_err(|error| ConfigError::at(path, format!("cannot read: {error}")))?;
     if bytes.len() > limit {
         return Err(ConfigError::at(
             path,
-            format!("file is {} bytes; the limit is {limit}", bytes.len()),
+            format!("file exceeds the {limit}-byte limit"),
         ));
     }
     String::from_utf8(bytes).map_err(|_| ConfigError::at(path, "file is not UTF-8".to_owned()))
@@ -677,6 +693,34 @@ mod tests {
     }
 
     #[test]
+    fn a_second_file_layers_labels_per_key() {
+        let dir = tempdir("jf-config-labels-layered");
+        let base = write(
+            &dir,
+            "base.toml",
+            "[labels]\nos = \"System\"\ncpu = \"Processor\"\n",
+        );
+        let overlay = write(&dir, "overlay.toml", "[labels]\ncpu = \"Core\"\n");
+        let config = resolve_with(
+            &Cli {
+                config: Some(overlay),
+                ..cli()
+            },
+            Some(&base),
+        )
+        .unwrap();
+        let label = |module: ModuleId| {
+            config
+                .labels
+                .iter()
+                .find(|(seen, _)| *seen == module)
+                .map(|(_, value)| value.as_str())
+        };
+        assert_eq!(label(ModuleId::Os), Some("System"), "os must survive");
+        assert_eq!(label(ModuleId::Cpu), Some("Core"), "cpu must be overridden");
+    }
+
+    #[test]
     fn labels_and_separator_are_read() {
         let dir = tempdir("labels");
         let path = write(
@@ -910,6 +954,35 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.to_string().contains("the limit is"), "{error}");
+    }
+
+    /// The metadata check is an optimisation, not the bound: a source whose
+    /// reported size is small but whose content is not must still be refused
+    /// without being read in full. A FIFO reports size 0 and never reaches EOF,
+    /// so a reader without a cap would hang or grow without limit here.
+    #[test]
+    #[cfg(unix)]
+    fn a_source_with_no_size_and_endless_content_is_cut_off() {
+        let dir = tempdir("jf-config-bounded");
+        let path = dir.join("pipe.toml");
+        let fifo = std::ffi::CString::new(path.to_string_lossy().as_bytes()).unwrap();
+        // SAFETY: `fifo` is a valid NUL-terminated path and mkfifo takes no
+        // other pointer. The directory is this test's own temporary one.
+        let made = unsafe { libc::mkfifo(fifo.as_ptr(), 0o600) };
+        assert_eq!(made, 0, "mkfifo failed");
+        let writer_path = path.clone();
+        let writer = std::thread::spawn(move || {
+            use std::io::Write;
+            let mut file = std::fs::OpenOptions::new()
+                .write(true)
+                .open(&writer_path)
+                .unwrap();
+            // No reader until the test opens it; write more than the limit.
+            let _ = file.write_all(&vec![b'a'; 4096]);
+        });
+        let error = read_limited(&path, 1024).unwrap_err();
+        let _ = writer.join();
+        assert!(error.to_string().contains("limit"), "{error}");
     }
 
     #[test]

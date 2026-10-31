@@ -52,8 +52,9 @@ released = json.load(open(sys.argv[2]))
 # that changed a collector would show up in one of these.
 volatile = {"uptime", "memory", "swap", "battery", "disk"}
 
+# Both directions: a field the new build stopped emitting is a difference too.
 differences = [
-    key for key in current
+    key for key in sorted(set(current) | set(released))
     if key not in volatile and current.get(key) != released.get(key)
 ]
 print("compared:", ", ".join(sorted(k for k in current if k not in volatile)))

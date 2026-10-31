@@ -10,7 +10,10 @@ Generated from `cargo metadata --locked --offline` on 2026-10-10. Exact versions
 | [clap_builder](https://docs.rs/crate/clap_builder/4.6.7/source/) | 4.6.7 | MIT OR Apache-2.0 |
 | [clap_derive](https://docs.rs/crate/clap_derive/4.6.7/source/) | 4.6.7 | MIT OR Apache-2.0 |
 | [clap_lex](https://docs.rs/crate/clap_lex/1.1.1/source/) | 1.1.1 | MIT OR Apache-2.0 |
+| [equivalent](https://docs.rs/crate/equivalent/1.0.2/source/) | 1.0.2 | Apache-2.0 OR MIT |
+| [hashbrown](https://docs.rs/crate/hashbrown/0.17.1/source/) | 0.17.1 | MIT OR Apache-2.0 |
 | [heck](https://docs.rs/crate/heck/0.5.0/source/) | 0.5.0 | MIT OR Apache-2.0 |
+| [indexmap](https://docs.rs/crate/indexmap/2.14.2/source/) | 2.14.2 | Apache-2.0 OR MIT |
 | [itoa](https://docs.rs/crate/itoa/1.0.18/source/) | 1.0.18 | MIT OR Apache-2.0 |
 | [libc](https://docs.rs/crate/libc/0.2.190/source/) | 0.2.190 | MIT OR Apache-2.0 |
 | [memchr](https://docs.rs/crate/memchr/2.8.3/source/) | 2.8.3 | Unlicense OR MIT |
@@ -23,10 +26,15 @@ Generated from `cargo metadata --locked --offline` on 2026-10-10. Exact versions
 | [serde_core](https://docs.rs/crate/serde_core/1.0.229/source/) | 1.0.229 | MIT OR Apache-2.0 |
 | [serde_derive](https://docs.rs/crate/serde_derive/1.0.229/source/) | 1.0.229 | MIT OR Apache-2.0 |
 | [serde_json](https://docs.rs/crate/serde_json/1.0.151/source/) | 1.0.151 | MIT OR Apache-2.0 |
+| [serde_spanned](https://docs.rs/crate/serde_spanned/1.1.2/source/) | 1.1.2 | MIT OR Apache-2.0 |
 | [strsim](https://docs.rs/crate/strsim/0.11.1/source/) | 0.11.1 | MIT |
 | [syn](https://docs.rs/crate/syn/2.0.119/source/) | 2.0.119 | MIT OR Apache-2.0 |
 | [syn](https://docs.rs/crate/syn/3.0.7/source/) | 3.0.7 | MIT OR Apache-2.0 |
 | [sysinfo](https://docs.rs/crate/sysinfo/0.39.6/source/) | 0.39.6 | MIT |
+| [toml](https://docs.rs/crate/toml/1.1.8/source/) | 1.1.8 | MIT OR Apache-2.0 |
+| [toml_datetime](https://docs.rs/crate/toml_datetime/1.1.2/source/) | 1.1.2 | MIT OR Apache-2.0 |
+| [toml_parser](https://docs.rs/crate/toml_parser/1.1.5/source/) | 1.1.5 | MIT OR Apache-2.0 |
+| [toml_writer](https://docs.rs/crate/toml_writer/1.1.3/source/) | 1.1.3 | MIT OR Apache-2.0 |
 | [unicode-ident](https://docs.rs/crate/unicode-ident/1.0.26/source/) | 1.0.26 | (MIT OR Apache-2.0) AND Unicode-3.0 |
 | [unicode-segmentation](https://docs.rs/crate/unicode-segmentation/1.13.3/source/) | 1.13.3 | MIT OR Apache-2.0 |
 | [unicode-width](https://docs.rs/crate/unicode-width/0.2.2/source/) | 0.2.2 | MIT OR Apache-2.0 |
@@ -45,23 +53,5 @@ Generated from `cargo metadata --locked --offline` on 2026-10-10. Exact versions
 | [windows-strings](https://docs.rs/crate/windows-strings/0.5.1/source/) | 0.5.1 | MIT OR Apache-2.0 |
 | [windows-sys](https://docs.rs/crate/windows-sys/0.61.2/source/) | 0.61.2 | MIT OR Apache-2.0 |
 | [windows-threading](https://docs.rs/crate/windows-threading/0.2.1/source/) | 0.2.1 | MIT OR Apache-2.0 |
+| [winnow](https://docs.rs/crate/winnow/1.0.4/source/) | 1.0.4 | MIT |
 | [zmij](https://docs.rs/crate/zmij/1.0.23/source/) | 1.0.23 | MIT |
-
-unicode-ident includes Unicode-3.0 notices in addition to MIT/Apache licensing. Some legacy winapi manifests use `MIT/Apache-2.0` spelling. Consult the exact distributed crate license files when preparing binary redistribution notices. No GPL code from reference projects was copied; the project itself retains its pre-existing GPLv3 LICENSE.
-
-## Bundled non-code assets
-
-`assets/logos/` holds eleven ASCII logo files. They are first-party work by this project and carry the same GPL-3.0-only license as the code; none is vendored from another fetch tool or from an ASCII-art collection. One exception existed and was corrected during review: an earlier revision shipped the long-circulating Tux penguin ASCII art of unknown authorship as `assets/logos/linux.txt`, and the accompanying notice claimed every file was authored for justfetch. That file has been replaced with an original drawing and the claim corrected. See [assets/logos/README.md](../assets/logos/README.md).
-
-Four built-in themes reproduce published colour values from third-party design systems. Only numeric colour values are used — no code, configuration or asset file from those projects is copied — and colour values are not themselves the licensed work. Attribution is recorded here anyway because the palette names identify the designs:
-
-| Theme | Upstream | Stated licence |
-| --- | --- | --- |
-| Catppuccin Mocha | [catppuccin/catppuccin](https://github.com/catppuccin/catppuccin) | MIT |
-| Nord | [nordtheme/nord](https://github.com/nordtheme/nord) | MIT |
-| Tokyo Night | [tokyo-night/tokyo-night-vscode-theme](https://github.com/tokyo-night/tokyo-night-vscode-theme) | MIT (the Neovim port states Apache-2.0; these values follow the VS Code theme) |
-| Gruvbox | [morhetz/gruvbox](https://github.com/morhetz/gruvbox) | MIT/X11 declared in its README, without a standalone licence file |
-
-The `default` and `monochrome` themes are first-party work and use only the sixteen ANSI colour names. No affiliation with or endorsement by the projects above is claimed. As with the logos, this inventory is provenance information, not legal advice.
-
-Platform names and emblems appear only as simplified line renderings used to identify the detected system. No trademark search, clearance opinion, vendor permission or legal review is claimed for them, and packaging binaries for redistribution may require its own review. This inventory covers the copyright provenance of the files in this repository; it is not a legal opinion.

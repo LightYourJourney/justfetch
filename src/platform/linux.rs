@@ -129,9 +129,15 @@ fn battery() -> Detection<BatteryInfo> {
     };
     let mut units = Vec::new();
     let mut ac_online = None;
+    // A supply whose `type` cannot be read is unknown, not absent: if nothing
+    // else answers, the state is `unavailable`, not "no battery".
+    let mut unknown_supply = false;
     for entry in entries.flatten() {
         let path = entry.path();
-        let kind = text(&path.join("type")).unwrap_or_default();
+        let Some(kind) = text(&path.join("type")) else {
+            unknown_supply = true;
+            continue;
+        };
         match kind.as_str() {
             "Battery" => {
                 // `scope` separates the machine's battery from a mouse's or a
@@ -159,15 +165,25 @@ fn battery() -> Detection<BatteryInfo> {
                 });
             }
             // The adapter, not a battery: it only says whether mains is live.
+            // Several entries can exist — a laptop with a barrel jack and two
+            // USB-C ports reports three — and `read_dir` order is unspecified,
+            // so a disconnected port must not overwrite a live adapter. Any
+            // adapter online means on mains; only "all offline" means battery.
             "Mains" | "USB" | "USB_C" | "USB_PD" | "USB_TYPE_C" | "AC" | "ACAD" => {
                 if let Some(online) = text(&path.join("online")) {
-                    ac_online = Some(online == "1");
+                    let online = online == "1";
+                    ac_online = Some(ac_online.unwrap_or(false) || online);
                 }
             }
             _ => {}
         }
     }
     if units.is_empty() {
+        if unknown_supply {
+            return Detection::unavailable(
+                "A power supply in sysfs has no readable type, so a battery cannot be ruled out",
+            );
+        }
         return Detection::unsupported(
             "No battery is present; sysfs lists no power supply of type Battery",
         );
@@ -336,34 +352,54 @@ fn display() -> Detection<DisplayInfo> {
 /// Berkeley DB, and guessing from file counts would be a number about nothing.
 fn packages() -> Detection<PackagesInfo> {
     let mut managers = Vec::new();
+    // A database that exists but cannot be read is not the same as one that is
+    // absent: reporting "no package manager" there would be a guess. The first
+    // read failure is kept and decides the state if nothing else answers.
+    let mut unreadable: Option<&str> = None;
     // dpkg's status file is authoritative: a `.list` file also survives for a
     // package that was removed but not purged, and there is one per
     // architecture, so counting those overcounts what is installed.
-    if let Ok(status) = std::fs::read_to_string("/var/lib/dpkg/status") {
-        let count = crate::detect::hardware::dpkg_installed(&status);
-        if count > 0 {
-            managers.push(PackageManager {
-                name: "dpkg".to_owned(),
-                count,
-                definition: "installed packages: entries in /var/lib/dpkg/status with status install ok installed".to_owned(),
-            });
+    match std::fs::read_to_string("/var/lib/dpkg/status") {
+        Ok(status) => {
+            let count = crate::detect::hardware::dpkg_installed(&status);
+            if count > 0 {
+                managers.push(PackageManager {
+                    name: "dpkg".to_owned(),
+                    count,
+                    definition: "installed packages: entries in /var/lib/dpkg/status with status install ok installed".to_owned(),
+                });
+            }
         }
+        Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
+            unreadable = Some("/var/lib/dpkg/status could not be read");
+        }
+        Err(_) => {}
     }
     // pacman keeps one directory per package under `local`.
-    if let Ok(entries) = std::fs::read_dir("/var/lib/pacman/local") {
-        let count = entries
-            .flatten()
-            .filter(|entry| entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false))
-            .count() as u64;
-        if count > 0 {
-            managers.push(PackageManager {
-                name: "pacman".to_owned(),
-                count,
-                definition: "installed packages: one directory in /var/lib/pacman/local".to_owned(),
-            });
+    match std::fs::read_dir("/var/lib/pacman/local") {
+        Ok(entries) => {
+            let count = entries
+                .flatten()
+                .filter(|entry| entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false))
+                .count() as u64;
+            if count > 0 {
+                managers.push(PackageManager {
+                    name: "pacman".to_owned(),
+                    count,
+                    definition: "installed packages: one directory in /var/lib/pacman/local"
+                        .to_owned(),
+                });
+            }
         }
+        Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
+            unreadable.get_or_insert("/var/lib/pacman/local could not be read");
+        }
+        Err(_) => {}
     }
     if managers.is_empty() {
+        if let Some(reason) = unreadable {
+            return Detection::unavailable(reason);
+        }
         let reason = if std::path::Path::new("/nix/store").exists() {
             "Nix is present, but a store-path count is not a package count and this build does not read profiles"
         } else if std::path::Path::new("/var/lib/rpm").exists() {
@@ -416,11 +452,21 @@ fn locale() -> Detection<LocaleInfo> {
         lang.as_deref(),
     );
     // systemd distributions keep it in /etc/locale.conf; Debian's own file is
-    // the fallback. A missing file means the platform has no separate default.
+    // the fallback. A missing file means the platform has no separate default;
+    // a file that exists but cannot be read means the default is unknown, and
+    // saying "none" there would be a guess.
+    let mut unreadable = None;
     let (system, source) = ["/etc/locale.conf", "/etc/default/locale"]
         .into_iter()
         .find_map(|path| {
-            let text = std::fs::read_to_string(path).ok()?;
+            let text = match std::fs::read_to_string(path) {
+                Ok(text) => text,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => return None,
+                Err(_) => {
+                    unreadable = Some(path);
+                    return None;
+                }
+            };
             let value = text
                 .lines()
                 .find_map(|line| line.trim().strip_prefix("LANG="))?
@@ -432,6 +478,11 @@ fn locale() -> Detection<LocaleInfo> {
         .map_or((None, "/etc/locale.conf"), |(value, path)| {
             (Some(value), path)
         });
+    if system.is_none()
+        && let Some(path) = unreadable
+    {
+        return Detection::unavailable(format!("{path} could not be read"));
+    }
     crate::detect::locale::build(process, system, source)
 }
 

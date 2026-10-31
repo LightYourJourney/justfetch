@@ -5,10 +5,18 @@
 
 use std::process::Command;
 
+/// A directory that does not exist, so a `config.toml` in the developer's own
+/// home cannot change what these assertions see.
+fn isolated_config_dir() -> std::path::PathBuf {
+    std::env::temp_dir().join("jf-detection-suite-has-no-config-here")
+}
+
 fn snapshot() -> serde_json::Value {
     let output = Command::new(env!("CARGO_BIN_EXE_justfetch"))
         .args(["--format", "json"])
         .env("NO_COLOR", "1")
+        .env("XDG_CONFIG_HOME", isolated_config_dir())
+        .env("APPDATA", isolated_config_dir())
         .output()
         .expect("run justfetch");
     assert!(output.status.success(), "exit status {:?}", output.status);
@@ -64,10 +72,18 @@ fn reported_numbers_are_self_consistent() {
 
     let disk = &json["disk"]["value"];
     let disk_total = disk["total_bytes"].as_u64().expect("disk total");
+    let disk_used = disk["used_bytes"].as_u64().expect("disk used");
+    let disk_available = disk["available_bytes"].as_u64().expect("disk available");
     assert!(disk_total > 0, "{json}");
+    assert!(disk_used <= disk_total, "{json}");
+    // `available_bytes` is the space a user can write to, not the space the
+    // filesystem calls free: the two differ by the reserved blocks. Every
+    // relation below holds for the user-visible number and would be wrong for
+    // the raw one on a filesystem that reserves space.
+    assert!(disk_available <= disk_total, "{json}");
     assert!(
-        disk["used_bytes"].as_u64().expect("disk used") <= disk_total,
-        "{json}"
+        disk_used + disk_available <= disk_total,
+        "used {disk_used} + available {disk_available} exceeds total {disk_total}"
     );
     assert!(!disk["path"].as_str().expect("disk path").is_empty());
 

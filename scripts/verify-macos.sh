@@ -7,7 +7,7 @@
 # 3 when a covered module had no comparison.
 set -u
 here=$(cd -- "$(dirname -- "$0")" && pwd)
-BIN=${BIN:-./target/release/justfetch}
+BIN=${BIN:-$here/../target/release/justfetch}
 
 if ! command -v python3 >/dev/null 2>&1; then
   echo "python3 is required for the comparison" >&2
@@ -79,30 +79,23 @@ if names:
     values["gpu"] = {"names": [n.strip() for n in names]}
     tools["gpu"] = "system_profiler"
 
-# Packages: Homebrew's own list.
-def count(args):
-    if not shutil.which(args[0]):
-        return None
-    result = subprocess.run(args, capture_output=True, text=True)
-    return len([line for line in result.stdout.splitlines() if line.strip()]) if result.returncode == 0 else None
+# Packages: declared not comparable. justfetch counts directories in Cellar and
+# Caskroom, which its own source says does not claim to equal `brew list`; with a
+# formula installed at two versions the two answers differ by design, so a
+# comparison would report a mismatch that is not one.
 
-formulae = count(["brew", "list", "--formula"])
-casks = count(["brew", "list", "--cask"])
-if formulae is not None:
-    values["packages"] = {"homebrew formulae": formulae}
-    if casks is not None:
-        values["packages"]["homebrew casks"] = casks
-    tools["packages"] = "brew list"
-
-# Locale: the process locale the shell exported.
-if os.environ.get("LANG"):
-    values["locale"] = os.environ["LANG"]
-    tools["locale"] = "$LANG"
+# Locale: the same precedence the detector uses, or a shell that sets LC_ALL
+# would compare its value against LANG and report a mismatch.
+for key in ("LC_ALL", "LC_MESSAGES", "LANG"):
+    if os.environ.get(key):
+        values["locale"] = os.environ[key]
+        tools["locale"] = f"${key}"
+        break
 
 # Display is declared not comparable: justfetch reports the current mode's
 # logical points while system_profiler reports the panel, so they are different
 # quantities and a comparison would manufacture a mismatch.
-not_applicable.append("display")
+not_applicable.extend(["display", "packages"])
 
 (work / "native.json").write_text(json.dumps(
     {"tools": tools, "values": values, "absent": absent,

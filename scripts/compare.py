@@ -25,12 +25,13 @@ Each module gets one verdict:
 
 Exit status: 0 pass, 1 mismatch or error, 2 bad input, 3 strict only — a module
 had neither an observation nor a declared exclusion, or nothing was confirmed at
-all. Only non-identifying values are printed: counts, resolutions, names,
+all. An `error` verdict always exits 1, never 3. Only non-identifying values are printed: counts, resolutions, names,
 locales.
 """
 
 import argparse
 import json
+import re
 import sys
 from collections import Counter
 
@@ -87,6 +88,20 @@ TEXTS = {
 }
 
 
+def normalise_locale(text):
+    """The comparable part of a locale name.
+
+    `zh_CN.UTF-8`, `zh_CN` and `zh-cn` name the same locale; the encoding
+    suffix and the separator are presentation. Case is not significant either.
+    """
+    return text.strip().lower().split(".")[0].replace("-", "_")
+
+
+def desktop_tokens(text):
+    """Words in a desktop name: "ubuntu:GNOME" -> {"ubuntu", "gnome"}."""
+    return {token for token in re.split(r"[^\w]+", text.lower()) if token}
+
+
 def compare(module, value, native):
     """Return True when the justfetch value agrees with the native observation."""
     if module == "battery":
@@ -127,9 +142,17 @@ def compare(module, value, native):
             f"{unit['width']}x{unit['height']}" for unit in value.get("displays", [])
         )
         return bool(ours) and ours == Counter(str(resolution) for resolution in native)
-    if module in ("desktop", "locale"):
-        ours, theirs = TEXTS[module](value).lower(), str(native).lower()
-        return bool(ours) and bool(theirs) and (theirs in ours or ours in theirs)
+    if module == "locale":
+        # Exact after normalisation: substring containment made "C" match
+        # "zh_CN.UTF-8", which is the opposite of what a comparison is for.
+        return normalise_locale(TEXTS[module](value)) == normalise_locale(str(native))
+    if module == "desktop":
+        # A desktop name may be qualified — XDG_CURRENT_DESKTOP is often
+        # "ubuntu:GNOME" — so the comparison is on the name tokens, not on the
+        # characters. "GNOME" and "ubuntu" share none and never match.
+        ours = desktop_tokens(TEXTS[module](value))
+        theirs = desktop_tokens(str(native))
+        return bool(ours) and bool(theirs) and bool(ours & theirs)
     return False
 
 

@@ -40,6 +40,12 @@ fn run(columns: u16, args: &[&str], no_color: Option<&OsStr>, term: &str) -> Str
         .stdout(Stdio::from(slave))
         .stderr(Stdio::piped())
         .env("TERM", term)
+        // Same isolation as the other suites: a configuration file in the
+        // developer's home must not change what a terminal test renders.
+        .env(
+            "XDG_CONFIG_HOME",
+            std::env::temp_dir().join("jf-pty-suite-has-no-config-here"),
+        )
         // The converter decides the depth, and inheriting the developer's value
         // would make the 256-colour test depend on their shell.
         .env_remove("COLORTERM")
@@ -133,6 +139,50 @@ fn subcommands_exit_quietly_when_stdout_has_no_reader() {
             "{args:?} should be a quiet success, got {status:?}"
         );
     }
+}
+
+/// The theme and the accent were mapped into `Options` with nothing asserting
+/// the result: dropping either kept every test green.
+#[test]
+fn a_theme_and_an_accent_reach_a_terminal() {
+    let plain = run(
+        80,
+        &["--modules", "os", "--logo", "none"],
+        None,
+        "xterm-256color",
+    );
+    let themed = run(
+        80,
+        &["--modules", "os", "--logo", "none", "--theme", "nord"],
+        None,
+        "xterm-256color",
+    );
+    // The accent is a configuration key, not a flag.
+    let dir = std::env::temp_dir().join("jf-pty-accent");
+    let _ = std::fs::create_dir_all(&dir);
+    let config = dir.join("accent.toml");
+    std::fs::write(&config, "[color]\naccent = \"red\"\n").unwrap();
+    let config = config.to_str().unwrap();
+    let accented = run(
+        80,
+        &[
+            "--modules",
+            "os",
+            "--logo",
+            "none",
+            "--theme",
+            "nord",
+            "--config",
+            config,
+        ],
+        None,
+        "xterm-256color",
+    );
+    for out in [&plain, &themed, &accented] {
+        assert!(out.contains('\x1b'), "expected colour: {out:?}");
+    }
+    assert_ne!(plain, themed, "the theme had no effect");
+    assert_ne!(themed, accented, "the accent had no effect");
 }
 
 #[test]

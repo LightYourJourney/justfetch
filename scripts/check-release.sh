@@ -8,6 +8,10 @@ fail=0
 note() { printf '  %s\n' "$1"; }
 bad() { printf 'FAIL %s\n' "$1"; fail=1; }
 
+here=$(cd -- "$(dirname -- "$0")" && pwd)
+root=$(cd -- "$here/.." && pwd)
+cd "$root" || exit 2
+
 version=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
 tag="v$version"
 printf 'version: %s (tag %s)\n' "$version" "$tag"
@@ -47,7 +51,10 @@ esac
 # prerelease without this script noticing.
 rc_arm='^[[:space:]]*\*-\*\)[[:space:]]*stage="--prerelease"'
 stable_arm='^[[:space:]]*\*\)[[:space:]]*stage=""'
-if grep -Eq "$rc_arm" .github/workflows/release.yml \
+# Both arms must key off the same variable the tag is checked against.
+keyed='case "$version" in'
+if grep -Fq "$keyed" .github/workflows/release.yml \
+   && grep -Eq "$rc_arm" .github/workflows/release.yml \
    && grep -Eq "$stable_arm" .github/workflows/release.yml; then
   note "release marker derives from the version ($version -> $kind)"
 else
@@ -55,7 +62,9 @@ else
 fi
 
 grep -q "github.event_name == 'push'" .github/workflows/release.yml \
-  && note "release job requires a push event" || bad "release job does not require a push event"
+  && grep -q "startsWith(github.ref, 'refs/tags/')" .github/workflows/release.yml \
+  && note "release job requires a tag push" \
+  || bad "release job is not gated on a tag push"
 
 # Targets the workflow builds, and the archive name it gives each.
 targets=$(sed -n 's/^ *target: //p' .github/workflows/release.yml | tr -d '\r')

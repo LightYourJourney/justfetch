@@ -8,7 +8,7 @@
 # covered module had no comparison; a labelling failure is 1.
 set -u
 here=$(cd -- "$(dirname -- "$0")" && pwd)
-BIN=${BIN:-./target/release/justfetch}
+BIN=${BIN:-$here/../target/release/justfetch}
 
 if ! command -v python3 >/dev/null 2>&1; then
   echo "python3 is required for the comparison" >&2

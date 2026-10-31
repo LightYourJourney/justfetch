@@ -52,7 +52,7 @@ enabled = true
 cpu = "Processor"
 ```
 
-Running `justfetch init` writes this shape with every key at its default, so you can delete the lines you do not want to change. `init` never overwrites an existing file; it fails and says so.
+Running `justfetch init` writes this shape with every key at its default — except `color.accent`, the `[labels]` table and the `file` keys for a custom theme or logo, which are written commented out or omitted because their defaults are "unset". Delete or uncomment them as you need. `init` never overwrites an existing file; it fails and says so.
 
 ## Reference
 
@@ -106,10 +106,12 @@ The theme format, the role names and the artwork rules are in
 
 ```
 $ justfetch --config broken.toml doctor
-user config: /home/you/.config/justfetch/config.toml (not present; built-in defaults apply)
+user config: /home/you/.config/justfetch/config.toml (not present; the --config file and the built-in defaults apply)
 --config: broken.toml (found)
 problem: configuration error: broken.toml: modules: `bogus` is not a module id; expected one of os, host, kernel, uptime, cpu, gpu, memory, swap, disk, battery, display, packages, desktop, locale, shell, terminal, local_ip
 ```
+
+Two limits apply to every file named here: a configuration file over 1 MiB, and a theme or logo file over its own bound, is refused rather than read. A theme name is limited to 64 characters.
 
 Errors from a normal run go to stderr with a non-zero exit code, and nothing is written to stdout:
 

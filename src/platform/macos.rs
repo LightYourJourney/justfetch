@@ -45,6 +45,7 @@ unsafe extern "C" {
         text: *const libc::c_char,
         encoding: u32,
     ) -> CFStringRef;
+    fn CFStringGetLength(string: CFStringRef) -> libc::c_long;
     fn CFStringGetCString(
         string: CFStringRef,
         buffer: *mut libc::c_char,
@@ -86,8 +87,19 @@ fn power_value(description: CFDictionaryRef, key: &CStr) -> Option<CFTypeRef> {
 
 /// Copy a Core Foundation string into a Rust `String`. The caller checks the
 /// type first and keeps ownership, so nothing is released here.
+///
+/// The buffer is sized from the string itself rather than fixed: a fixed 256
+/// bytes silently turned a long battery name into a different value and a long
+/// locale into a missing one.
 fn cf_string(value: CFStringRef) -> Option<String> {
-    let mut buffer = [0_i8; 256];
+    // SAFETY: the value was checked to be a CFString by the caller.
+    let length = unsafe { CFStringGetLength(value) };
+    if length < 0 {
+        return None;
+    }
+    // UTF-8 needs at most 3 bytes per UTF-16 unit, plus the terminator.
+    let capacity = (length as usize).saturating_mul(3).saturating_add(1);
+    let mut buffer = vec![0_i8; capacity];
     // SAFETY: the buffer size matches the capacity passed and the value was
     // checked to be a CFString. A non-zero return means the text fitted.
     let ok = unsafe {
@@ -486,25 +498,38 @@ fn display() -> Detection<DisplayInfo> {
 /// still one formula. Homebrew's own database is not parsed, so this does not
 /// claim to match `brew list` exactly.
 fn packages() -> Detection<PackagesInfo> {
-    let count_dirs = |path: &std::path::Path| -> Option<u64> {
-        let entries = std::fs::read_dir(path).ok()?;
-        Some(
-            entries
-                .flatten()
-                .filter(|entry| entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false))
-                .count() as u64,
-        )
+    // `None` means the directory is absent; `Err` means it exists and could not
+    // be read, which is not evidence that Homebrew is missing.
+    let count_dirs = |path: &std::path::Path| -> Result<Option<u64>, std::io::Error> {
+        match std::fs::read_dir(path) {
+            Ok(entries) => Ok(Some(
+                entries
+                    .flatten()
+                    .filter(|entry| entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false))
+                    .count() as u64,
+            )),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(error),
+        }
     };
+    let mut unreadable: Option<String> = None;
     let mut managers = Vec::new();
     for prefix in ["/opt/homebrew", "/usr/local"] {
         let base = std::path::Path::new(prefix);
-        if let Some(count) = count_dirs(&base.join("Cellar")).filter(|count| *count > 0) {
+        let cellar = match count_dirs(&base.join("Cellar")) {
+            Ok(cellar) => cellar,
+            Err(error) => {
+                unreadable.get_or_insert(format!("{prefix}/Cellar could not be read: {error}"));
+                continue;
+            }
+        };
+        if let Some(count) = cellar.filter(|count| *count > 0) {
             managers.push(PackageManager {
                 name: "homebrew formulae".to_owned(),
                 count,
                 definition: format!("directories in {prefix}/Cellar"),
             });
-            if let Some(casks) = count_dirs(&base.join("Caskroom")) {
+            if let Ok(Some(casks)) = count_dirs(&base.join("Caskroom")) {
                 managers.push(PackageManager {
                     name: "homebrew casks".to_owned(),
                     count: casks,
@@ -517,6 +542,9 @@ fn packages() -> Detection<PackagesInfo> {
         }
     }
     if managers.is_empty() {
+        if let Some(reason) = unreadable {
+            return Detection::unavailable(reason);
+        }
         return Detection::unsupported(
             "No Homebrew Cellar was found in /opt/homebrew or /usr/local",
         );

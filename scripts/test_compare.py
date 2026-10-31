@@ -160,7 +160,8 @@ class Compare(unittest.TestCase):
                 # or "inconclusive" (covered, but this module has none). Never
                 # a mismatch, and never a match.
                 self.assertNotIn("mismatch", line)
-                self.assertNotIn("match ", line)
+                # The verdict is the last field, so compare it exactly.
+                self.assertNotEqual(line.split()[-1], "match", line)
 
     def test_an_error_is_a_failure_in_both_modes(self):
         doc = document(battery={"status": "error", "source": "IOKit",
@@ -291,6 +292,40 @@ class Compare(unittest.TestCase):
         self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
         battery = [l for l in result.stdout.splitlines() if l.startswith("battery")][0]
         self.assertIn("inconclusive", battery)
+
+    def test_a_locale_prefix_is_not_a_match(self):
+        # "C" is a substring of "C.UTF-8" and of nothing else that matters, but
+        # a substring comparison made "C" match "zh_CN.UTF-8" too.
+        doc = document(locale={"status": "available",
+                               "value": {"process": "C"}, "source": "x",
+                               "confidence": "confirmed"})
+        native = {"tools": {}, "values": {"locale": "zh_CN.UTF-8"}}
+        result = self.run_compare(doc, native)
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+
+    def test_the_same_locale_in_another_form_matches(self):
+        doc = document(locale={"status": "available",
+                               "value": {"process": "zh_CN"}, "source": "x",
+                               "confidence": "confirmed"})
+        native = {"tools": {}, "values": {"locale": "zh-CN.UTF-8"}}
+        result = self.run_compare(doc, native)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_a_qualified_desktop_name_matches(self):
+        doc = document(desktop={"status": "available",
+                                "value": {"name": "GNOME", "kind": "desktop", "session": "wayland"},
+                                "source": "x", "confidence": "confirmed"})
+        native = {"tools": {}, "values": {"desktop": "ubuntu:GNOME"}}
+        result = self.run_compare(doc, native)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_two_unrelated_desktops_do_not_match(self):
+        doc = document(desktop={"status": "available",
+                                "value": {"name": "GNOME", "kind": "desktop", "session": "wayland"},
+                                "source": "x", "confidence": "confirmed"})
+        native = {"tools": {}, "values": {"desktop": "KDE"}}
+        result = self.run_compare(doc, native)
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
 
     def test_strict_accepts_a_full_match(self):
         result = self.run_compare(document(**AVAILABLE), NATIVE, strict=True)

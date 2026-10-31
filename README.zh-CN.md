@@ -48,8 +48,9 @@ justfetch doctor
 | --- | --- |
 | macOS ARM64 | 已实际运行验证 |
 | macOS Intel | 交叉构建，并在 Rosetta 下运行验证（非 Intel 硬件） |
-| Linux x86-64 / ARM64 | CI 构建、测试与打包冒烟；未在真实发行版上交互验证 |
-| Windows x64 | CI 构建、测试与打包冒烟；未在真实机器上交互验证 |
+| Linux x86-64 | CI 构建、测试与打包冒烟；未在真实发行版上交互验证 |
+| Linux ARM64 | CI 构建与打包冒烟（测试矩阵仅 x86-64）；另在 Ubuntu 26.04 aarch64 虚拟机上用发布产物比对过 packages 与 locale |
+| Windows x64 | CI 构建、测试与打包冒烟；六个高级模块未与 Windows 自带工具比对 |
 
 ## 文档
 
