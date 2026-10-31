@@ -42,8 +42,15 @@ values, tools, absent, not_applicable = {}, {}, [], []
 # Every absence is a look that came back empty, not an assumption about WSL.
 # WSL2 can pass a GPU through (`/dev/dxg`), so the GPU check is its own.
 def read_dir(path):
+    """Entries, [] when the path does not exist, None when it could not be read.
+
+    The difference matters: a WSL guest may have no /sys/class/drm at all, which
+    is evidence that nothing is there, while EACCES is evidence of nothing.
+    """
     try:
         return os.listdir(path)
+    except FileNotFoundError:
+        return []
     except OSError:
         return None
 
@@ -74,10 +81,12 @@ if drm is not None:
             break
     if drm is not None and not connected:
         absent.append("display")
-    # A DRM card means a GPU is present; without one, and with no DXG device
-    # passed through either, there is nothing to report.
+    # justfetch reads /sys/class/drm only, so "no DRM card in a readable
+    # directory" is exactly the evidence for its `unsupported`. A Windows GPU
+    # passed through as /dev/dxg is not something justfetch claims to see, and
+    # the verifier does not judge the machine's hardware — only the claim.
     has_card = any(n.startswith("card") and n[4:].isdigit() for n in drm or [])
-    if drm is not None and not has_card and not os.path.exists("/dev/dxg"):
+    if drm is not None and not has_card:
         absent.append("gpu")
 
 # No desktop-session variables: WSLg may set WAYLAND_DISPLAY for applications,

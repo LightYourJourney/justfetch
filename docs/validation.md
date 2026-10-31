@@ -1145,8 +1145,9 @@ the machines they exist for:
   simulated one.
 - `verify-wsl.sh` declared `battery` and `display` unconditionally, which the
   new contract forbids: an absence must be a look that came back empty. Every
-  declaration now reads sysfs and gives up when a read fails, and the GPU check
-  accounts for a passed-through `/dev/dxg` rather than assuming none exists.
+  declaration now reads sysfs and gives up when a read fails. A missing `/sys/class/drm` is now
+  treated as an absence rather than an unreadable path — a WSL guest often has
+  no such directory at all — while an unreadable one still declares nothing.
 - `verify-linux.sh` could declare the GPU absent when `lspci` had *failed*
   rather than found nothing, and the battery absent without confirming the read
   succeeded. Both require a successful look now. Its battery and display
@@ -1225,6 +1226,13 @@ version stopped short:
   self-test exit 1.
 - An undeclared gap must exit 3, which is the strict-only code the script
   promises and otherwise never reaches.
+- Scoop installed with an empty `apps` directory: justfetch reports
+  `unsupported`, so the verifier declares the absence rather than reporting a
+  count of zero and failing as a mismatch.
+
+Not covered by the self-test: the battery branch, because `Win32_Battery` only
+exists on Windows. `JF_SCOOP_APPS` has no equivalent for CIM, so a machine with
+and without a battery can only be distinguished on a Windows host.
 
 The previous round's defect was precisely a list that was computed and never
 written. A later round can reintroduce it, but not without this step failing.
@@ -1270,7 +1278,7 @@ the check immediately.
 
 ### CPU on an unidentified ARM part: a pinned regression
 
-`cpu_from` was extracted from the collection path so the decision can be tested
+`cpu_detection` was extracted from the collection path so the decision can be tested
 without a machine that reproduces it. Three cases are pinned: an empty brand
 with a known core count is `unavailable` and the count is discarded; a named
 CPU reports both fields; a failed core count is an `error`, not an absence.

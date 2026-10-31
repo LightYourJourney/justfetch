@@ -8,27 +8,59 @@
 # The comparison needs Python 3 (scripts/compare.py). Without it the raw
 # observations are printed and the script exits 2.
 #
-# -SelfTest replaces the platform queries with fixed values. It checks the seam
-# between this script and compare.py — that the native.json written here is one
-# compare.py accepts, that its evidence lists survive serialization, and that
-# strict mode then reaches the verdict it should, in both directions. It needs
-# no Windows API, so CI runs it on every push; a real Windows run is still the
-# only evidence about the collectors themselves.
+# -SelfTest checks the seam between this script and compare.py: that a fixed
+# document and observation pair exits 0, that the evidence lists survive
+# serialization, that the real collector's branches reach the file, that a
+# disagreeing document exits 1, and that an undeclared gap exits 3. It also
+# drives `Get-WindowsObservation` itself, whose Windows-only calls fail
+# harmlessly off Windows. A real Windows run is still the only evidence about
+# what those calls return.
 param([switch]$SelfTest)
 $ErrorActionPreference = 'Continue'
 
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 
-# A justfetch document and the observations that should match it.
-$SelfTestDocument = @'
-{"schema_version":1,"environment":{"kind":"native"},
- "gpu":{"status":"available","value":{"devices":[{"name":"Test Adapter","vendor":"Test","id":null,"driver":null,"kind":"discrete"}]},"source":"t","confidence":"confirmed"},
- "battery":{"status":"available","value":{"units":[{"name":"Battery 0","percent":80,"state":"discharging"}],"power":"battery"},"source":"t","confidence":"confirmed"},
- "display":{"status":"available","value":{"displays":[{"name":null,"width":1920,"height":1080,"refresh_hz":60,"primary":true,"kind":"unknown"}],"definition":"t"},"source":"t","confidence":"confirmed"},
- "packages":{"status":"unsupported","reason":"no package manager"},
- "desktop":{"status":"unsupported","reason":"no desktop"},
- "locale":{"status":"available","value":{"process":"en-US","process_source":"GetUserDefaultLocaleName","system":"en-US","system_source":"GetUserDefaultLocaleName"},"source":"t","confidence":"confirmed"}}
-'@
+# The fixture both self-test scenarios are built from, so a laptop and a desktop
+# differ in one property rather than in two copies of the same JSON.
+function New-SelfTestDocument {
+    [ordered]@{
+        schema_version = 1
+        environment = [ordered]@{ kind = 'native' }
+        gpu = [ordered]@{
+            status = 'available'; source = 't'; confidence = 'confirmed'
+            value = [ordered]@{ devices = @([ordered]@{
+                name = 'Test Adapter'; vendor = 'Test'; id = $null
+                driver = $null; kind = 'discrete'
+            }) }
+        }
+        battery = [ordered]@{
+            status = 'available'; source = 't'; confidence = 'confirmed'
+            value = [ordered]@{
+                units = @([ordered]@{ name = 'Battery 0'; percent = 80; state = 'discharging' })
+                power = 'battery'
+            }
+        }
+        display = [ordered]@{
+            status = 'available'; source = 't'; confidence = 'confirmed'
+            value = [ordered]@{
+                displays = @([ordered]@{
+                    name = $null; width = 1920; height = 1080
+                    refresh_hz = 60; primary = $true; kind = 'unknown'
+                })
+                definition = 't'
+            }
+        }
+        packages = [ordered]@{ status = 'unsupported'; reason = 'no package manager' }
+        desktop = [ordered]@{ status = 'unsupported'; reason = 'no desktop' }
+        locale = [ordered]@{
+            status = 'available'; source = 't'; confidence = 'confirmed'
+            value = [ordered]@{
+                process = 'en-US'; process_source = 'GetUserDefaultLocaleName'
+                system = 'en-US'; system_source = 'GetUserDefaultLocaleName'
+            }
+        }
+    }
+}
 
 function Get-SelfTestObservation {
     [ordered]@{
@@ -93,11 +125,12 @@ function Get-WindowsObservation {
     # comparison uses that unit. Win32_VideoController reports one mode per
     # adapter and cannot see two monitors on one GPU.
     #
-    # Limits, written down rather than guessed at: `Screen.Bounds` is the
-    # monitor's rectangle in physical pixels once the process is DPI aware,
-    # which is what GetMonitorInfoW reports; refresh rate is not compared
-    # because Screen has no equivalent and justfetch reads it from
-    # EnumDisplaySettingsW.
+    # Limits, written down rather than guessed at: `Screen.Bounds` is in
+    # physical pixels once the process calls SetProcessDPIAware. justfetch has
+    # no DPI manifest, so GetMonitorInfoW gives *it* virtualized coordinates
+    # under display scaling — the two can legitimately disagree on a scaled
+    # display, and that is a limit of the comparison, not a defect. Refresh rate
+    # is not compared at all: Screen has no equivalent.
     try {
         Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop
         $null = Add-Type -Namespace Jf -Name Dpi -MemberDefinition @'
@@ -132,8 +165,9 @@ public static extern bool SetProcessDPIAware();
         $null
     }
     if ($scoop) {
-        if (Test-Path $scoop) {
-            $values['packages'] = @{ scoop = @(Get-ChildItem $scoop -Directory).Count }
+        $scoopApps = if (Test-Path $scoop) { @(Get-ChildItem $scoop -Directory).Count } else { 0 }
+        if ($scoopApps -gt 0) {
+            $values['packages'] = @{ scoop = $scoopApps }
             $tools['packages'] = 'scoop/apps'
         } else {
             # Looked and found nothing: that is what justfetch's "unsupported"
@@ -166,7 +200,7 @@ New-Item -ItemType Directory -Path $work | Out-Null
 $exit = 2
 try {
     if ($SelfTest) {
-        $docJson = $SelfTestDocument
+        $docJson = New-SelfTestDocument | ConvertTo-Json -Depth 8 -Compress
         $observation = Get-SelfTestObservation
     } else {
         $bin = if ($env:BIN) { $env:BIN } else { Join-Path (Get-Location) 'target\release\justfetch.exe' }
@@ -281,7 +315,9 @@ try {
         }
 
         # And a document that disagrees must not pass.
-        $wrong = $SelfTestDocument -replace '"percent":80', '"percent":55'
+        $wrongDoc = New-SelfTestDocument
+        $wrongDoc.battery.value.units[0].percent = 55
+        $wrong = $wrongDoc | ConvertTo-Json -Depth 8 -Compress
         [System.IO.File]::WriteAllText($docPath, $wrong, $utf8)
         & $python.Source $compare --strict --justfetch $docPath --native $nativePath | Out-Null
         if ($LASTEXITCODE -ne 1) { $failures += "a mismatched document exited $LASTEXITCODE, expected 1" }
@@ -293,15 +329,10 @@ try {
         # A desktop machine: an adapter and a monitor, no battery, no Scoop, no
         # desktop environment. justfetch reports the first two as values and the
         # rest as unsupported.
-        $stockDoc = @'
-{"schema_version":1,"environment":{"kind":"native"},
- "gpu":{"status":"available","value":{"devices":[{"name":"Test Adapter","vendor":"Test","id":null,"driver":null,"kind":"discrete"}]},"source":"t","confidence":"confirmed"},
- "battery":{"status":"unsupported","reason":"no battery"},
- "display":{"status":"available","value":{"displays":[{"name":null,"width":1920,"height":1080,"refresh_hz":60,"primary":true,"kind":"unknown"}],"definition":"t"},"source":"t","confidence":"confirmed"},
- "packages":{"status":"unsupported","reason":"no package manager"},
- "desktop":{"status":"unsupported","reason":"no desktop"},
- "locale":{"status":"available","value":{"process":"en-US","process_source":"GetUserDefaultLocaleName","system":"en-US","system_source":"GetUserDefaultLocaleName"},"source":"t","confidence":"confirmed"}}
-'@
+        # The same fixture as a desktop machine: no battery to report.
+        $stockFixture = New-SelfTestDocument
+        $stockFixture.battery = [ordered]@{ status = 'unsupported'; reason = 'no battery' }
+        $stockDoc = $stockFixture | ConvertTo-Json -Depth 8 -Compress
         $stockNative = [ordered]@{
             tools = [ordered]@{ gpu = 'self-test'; display = 'self-test' }
             values = [ordered]@{
